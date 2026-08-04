@@ -1,7 +1,5 @@
 import { Boot } from './scenes/Boot';
-import { GameOver } from './scenes/GameOver';
-import { Game as MainGame } from './scenes/Game';
-import { MainMenu } from './scenes/MainMenu';
+import { CardGame } from './scenes/CardGame';
 import { AUTO, Game } from 'phaser';
 import { Preloader } from './scenes/Preloader';
 
@@ -12,13 +10,11 @@ const config: Phaser.Types.Core.GameConfig = {
     width: 1024,
     height: 768,
     parent: 'game-container',
-    backgroundColor: '#028af8',
+    backgroundColor: '#161b26',
     scene: [
         Boot,
         Preloader,
-        MainMenu,
-        MainGame,
-        GameOver
+        CardGame
     ]
 };
 

@@ -1,0 +1,82 @@
+import type { CardDefinition } from '../types/Card';
+
+export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
+    'goblin-skirmisher': {
+        id: 'goblin-skirmisher',
+        name: 'Goblin Skirmisher',
+        cost: 1,
+        type: 'minion',
+        art: 'goblin-skirmisher',
+        text: '',
+        attack: 2,
+        health: 1,
+    },
+    'stone-guardian': {
+        id: 'stone-guardian',
+        name: 'Stone Guardian',
+        cost: 1,
+        type: 'minion',
+        art: 'stone-guardian',
+        text: '',
+        attack: 0,
+        health: 4,
+    },
+    'marsh-lurker': {
+        id: 'marsh-lurker',
+        name: 'Marsh Lurker',
+        cost: 2,
+        type: 'minion',
+        art: 'marsh-lurker',
+        text: '',
+        attack: 2,
+        health: 3,
+    },
+    'apprentice-tinkerer': {
+        id: 'apprentice-tinkerer',
+        name: 'Apprentice Tinkerer',
+        cost: 2,
+        type: 'minion',
+        art: 'apprentice-tinkerer',
+        text: 'Battlecry: Draw a card.',
+        attack: 1,
+        health: 1,
+        effects: [
+            { trigger: 'onPlay', action: { kind: 'draw', count: 1 } },
+        ],
+    },
+    'frost-behemoth': {
+        id: 'frost-behemoth',
+        name: 'Frost Behemoth',
+        cost: 4,
+        type: 'minion',
+        art: 'frost-behemoth',
+        text: '',
+        attack: 4,
+        health: 5,
+    },
+    firebolt: {
+        id: 'firebolt',
+        name: 'Firebolt',
+        cost: 5,
+        type: 'spell',
+        art: 'firebolt',
+        text: 'Deal 6 damage.',
+        effects: [
+            { trigger: 'onPlay', action: { kind: 'damage', amount: 6, target: 'chosen' } },
+        ],
+    },
+    'radiant-light': {
+        id: 'radiant-light',
+        name: 'Radiant Light',
+        cost: 2,
+        type: 'spell',
+        art: 'radiant-light',
+        text: 'Restore 6 Health.',
+        effects: [
+            { trigger: 'onPlay', action: { kind: 'heal', amount: 6, target: 'chosen' } },
+        ],
+    },
+};
+
+/** A ready-to-use 14 card deck (two copies of each definition above) for wiring up a scene end-to-end. */
+export const STARTER_DECK: string[] = Object.keys(CARD_DEFINITIONS).flatMap((id) => [id, id]);

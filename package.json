@@ -1,7 +1,7 @@
 {
-  "name": "template-nextjs",
+  "name": "card-game",
   "version": "1.2.0",
-  "description": "A Phaser 3 Next.js project template that demonstrates Next.js with React communication and uses Vite for bundling.",
+  "description": "A simplified Hearthstone-style 2D card game built with Phaser and Next.js.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/phaserjs/template-nextjs.git"
@@ -15,11 +15,10 @@
   "homepage": "https://github.com/phaserjs/template-nextjs#readme",
   "keywords": [
     "phaser",
-    "phaser3",
     "next",
     "nextjs",
-    "vite",
-    "typescript"
+    "typescript",
+    "card-game"
   ],
   "scripts": {
     "dev": "node log.js dev & next dev -p 8080",
@@ -37,6 +36,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "playwright": "^1.62.1",
     "typescript": "^5"
   }
 }
