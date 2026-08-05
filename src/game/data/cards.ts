@@ -93,5 +93,5 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     },
 };
 
-/** A ready-to-use 14 card deck (two copies of each definition above) for wiring up a scene end-to-end. */
+/** A ready-to-use 16 card deck (two copies of each definition above) for wiring up a scene end-to-end. */
 export const STARTER_DECK: string[] = Object.keys(CARD_DEFINITIONS).flatMap((id) => [id, id]);
