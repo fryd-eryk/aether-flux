@@ -33,6 +33,17 @@ const PLAYER_BOARD_Y = 652;
 const PLAYER_HAND_Y = 849;
 const PLAYER_HERO_Y = 1009;
 
+// Deck piles share the end-turn/cancel buttons' column, offset further right so hand
+// cards (which can extend close to x=1760 at max hand size) never overlap them.
+const DECK_X = 1860;
+const OPPONENT_DECK_Y = 300;
+const PLAYER_DECK_Y = 750;
+const DECK_PILE_W = 80;
+const DECK_PILE_H = 100;
+
+// Where a played card is held for a beat before flying to its resting place.
+const SPOTLIGHT_X = 260;
+
 const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '13px', color: '#ffffff', align: 'left' };
 const RULE_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '12px', color: '#b8c4d9', fontStyle: 'italic', align: 'center' };
 const SMALL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff' };
@@ -43,18 +54,34 @@ function statStyle(color: string): Phaser.Types.GameObjects.Text.TextStyle {
 
 /**
  * Renders TurnStateMachine's GameState and forwards input into it. This scene owns no
- * game rules of its own — every button/drag/click just calls a TurnStateMachine method,
- * and the whole board is torn down and rebuilt from scratch on every 'state:phase-change'
- * event rather than incrementally patched, which keeps this file simple at the cost of
- * being wasteful for a game this small (acceptable trade for a turn-based card game).
+ * game rules of its own — every button/drag/click just calls a TurnStateMachine method.
+ *
+ * TurnStateMachine resolves a whole action (mutation + effects + death sweep) synchronously
+ * within a single call, emitting 'state:phase-change' plus action-specific events
+ * ('state:card-played', 'state:attack', 'state:card-died', 'state:card-drawn') along the way —
+ * all before this Scene ever gets a turn to run a tween. So the board is NOT rebuilt on every
+ * phase-change: renderNow() (the full teardown/rebuild) only actually runs for "settled" phases
+ * (see RENDERABLE_PHASES), and is deferred behind requestRender()'s isAnimating gate whenever an
+ * action-specific event has queued an animation. Those queued animations run against whatever
+ * renderNow() last actually painted — which, since GameState is already fully resolved by then,
+ * is always the correct "before" picture for a move/fade/fly tween — and only once the queue
+ * drains does the deferred renderNow() finally paint the true final state.
  */
 export class CardGame extends Scene
 {
+    private static readonly RENDERABLE_PHASES: ReadonlySet<TurnPhase> = new Set([
+        TurnPhase.MainIdle,
+        TurnPhase.AwaitingTarget,
+        TurnPhase.GameOver,
+    ]);
+
     private machine!: TurnStateMachine;
 
     private renderedObjects: Phaser.GameObjects.GameObject[] = [];
     private cardInstanceByContainer = new Map<Phaser.GameObjects.Container, string>();
     private originalPositions = new Map<Phaser.GameObjects.Container, { x: number; y: number }>();
+    private instanceContainers = new Map<string, Phaser.GameObjects.Container>();
+    private heroContainers = new Map<PlayerId, Phaser.GameObjects.Container>();
 
     private playerBoardZone!: Phaser.GameObjects.Zone;
     private turnBannerText!: Phaser.GameObjects.Text;
@@ -68,21 +95,218 @@ export class CardGame extends Scene
     private opponentHealthText!: Phaser.GameObjects.Text;
     private opponentManaText!: Phaser.GameObjects.Text;
 
-    private phaseChangeHandler = (phase: TurnPhase, state: GameState): void =>
-    {
-        this.render();
+    // --- animation orchestration --------------------------------------------------
 
-        if (phase === TurnPhase.MainIdle && state.activePlayer === 'opponent')
-        {
-            this.time.delayedCall(600, () => this.runOpponentTurn());
-        }
+    private animQueue: Array<() => Promise<void>> = [];
+    private isAnimating = false;
+    private renderQueued = false;
+    private pendingDeathIds: string[] = [];
+
+    private phaseChangeHandler = (phase: TurnPhase): void =>
+    {
+        if (!CardGame.RENDERABLE_PHASES.has(phase)) return;
+        // Chrome (banner text, health/mana, End Turn/Cancel) is cheap and carries no stale
+        // container references, so it updates immediately even mid-animation — otherwise e.g.
+        // the Cancel button and "choose a target" banner would linger on screen throughout an
+        // attack's lunge, since the full board rebuild that would normally clear them is deferred.
+        this.updateChrome(this.machine.state);
+        this.requestRender();
     };
+
+    private cardDrawnHandler = ({ playerId, instanceId }: { playerId: PlayerId; instanceId: string }): void =>
+    {
+        this.enqueueAnimation(() => this.playDrawAnimation(playerId, instanceId));
+    };
+
+    private cardPlayedHandler = ({ instanceId, playerId }: { instanceId: string; playerId: PlayerId }): void =>
+    {
+        this.enqueueAnimation(() => this.playCardPlayedAnimation(instanceId, playerId));
+    };
+
+    private attackHandler = ({ attackerInstanceId, targetId }: { attackerInstanceId: string; targetId: string }): void =>
+    {
+        this.enqueueAnimation(() => this.playAttackAnimation(attackerInstanceId, targetId));
+    };
+
+    private cardDiedHandler = ({ instanceId }: { instanceId: string }): void =>
+    {
+        this.pendingDeathIds.push(instanceId);
+    };
+
+    /** Queues an animation step and kicks off draining if nothing is already running. */
+    private enqueueAnimation (step: () => Promise<void>): void
+    {
+        this.animQueue.push(step);
+        if (this.isAnimating) return;
+        this.isAnimating = true;
+        void this.drainQueue();
+    }
+
+    private async drainQueue (): Promise<void>
+    {
+        while (this.animQueue.length > 0)
+        {
+            const step = this.animQueue.shift()!;
+            await step();
+        }
+        this.isAnimating = false;
+        if (this.renderQueued)
+        {
+            this.renderQueued = false;
+            this.renderNow();
+        }
+    }
+
+    /** Renders immediately unless an animation is in flight, in which case the render is deferred until it drains. */
+    private requestRender (): void
+    {
+        if (this.pendingDeathIds.length > 0 && !this.isAnimating)
+        {
+            this.enqueueAnimation(() => this.playPendingDeaths());
+        }
+        if (this.isAnimating)
+        {
+            this.renderQueued = true;
+            return;
+        }
+        this.renderNow();
+    }
+
+    /** Wraps a player-input callback so clicks/drops during an in-flight animation are ignored rather than firing on stale, about-to-be-replaced containers. */
+    private guarded (fn: () => void): () => void
+    {
+        return () => { if (!this.isAnimating) fn(); };
+    }
+
+    private tweenPromise (config: Phaser.Types.Tweens.TweenBuilderConfig): Promise<void>
+    {
+        return new Promise((resolve) =>
+        {
+            this.tweens.add({ ...config, onComplete: () => resolve() });
+        });
+    }
+
+    private delay (ms: number): Promise<void>
+    {
+        return new Promise((resolve) => { this.time.delayedCall(ms, () => resolve()); });
+    }
+
+    private deckPilePosition (playerId: PlayerId): { x: number; y: number }
+    {
+        return { x: DECK_X, y: playerId === 'opponent' ? OPPONENT_DECK_Y : PLAYER_DECK_Y };
+    }
+
+    private resolveTargetContainer (targetId: string): Phaser.GameObjects.Container | undefined
+    {
+        return targetId === 'player' || targetId === 'opponent'
+            ? this.heroContainers.get(targetId as PlayerId)
+            : this.instanceContainers.get(targetId);
+    }
+
+    /** Fades out and clears every instanceId queued up by cardDiedHandler since the last flush — a 500ms death fade, per card. */
+    private async playPendingDeaths (): Promise<void>
+    {
+        if (this.pendingDeathIds.length === 0) return;
+
+        const ids = this.pendingDeathIds.splice(0, this.pendingDeathIds.length);
+        const containers = ids
+            .map((id) => this.instanceContainers.get(id))
+            .filter((c): c is Phaser.GameObjects.Container => !!c);
+        if (containers.length === 0) return;
+
+        await this.tweenPromise({ targets: containers, alpha: 0, duration: 500, ease: 'Linear' });
+    }
+
+    /** Attacker lunges at its target (easing in — slow start, speed ramping up) then returns to its original spot, before any resulting deaths fade. */
+    private async playAttackAnimation (attackerInstanceId: string, targetId: string): Promise<void>
+    {
+        const attacker = this.instanceContainers.get(attackerInstanceId);
+        const target = this.resolveTargetContainer(targetId);
+
+        if (attacker && target)
+        {
+            const origin = { x: attacker.x, y: attacker.y };
+            attacker.setDepth(1500);
+
+            await this.tweenPromise({ targets: attacker, x: target.x, y: target.y, duration: 260, ease: 'Cubic.easeIn' });
+            await this.tweenPromise({ targets: attacker, x: origin.x, y: origin.y, duration: 200, ease: 'Cubic.easeOut' });
+        }
+
+        await this.playPendingDeaths();
+    }
+
+    /**
+     * Spotlights a just-played card at the screen's left-center so the player can register what
+     * was played, then — without waiting on any input — flies it out to its resting place: its
+     * computed board slot for a minion that was actually summoned, or a fade-out for a spell or a
+     * minion discarded to a full board.
+     */
+    private async playCardPlayedAnimation (instanceId: string, playerId: PlayerId): Promise<void>
+    {
+        const container = this.instanceContainers.get(instanceId);
+        if (!container)
+        {
+            await this.playPendingDeaths();
+            return;
+        }
+
+        container.setDepth(2500);
+
+        await this.tweenPromise({ targets: container, x: SPOTLIGHT_X, y: CENTER_Y, scale: 1.25, duration: 350, ease: 'Cubic.easeOut' });
+        await this.delay(550);
+
+        const destination = this.computePlayedCardDestination(instanceId, playerId);
+        if (destination)
+        {
+            await this.tweenPromise({ targets: container, x: destination.x, y: destination.y, scale: 1, duration: 350, ease: 'Cubic.easeIn' });
+        }
+        else
+        {
+            await this.tweenPromise({ targets: container, alpha: 0, duration: 300, ease: 'Linear' });
+        }
+
+        await this.playPendingDeaths();
+    }
+
+    /** Board slot the just-played card settled into, using the same row-layout math as renderBoard — or undefined if it never made it to the board (spell, or a full-board discard). */
+    private computePlayedCardDestination (instanceId: string, playerId: PlayerId): { x: number; y: number } | undefined
+    {
+        const board = this.machine.state.players[playerId].board;
+        const index = board.findIndex((c) => c.instanceId === instanceId);
+        if (index === -1) return undefined;
+
+        const { spacing, startX } = this.rowLayout(board.length, 25);
+        const y = playerId === 'opponent' ? OPPONENT_BOARD_Y : PLAYER_BOARD_Y;
+        return { x: startX + index * spacing, y };
+    }
+
+    /** Flies a temporary card preview from the drawing player's deck pile to the drawn card's computed hand slot, then discards the preview — the real hand container appears once the deferred render catches up. */
+    private async playDrawAnimation (playerId: PlayerId, instanceId: string): Promise<void>
+    {
+        const player = this.machine.state.players[playerId];
+        const index = player.hand.findIndex((c) => c.instanceId === instanceId);
+        if (index === -1) return;
+
+        const faceDown = playerId === 'opponent';
+        const { spacing, startX } = this.rowLayout(player.hand.length, 15);
+        const destY = playerId === 'opponent' ? OPPONENT_HAND_Y : PLAYER_HAND_Y;
+        const destX = startX + index * spacing;
+
+        const origin = this.deckPilePosition(playerId);
+        const flying = this.createCardContainer(player.hand[index], faceDown);
+        flying.setPosition(origin.x, origin.y);
+        flying.setDepth(3000);
+        flying.setScale(0.6);
+
+        await this.tweenPromise({ targets: flying, x: destX, y: destY, scale: 1, duration: 400, ease: 'Cubic.easeOut' });
+        flying.destroy();
+    }
 
     /**
      * Drives one step of the opponent's turn. Executing an action always resolves the state
-     * machine back to MainIdle (or GameOver), which re-emits 'state:phase-change' and re-enters
-     * this method via phaseChangeHandler above — so a full turn is a chain of these calls, each
-     * paced 600ms apart, until decideOpponentAction returns null and the turn ends.
+     * machine back to MainIdle (or GameOver); renderNow() re-schedules this method 600ms after
+     * each such settle (see its tail), so a full turn is a chain of these calls, paced 600ms
+     * apart and naturally waiting out any in-flight animation along the way.
      */
     private runOpponentTurn (): void
     {
@@ -133,15 +357,26 @@ export class CardGame extends Scene
         this.wireHelpBoxEvents();
 
         EventBus.on('state:phase-change', this.phaseChangeHandler);
+        EventBus.on('state:card-drawn', this.cardDrawnHandler);
+        EventBus.on('state:card-played', this.cardPlayedHandler);
+        EventBus.on('state:attack', this.attackHandler);
+        EventBus.on('state:card-died', this.cardDiedHandler);
         this.events.once('shutdown', () =>
         {
             EventBus.removeListener('state:phase-change', this.phaseChangeHandler);
+            EventBus.removeListener('state:card-drawn', this.cardDrawnHandler);
+            EventBus.removeListener('state:card-played', this.cardPlayedHandler);
+            EventBus.removeListener('state:attack', this.attackHandler);
+            EventBus.removeListener('state:card-died', this.cardDiedHandler);
         });
 
         this.machine = new TurnStateMachine(createInitialState(STARTER_DECK, STARTER_DECK));
-        this.machine.startGame();
 
-        this.render();
+        // Paint the empty board (deck piles included) before startGame() fires its opening-hand
+        // draws, so the draw animation has a visible deck pile to fly from. Everything from here
+        // on is driven by 'state:phase-change' via phaseChangeHandler/requestRender.
+        this.renderNow();
+        this.machine.startGame();
 
         EventBus.emit('current-scene-ready', this);
     }
@@ -162,6 +397,7 @@ export class CardGame extends Scene
 
         this.input.on('drop', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dropZone: Phaser.GameObjects.GameObject) =>
         {
+            if (this.isAnimating) return;
             if (dropZone !== this.playerBoardZone) return;
             const instanceId = this.cardInstanceByContainer.get(gameObject as Phaser.GameObjects.Container);
             if (instanceId) this.machine.playCard(instanceId);
@@ -193,7 +429,7 @@ export class CardGame extends Scene
         container.add([bg, text]);
         container.setSize(160, 65);
         container.setInteractive({ useHandCursor: true });
-        container.on('pointerup', () => this.machine.endTurn());
+        container.on('pointerup', this.guarded(() => this.machine.endTurn()));
         this.endTurnButton = container;
     }
 
@@ -205,7 +441,7 @@ export class CardGame extends Scene
         container.add([bg, text]);
         container.setSize(160, 54);
         container.setInteractive({ useHandCursor: true });
-        container.on('pointerup', () => this.machine.cancelTarget());
+        container.on('pointerup', this.guarded(() => this.machine.cancelTarget()));
         container.setVisible(false);
         this.cancelButton = container;
     }
@@ -223,11 +459,9 @@ export class CardGame extends Scene
 
     // --- render ------------------------------------------------------------------
 
-    private render (): void
+    /** Banner text, health/mana readouts, and End Turn/Cancel button state — cheap, and safe to refresh immediately even while the heavy board rebuild below is deferred behind an in-flight animation. */
+    private updateChrome (state: GameState): void
     {
-        this.clearRendered();
-        const state = this.machine.state;
-
         this.turnBannerText.setText(this.describePhase(state));
 
         this.opponentHealthText.setText(`❤ ${state.players.opponent.health}/${state.players.opponent.maxHealth}`);
@@ -236,8 +470,22 @@ export class CardGame extends Scene
         this.playerHealthText.setText(`❤ ${state.players.player.health}/${state.players.player.maxHealth}`);
         this.playerManaText.setText(`♦ ${state.players.player.mana}/${state.players.player.maxMana}`);
 
+        this.updateEndTurnButton(state);
+        this.updateCancelButton(state);
+    }
+
+    private renderNow (): void
+    {
+        this.clearRendered();
+        const state = this.machine.state;
+
+        this.updateChrome(state);
+
         this.renderHero('opponent', OPPONENT_HERO_Y);
         this.renderHero('player', PLAYER_HERO_Y);
+
+        this.renderDeckPile(state.players.opponent, OPPONENT_DECK_Y);
+        this.renderDeckPile(state.players.player, PLAYER_DECK_Y);
 
         this.renderHand(state.players.opponent, OPPONENT_HAND_Y, true);
         this.renderHand(state.players.player, PLAYER_HAND_Y, false);
@@ -245,12 +493,17 @@ export class CardGame extends Scene
         this.renderBoard('opponent', state.players.opponent, OPPONENT_BOARD_Y);
         this.renderBoard('player', state.players.player, PLAYER_BOARD_Y);
 
-        this.updateEndTurnButton(state);
-        this.updateCancelButton(state);
-
         if (state.phase === TurnPhase.GameOver)
         {
             this.showGameOver(state.winner);
+        }
+
+        // The opponent's turn is only picked up here — the one place the board is guaranteed to
+        // actually reflect state.phase === MainIdle — rather than off the phase-change event
+        // itself, since that event can fire well before any in-flight animation has drained.
+        if (state.phase === TurnPhase.MainIdle && state.activePlayer === 'opponent')
+        {
+            this.time.delayedCall(600, () => this.runOpponentTurn());
         }
     }
 
@@ -261,6 +514,8 @@ export class CardGame extends Scene
         this.renderedObjects = [];
         this.cardInstanceByContainer.clear();
         this.originalPositions.clear();
+        this.instanceContainers.clear();
+        this.heroContainers.clear();
     }
 
     private describePhase (state: GameState): string
@@ -272,6 +527,14 @@ export class CardGame extends Scene
         const whoseTurn = state.activePlayer === 'player' ? 'Your' : "Opponent's";
         if (state.phase === TurnPhase.AwaitingTarget) return `${whoseTurn} turn — choose a target`;
         return `${whoseTurn} turn (Turn ${state.turnNumber})`;
+    }
+
+    /** Shared spacing/start-x math for a horizontal row of `count` cards centered on CENTER_X, used by both the hand and board rows (and by the played-card/draw animations to predict a card's resting slot ahead of the next real render). */
+    private rowLayout (count: number, maxGap: number): { spacing: number; startX: number }
+    {
+        const spacing = Math.min(CARD_W + maxGap, BOARD_ZONE_W / count);
+        const startX = CENTER_X - ((count - 1) * spacing) / 2;
+        return { spacing, startX };
     }
 
     private renderHero (id: PlayerId, y: number): void
@@ -288,13 +551,28 @@ export class CardGame extends Scene
         // local (0,0) must itself be defined centered on (width/2, height/2), not on (0,0).
         container.setInteractive(new Geom.Circle(HERO_RADIUS, HERO_RADIUS, HERO_RADIUS), Geom.Circle.Contains);
 
+        this.heroContainers.set(id, container);
+
         const isValidTarget = state.phase === TurnPhase.AwaitingTarget && state.pendingTarget?.validTargetIds.includes(id);
         if (isValidTarget)
         {
             this.addOutline(container, HERO_SIZE, HERO_SIZE, 0xffd23f);
-            container.on('pointerup', () => this.machine.selectTarget(id));
+            container.on('pointerup', this.guarded(() => this.machine.selectTarget(id)));
         }
 
+        this.renderedObjects.push(container);
+    }
+
+    /** Small stacked card-back pile with a remaining-count label — purely decorative except as the origin point draw animations fly from (see deckPilePosition). */
+    private renderDeckPile (playerState: PlayerState, y: number): void
+    {
+        const container = this.add.container(DECK_X, y);
+        for (let i = 0; i < 3; i++)
+        {
+            const offset = i * 4;
+            container.add(this.add.rectangle(-offset, -offset, DECK_PILE_W, DECK_PILE_H, 0x24304a).setStrokeStyle(2, 0x8fa8d6));
+        }
+        container.add(this.add.text(0, DECK_PILE_H / 2 + 6, `${playerState.deck.length}`, statStyle('#ffffff')).setOrigin(0.5, 0));
         this.renderedObjects.push(container);
     }
 
@@ -303,8 +581,7 @@ export class CardGame extends Scene
         const cards = playerState.hand;
         if (cards.length === 0) return;
 
-        const spacing = Math.min(CARD_W + 15, BOARD_ZONE_W / cards.length);
-        const startX = CENTER_X - ((cards.length - 1) * spacing) / 2;
+        const { spacing, startX } = this.rowLayout(cards.length, 15);
         const state = this.machine.state;
         const isMyTurn = !faceDown && playerState.id === 'player' && state.activePlayer === 'player';
 
@@ -315,6 +592,7 @@ export class CardGame extends Scene
             container.setPosition(x, y);
             container.setDepth(index);
             this.renderedObjects.push(container);
+            this.instanceContainers.set(instance.instanceId, container);
 
             if (faceDown) return;
 
@@ -348,7 +626,7 @@ export class CardGame extends Scene
             }
             else
             {
-                container.on('pointerup', () => this.machine.playCard(instance.instanceId));
+                container.on('pointerup', this.guarded(() => this.machine.playCard(instance.instanceId)));
             }
         });
     }
@@ -358,8 +636,7 @@ export class CardGame extends Scene
         const cards = playerState.board;
         if (cards.length === 0) return;
 
-        const spacing = Math.min(CARD_W + 25, BOARD_ZONE_W / cards.length);
-        const startX = CENTER_X - ((cards.length - 1) * spacing) / 2;
+        const { spacing, startX } = this.rowLayout(cards.length, 25);
         const state = this.machine.state;
 
         cards.forEach((instance, index) =>
@@ -367,6 +644,7 @@ export class CardGame extends Scene
             const container = this.createCardContainer(instance, false);
             container.setPosition(startX + index * spacing, y);
             this.renderedObjects.push(container);
+            this.instanceContainers.set(instance.instanceId, container);
 
             container.setInteractive(
                 // See the comment in renderHero — Container hit-testing shifts the point by
@@ -386,12 +664,12 @@ export class CardGame extends Scene
             if (isValidTarget)
             {
                 this.addOutline(container, CARD_W, CARD_H, 0xffd23f);
-                container.on('pointerup', () => this.machine.selectTarget(instance.instanceId));
+                container.on('pointerup', this.guarded(() => this.machine.selectTarget(instance.instanceId)));
             }
             else if (canAttack)
             {
                 this.addOutline(container, CARD_W, CARD_H, 0x38d97b);
-                container.on('pointerup', () => this.machine.declareAttack(instance.instanceId));
+                container.on('pointerup', this.guarded(() => this.machine.declareAttack(instance.instanceId)));
             }
             else if (instance.summoningSick && ownerId === 'player' && !hasKeyword(instance, 'charge'))
             {
