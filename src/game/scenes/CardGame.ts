@@ -12,25 +12,33 @@ import type { PlayerId } from '../types/common';
 import type { GameState, PlayerState } from '../types/GameState';
 import { TurnPhase } from '../types/GameState';
 
-const CARD_W = 105;
-const CARD_H = 132;
-const CENTER_X = 512;
+// Base game resolution — must match the `width`/`height` in game/main.ts's Scale config.
+const GAME_WIDTH = 1920;
+const GAME_HEIGHT = 1080;
+const CENTER_X = GAME_WIDTH / 2;
+const CENTER_Y = GAME_HEIGHT / 2;
+
+const CARD_W = 140;
+const CARD_H = 176;
+const HERO_RADIUS = 53;
+const HERO_SIZE = HERO_RADIUS * 2;
+const BOARD_ZONE_W = 1600;
 
 // Row Y-positions are hand-tuned so hero/hand/board rows clear each other with a small
-// gap given CARD_H above — see the git history of this file if CARD_H changes again.
-const OPPONENT_HERO_Y = 50;
-const OPPONENT_HAND_Y = 164;
-const OPPONENT_BOARD_Y = 304;
-const PLAYER_BOARD_Y = 464;
-const PLAYER_HAND_Y = 604;
-const PLAYER_HERO_Y = 718;
+// gap given CARD_H/HERO_RADIUS above — see the git history of this file if those change again.
+const OPPONENT_HERO_Y = 70;
+const OPPONENT_HAND_Y = 230;
+const OPPONENT_BOARD_Y = 427;
+const PLAYER_BOARD_Y = 652;
+const PLAYER_HAND_Y = 849;
+const PLAYER_HERO_Y = 1009;
 
-const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '10px', color: '#ffffff', align: 'left' };
-const RULE_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '9px', color: '#b8c4d9', fontStyle: 'italic', align: 'center' };
-const SMALL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '14px', color: '#ffffff' };
+const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '13px', color: '#ffffff', align: 'left' };
+const RULE_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '12px', color: '#b8c4d9', fontStyle: 'italic', align: 'center' };
+const SMALL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff' };
 
 function statStyle(color: string): Phaser.Types.GameObjects.Text.TextStyle {
-    return { fontFamily: 'Arial Black', fontSize: '16px', color };
+    return { fontFamily: 'Arial Black', fontSize: '20px', color };
 }
 
 /**
@@ -104,18 +112,19 @@ export class CardGame extends Scene
 
     create ()
     {
-        this.add.rectangle(CENTER_X, 384, 1024, 768, 0x161b26);
+        this.add.rectangle(CENTER_X, CENTER_Y, GAME_WIDTH, GAME_HEIGHT, 0x161b26);
 
-        this.turnBannerText = this.add.text(20, 20, '', SMALL_STYLE).setDepth(200);
+        this.turnBannerText = this.add.text(38, 28, '', SMALL_STYLE).setDepth(200);
 
-        this.opponentHealthText = this.add.text(20, 46, '', statStyle('#ff5c5c')).setDepth(200);
-        this.opponentManaText = this.add.text(20, 68, '', statStyle('#5c9cff')).setDepth(200);
+        this.opponentHealthText = this.add.text(38, 65, '', statStyle('#ff5c5c')).setDepth(200);
+        this.opponentManaText = this.add.text(38, 96, '', statStyle('#5c9cff')).setDepth(200);
 
-        this.playerHealthText = this.add.text(20, 690, '', statStyle('#ff5c5c')).setDepth(200);
-        this.playerManaText = this.add.text(20, 712, '', statStyle('#5c9cff')).setDepth(200);
+        this.playerHealthText = this.add.text(38, 970, '', statStyle('#ff5c5c')).setDepth(200);
+        this.playerManaText = this.add.text(38, 1001, '', statStyle('#5c9cff')).setDepth(200);
 
-        this.playerBoardZone = this.add.zone(CENTER_X, PLAYER_BOARD_Y, 860, CARD_H + 30).setRectangleDropZone(860, CARD_H + 30);
-        this.add.rectangle(CENTER_X, PLAYER_BOARD_Y, 860, CARD_H + 30).setStrokeStyle(2, 0x3a4a6b, 0.6);
+        const boardZoneH = CARD_H + 30;
+        this.playerBoardZone = this.add.zone(CENTER_X, PLAYER_BOARD_Y, BOARD_ZONE_W, boardZoneH).setRectangleDropZone(BOARD_ZONE_W, boardZoneH);
+        this.add.rectangle(CENTER_X, PLAYER_BOARD_Y, BOARD_ZONE_W, boardZoneH).setStrokeStyle(2, 0x3a4a6b, 0.6);
 
         this.createEndTurnButton();
         this.createCancelButton();
@@ -178,11 +187,11 @@ export class CardGame extends Scene
 
     private createEndTurnButton (): void
     {
-        const container = this.add.container(930, 384);
-        const bg = this.add.rectangle(0, 0, 120, 50, 0x3a4a6b).setStrokeStyle(2, 0x8fa8d6);
+        const container = this.add.container(1744, CENTER_Y);
+        const bg = this.add.rectangle(0, 0, 160, 65, 0x3a4a6b).setStrokeStyle(2, 0x8fa8d6);
         const text = this.add.text(0, 0, 'End Turn', SMALL_STYLE).setOrigin(0.5);
         container.add([bg, text]);
-        container.setSize(120, 50);
+        container.setSize(160, 65);
         container.setInteractive({ useHandCursor: true });
         container.on('pointerup', () => this.machine.endTurn());
         this.endTurnButton = container;
@@ -190,11 +199,11 @@ export class CardGame extends Scene
 
     private createCancelButton (): void
     {
-        const container = this.add.container(930, 450);
-        const bg = this.add.rectangle(0, 0, 120, 40, 0x6b3a3a).setStrokeStyle(2, 0xd68f8f);
+        const container = this.add.container(1744, 633);
+        const bg = this.add.rectangle(0, 0, 160, 54, 0x6b3a3a).setStrokeStyle(2, 0xd68f8f);
         const text = this.add.text(0, 0, 'Cancel', SMALL_STYLE).setOrigin(0.5);
         container.add([bg, text]);
-        container.setSize(120, 40);
+        container.setSize(160, 54);
         container.setInteractive({ useHandCursor: true });
         container.on('pointerup', () => this.machine.cancelTarget());
         container.setVisible(false);
@@ -204,8 +213,8 @@ export class CardGame extends Scene
     private createHelpBox (): void
     {
         this.helpBoxBg = this.add.rectangle(0, 0, 10, 10, 0x11151f, 0.95).setOrigin(0, 0).setStrokeStyle(1, 0x8fa8d6);
-        this.helpBoxText = this.add.text(8, 8, '', {
-            fontFamily: 'Arial', fontSize: '12px', color: '#ffffff', wordWrap: { width: 220 }
+        this.helpBoxText = this.add.text(10, 10, '', {
+            fontFamily: 'Arial', fontSize: '15px', color: '#ffffff', wordWrap: { width: 290 }
         }).setOrigin(0, 0);
         this.helpBox = this.add.container(0, 0, [this.helpBoxBg, this.helpBoxText]);
         this.helpBox.setDepth(2000);
@@ -270,19 +279,19 @@ export class CardGame extends Scene
         const state = this.machine.state;
         const container = this.add.container(CENTER_X, y);
 
-        const circle = this.add.circle(0, 0, 40, id === 'player' ? 0x2f6fed : 0xb0413e).setStrokeStyle(2, 0xffffff);
+        const circle = this.add.circle(0, 0, HERO_RADIUS, id === 'player' ? 0x2f6fed : 0xb0413e).setStrokeStyle(2, 0xffffff);
         const label = this.add.text(0, 0, id === 'player' ? 'You' : 'Opponent', SMALL_STYLE).setOrigin(0.5);
         container.add([circle, label]);
-        container.setSize(80, 80);
+        container.setSize(HERO_SIZE, HERO_SIZE);
         // Container hit-testing shifts the local point by +displayOriginX/Y (= width/2, height/2 for a
         // Container) before testing it against the hit area, so a hit area centered on the visuals at
         // local (0,0) must itself be defined centered on (width/2, height/2), not on (0,0).
-        container.setInteractive(new Geom.Circle(40, 40, 40), Geom.Circle.Contains);
+        container.setInteractive(new Geom.Circle(HERO_RADIUS, HERO_RADIUS, HERO_RADIUS), Geom.Circle.Contains);
 
         const isValidTarget = state.phase === TurnPhase.AwaitingTarget && state.pendingTarget?.validTargetIds.includes(id);
         if (isValidTarget)
         {
-            this.addOutline(container, 80, 80, 0xffd23f);
+            this.addOutline(container, HERO_SIZE, HERO_SIZE, 0xffd23f);
             container.on('pointerup', () => this.machine.selectTarget(id));
         }
 
@@ -294,7 +303,7 @@ export class CardGame extends Scene
         const cards = playerState.hand;
         if (cards.length === 0) return;
 
-        const spacing = Math.min(CARD_W + 15, 860 / cards.length);
+        const spacing = Math.min(CARD_W + 15, BOARD_ZONE_W / cards.length);
         const startX = CENTER_X - ((cards.length - 1) * spacing) / 2;
         const state = this.machine.state;
         const isMyTurn = !faceDown && playerState.id === 'player' && state.activePlayer === 'player';
@@ -349,7 +358,7 @@ export class CardGame extends Scene
         const cards = playerState.board;
         if (cards.length === 0) return;
 
-        const spacing = Math.min(CARD_W + 25, 860 / cards.length);
+        const spacing = Math.min(CARD_W + 25, BOARD_ZONE_W / cards.length);
         const startX = CENTER_X - ((cards.length - 1) * spacing) / 2;
         const state = this.machine.state;
 
@@ -406,14 +415,14 @@ export class CardGame extends Scene
 
     private showGameOver (winner?: PlayerId): void
     {
-        const overlay = this.add.rectangle(CENTER_X, 384, 1024, 768, 0x000000, 0.6);
-        const label = this.add.text(CENTER_X, 340, winner === 'player' ? 'Victory!' : 'Defeat', {
-            fontFamily: 'Arial Black', fontSize: 64, color: '#ffffff',
-            stroke: '#000000', strokeThickness: 8, align: 'center'
+        const overlay = this.add.rectangle(CENTER_X, CENTER_Y, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.6);
+        const label = this.add.text(CENTER_X, 478, winner === 'player' ? 'Victory!' : 'Defeat', {
+            fontFamily: 'Arial Black', fontSize: 90, color: '#ffffff',
+            stroke: '#000000', strokeThickness: 11, align: 'center'
         }).setOrigin(0.5);
-        const button = this.add.text(CENTER_X, 420, 'Play Again', {
-            fontFamily: 'Arial', fontSize: '24px', color: '#ffffff', backgroundColor: '#3a4a6b'
-        }).setOrigin(0.5).setPadding(16, 8, 16, 8).setInteractive({ useHandCursor: true });
+        const button = this.add.text(CENTER_X, 591, 'Play Again', {
+            fontFamily: 'Arial', fontSize: '32px', color: '#ffffff', backgroundColor: '#3a4a6b'
+        }).setOrigin(0.5).setPadding(20, 10, 20, 10).setInteractive({ useHandCursor: true });
         button.on('pointerup', () => this.scene.restart());
 
         this.renderedObjects.push(overlay, label, button);
@@ -433,16 +442,16 @@ export class CardGame extends Scene
 
             // Name top-left, cost top-right — name's word-wrap width is clipped short of the
             // card's right edge so it never runs under the cost badge.
-            const nameText = this.add.text(-CARD_W / 2 + 6, -CARD_H / 2 + 6, definition.name, NAME_STYLE)
+            const nameText = this.add.text(-CARD_W / 2 + 8, -CARD_H / 2 + 8, definition.name, NAME_STYLE)
                 .setOrigin(0, 0)
-                .setWordWrapWidth(CARD_W - 34, true);
-            const costBadge = this.add.circle(CARD_W / 2 - 14, -CARD_H / 2 + 14, 13, 0x2f6fed);
-            const costText = this.add.text(CARD_W / 2 - 14, -CARD_H / 2 + 14, `${definition.cost}`, SMALL_STYLE).setOrigin(0.5);
+                .setWordWrapWidth(CARD_W - 45, true);
+            const costBadge = this.add.circle(CARD_W / 2 - 19, -CARD_H / 2 + 19, 17, 0x2f6fed);
+            const costText = this.add.text(CARD_W / 2 - 19, -CARD_H / 2 + 19, `${definition.cost}`, SMALL_STYLE).setOrigin(0.5);
             container.add([nameText, costBadge, costText]);
 
-            const ruleText = this.add.text(0, -6, definition.text, RULE_TEXT_STYLE)
+            const ruleText = this.add.text(0, -8, definition.text, RULE_TEXT_STYLE)
                 .setOrigin(0.5, 0)
-                .setWordWrapWidth(CARD_W - 16, true);
+                .setWordWrapWidth(CARD_W - 21, true);
             container.add(ruleText);
 
             if (definition.type === 'minion')
@@ -450,10 +459,10 @@ export class CardGame extends Scene
                 container.add(this.createKeywordBadges(instance));
 
                 // Colored circle behind the number, same visual language as the cost badge above.
-                const attackBg = this.add.circle(-CARD_W / 2 + 16, CARD_H / 2 - 16, 14, 0xd68f3f);
-                const attackText = this.add.text(-CARD_W / 2 + 16, CARD_H / 2 - 16, `${instance.currentAttack ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
-                const healthBg = this.add.circle(CARD_W / 2 - 16, CARD_H / 2 - 16, 14, 0xb0413e);
-                const healthText = this.add.text(CARD_W / 2 - 16, CARD_H / 2 - 16, `${instance.currentHealth ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
+                const attackBg = this.add.circle(-CARD_W / 2 + 21, CARD_H / 2 - 21, 19, 0xd68f3f);
+                const attackText = this.add.text(-CARD_W / 2 + 21, CARD_H / 2 - 21, `${instance.currentAttack ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
+                const healthBg = this.add.circle(CARD_W / 2 - 21, CARD_H / 2 - 21, 19, 0xb0413e);
+                const healthText = this.add.text(CARD_W / 2 - 21, CARD_H / 2 - 21, `${instance.currentHealth ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
                 container.add([attackBg, attackText, healthBg, healthText]);
             }
         }
@@ -473,17 +482,17 @@ export class CardGame extends Scene
         const keywords = [...instance.keywords];
         if (keywords.length === 0) return [];
 
-        const badgeW = 22, badgeH = 14, gap = 4;
+        const badgeW = 30, badgeH = 19, gap = 5;
         const totalWidth = keywords.length * badgeW + (keywords.length - 1) * gap;
         const startX = -totalWidth / 2 + badgeW / 2;
-        const y = 26;
+        const y = 35;
 
         return keywords.flatMap((keyword, index) =>
         {
             const meta = KEYWORD_METADATA[keyword];
             const x = startX + index * (badgeW + gap);
             const bg = this.add.rectangle(x, y, badgeW, badgeH, meta.color);
-            const text = this.add.text(x, y, meta.abbr, { fontFamily: 'Arial', fontSize: '9px', color: '#1a1a1a' }).setOrigin(0.5);
+            const text = this.add.text(x, y, meta.abbr, { fontFamily: 'Arial', fontSize: '12px', color: '#1a1a1a' }).setOrigin(0.5);
             return [bg, text];
         });
     }
@@ -505,7 +514,7 @@ export class CardGame extends Scene
             return `${meta.label}: ${meta.description}`;
         });
         this.helpBoxText.setText(lines.join('\n\n'));
-        this.helpBoxBg.setSize(this.helpBoxText.width + 16, this.helpBoxText.height + 16);
+        this.helpBoxBg.setSize(this.helpBoxText.width + 20, this.helpBoxText.height + 20);
         this.helpBox.setVisible(true);
 
         const pointer = this.input.activePointer;
@@ -519,19 +528,19 @@ export class CardGame extends Scene
 
     private positionHelpBox (x: number, y: number): void
     {
-        const offset = 16;
+        const offset = 20;
         const width = this.helpBoxBg.width;
         const height = this.helpBoxBg.height;
 
-        const px = x + offset + width > 1024 ? x - offset - width : x + offset;
-        const py = y + offset + height > 768 ? y - offset - height : y + offset;
+        const px = x + offset + width > GAME_WIDTH ? x - offset - width : x + offset;
+        const py = y + offset + height > GAME_HEIGHT ? y - offset - height : y + offset;
 
         this.helpBox.setPosition(px, py);
     }
 
     private addOutline (container: Phaser.GameObjects.Container, width: number, height: number, color: number): void
     {
-        const outline = this.add.rectangle(0, 0, width + 8, height + 8).setStrokeStyle(3, color);
+        const outline = this.add.rectangle(0, 0, width + 10, height + 10).setStrokeStyle(4, color);
         container.addAt(outline, 0);
     }
 }
