@@ -9,8 +9,10 @@ export function createCardInstance(definition: CardDefinition, owner: PlayerId):
         zone: 'deck',
         currentAttack: definition.attack,
         currentHealth: definition.health,
+        maxHealth: definition.health,
         summoningSick: false,
-        hasAttackedThisTurn: false,
+        attacksThisTurn: 0,
+        keywords: new Set(definition.keywords ?? []),
     };
 }
 

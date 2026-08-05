@@ -2,7 +2,9 @@ import { Geom, Scene } from 'phaser';
 
 import { decideOpponentAction } from '../ai/OpponentAI';
 import { CARD_DEFINITIONS, STARTER_DECK } from '../data/cards';
+import { KEYWORD_METADATA } from '../data/keywordMetadata';
 import { EventBus } from '../EventBus';
+import { canDeclareAttack, hasKeyword } from '../state/keywordRules';
 import { createInitialState } from '../state/createInitialState';
 import { TurnStateMachine } from '../state/TurnStateMachine';
 import type { CardInstance } from '../types/Card';
@@ -10,18 +12,21 @@ import type { PlayerId } from '../types/common';
 import type { GameState, PlayerState } from '../types/GameState';
 import { TurnPhase } from '../types/GameState';
 
-const CARD_W = 90;
-const CARD_H = 120;
+const CARD_W = 105;
+const CARD_H = 132;
 const CENTER_X = 512;
 
+// Row Y-positions are hand-tuned so hero/hand/board rows clear each other with a small
+// gap given CARD_H above — see the git history of this file if CARD_H changes again.
 const OPPONENT_HERO_Y = 50;
-const OPPONENT_HAND_Y = 130;
-const OPPONENT_BOARD_Y = 260;
-const PLAYER_BOARD_Y = 460;
-const PLAYER_HAND_Y = 630;
-const PLAYER_HERO_Y = 730;
+const OPPONENT_HAND_Y = 164;
+const OPPONENT_BOARD_Y = 304;
+const PLAYER_BOARD_Y = 464;
+const PLAYER_HAND_Y = 604;
+const PLAYER_HERO_Y = 718;
 
-const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '12px', color: '#ffffff', align: 'center' };
+const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '10px', color: '#ffffff', align: 'left' };
+const RULE_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '9px', color: '#b8c4d9', fontStyle: 'italic', align: 'center' };
 const SMALL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '14px', color: '#ffffff' };
 
 function statStyle(color: string): Phaser.Types.GameObjects.Text.TextStyle {
@@ -47,6 +52,9 @@ export class CardGame extends Scene
     private turnBannerText!: Phaser.GameObjects.Text;
     private endTurnButton!: Phaser.GameObjects.Container;
     private cancelButton!: Phaser.GameObjects.Container;
+    private helpBox!: Phaser.GameObjects.Container;
+    private helpBoxBg!: Phaser.GameObjects.Rectangle;
+    private helpBoxText!: Phaser.GameObjects.Text;
     private playerHealthText!: Phaser.GameObjects.Text;
     private playerManaText!: Phaser.GameObjects.Text;
     private opponentHealthText!: Phaser.GameObjects.Text;
@@ -106,12 +114,14 @@ export class CardGame extends Scene
         this.playerHealthText = this.add.text(20, 690, '', statStyle('#ff5c5c')).setDepth(200);
         this.playerManaText = this.add.text(20, 712, '', statStyle('#5c9cff')).setDepth(200);
 
-        this.playerBoardZone = this.add.zone(CENTER_X, PLAYER_BOARD_Y, 860, 150).setRectangleDropZone(860, 150);
-        this.add.rectangle(CENTER_X, PLAYER_BOARD_Y, 860, 150).setStrokeStyle(2, 0x3a4a6b, 0.6);
+        this.playerBoardZone = this.add.zone(CENTER_X, PLAYER_BOARD_Y, 860, CARD_H + 30).setRectangleDropZone(860, CARD_H + 30);
+        this.add.rectangle(CENTER_X, PLAYER_BOARD_Y, 860, CARD_H + 30).setStrokeStyle(2, 0x3a4a6b, 0.6);
 
         this.createEndTurnButton();
         this.createCancelButton();
+        this.createHelpBox();
         this.wireDragEvents();
+        this.wireHelpBoxEvents();
 
         EventBus.on('state:phase-change', this.phaseChangeHandler);
         this.events.once('shutdown', () =>
@@ -158,6 +168,14 @@ export class CardGame extends Scene
         });
     }
 
+    private wireHelpBoxEvents (): void
+    {
+        this.input.on('pointermove', (pointer: Phaser.Input.Pointer) =>
+        {
+            if (this.helpBox.visible) this.positionHelpBox(pointer.x, pointer.y);
+        });
+    }
+
     private createEndTurnButton (): void
     {
         const container = this.add.container(930, 384);
@@ -181,6 +199,17 @@ export class CardGame extends Scene
         container.on('pointerup', () => this.machine.cancelTarget());
         container.setVisible(false);
         this.cancelButton = container;
+    }
+
+    private createHelpBox (): void
+    {
+        this.helpBoxBg = this.add.rectangle(0, 0, 10, 10, 0x11151f, 0.95).setOrigin(0, 0).setStrokeStyle(1, 0x8fa8d6);
+        this.helpBoxText = this.add.text(8, 8, '', {
+            fontFamily: 'Arial', fontSize: '12px', color: '#ffffff', wordWrap: { width: 220 }
+        }).setOrigin(0, 0);
+        this.helpBox = this.add.container(0, 0, [this.helpBoxBg, this.helpBoxText]);
+        this.helpBox.setDepth(2000);
+        this.helpBox.setVisible(false);
     }
 
     // --- render ------------------------------------------------------------------
@@ -218,6 +247,7 @@ export class CardGame extends Scene
 
     private clearRendered (): void
     {
+        this.hideHelpBox();
         for (const obj of this.renderedObjects) obj.destroy();
         this.renderedObjects = [];
         this.cardInstanceByContainer.clear();
@@ -264,7 +294,7 @@ export class CardGame extends Scene
         const cards = playerState.hand;
         if (cards.length === 0) return;
 
-        const spacing = Math.min(100, 860 / cards.length);
+        const spacing = Math.min(CARD_W + 15, 860 / cards.length);
         const startX = CENTER_X - ((cards.length - 1) * spacing) / 2;
         const state = this.machine.state;
         const isMyTurn = !faceDown && playerState.id === 'player' && state.activePlayer === 'player';
@@ -285,6 +315,7 @@ export class CardGame extends Scene
                 new Geom.Rectangle(0, 0, CARD_W, CARD_H),
                 Geom.Rectangle.Contains
             );
+            this.attachKeywordHover(container, instance);
 
             if (!isMyTurn || state.phase !== TurnPhase.MainIdle) return;
 
@@ -318,7 +349,7 @@ export class CardGame extends Scene
         const cards = playerState.board;
         if (cards.length === 0) return;
 
-        const spacing = Math.min(110, 860 / cards.length);
+        const spacing = Math.min(CARD_W + 25, 860 / cards.length);
         const startX = CENTER_X - ((cards.length - 1) * spacing) / 2;
         const state = this.machine.state;
 
@@ -334,14 +365,14 @@ export class CardGame extends Scene
                 new Geom.Rectangle(0, 0, CARD_W, CARD_H),
                 Geom.Rectangle.Contains
             );
+            this.attachKeywordHover(container, instance);
 
             const isValidTarget = state.phase === TurnPhase.AwaitingTarget && state.pendingTarget?.validTargetIds.includes(instance.instanceId);
             const canAttack =
                 state.phase === TurnPhase.MainIdle &&
                 ownerId === 'player' &&
                 state.activePlayer === 'player' &&
-                !instance.summoningSick &&
-                !instance.hasAttackedThisTurn;
+                canDeclareAttack(instance);
 
             if (isValidTarget)
             {
@@ -353,7 +384,7 @@ export class CardGame extends Scene
                 this.addOutline(container, CARD_W, CARD_H, 0x38d97b);
                 container.on('pointerup', () => this.machine.declareAttack(instance.instanceId));
             }
-            else if (instance.summoningSick && ownerId === 'player')
+            else if (instance.summoningSick && ownerId === 'player' && !hasKeyword(instance, 'charge'))
             {
                 container.setAlpha(0.6);
             }
@@ -400,21 +431,102 @@ export class CardGame extends Scene
         {
             const definition = CARD_DEFINITIONS[instance.definitionId];
 
-            const costBadge = this.add.circle(-CARD_W / 2 + 14, -CARD_H / 2 + 14, 12, 0x2f6fed);
-            const costText = this.add.text(-CARD_W / 2 + 14, -CARD_H / 2 + 14, `${definition.cost}`, SMALL_STYLE).setOrigin(0.5);
-            const nameText = this.add.text(0, -18, definition.name, NAME_STYLE).setOrigin(0.5).setWordWrapWidth(CARD_W - 12, true);
-            container.add([costBadge, costText, nameText]);
+            // Name top-left, cost top-right — name's word-wrap width is clipped short of the
+            // card's right edge so it never runs under the cost badge.
+            const nameText = this.add.text(-CARD_W / 2 + 6, -CARD_H / 2 + 6, definition.name, NAME_STYLE)
+                .setOrigin(0, 0)
+                .setWordWrapWidth(CARD_W - 34, true);
+            const costBadge = this.add.circle(CARD_W / 2 - 14, -CARD_H / 2 + 14, 13, 0x2f6fed);
+            const costText = this.add.text(CARD_W / 2 - 14, -CARD_H / 2 + 14, `${definition.cost}`, SMALL_STYLE).setOrigin(0.5);
+            container.add([nameText, costBadge, costText]);
+
+            const ruleText = this.add.text(0, -6, definition.text, RULE_TEXT_STYLE)
+                .setOrigin(0.5, 0)
+                .setWordWrapWidth(CARD_W - 16, true);
+            container.add(ruleText);
 
             if (definition.type === 'minion')
             {
-                const attackText = this.add.text(-CARD_W / 2 + 14, CARD_H / 2 - 14, `${instance.currentAttack ?? 0}`, statStyle('#ffb347')).setOrigin(0.5);
-                const healthText = this.add.text(CARD_W / 2 - 14, CARD_H / 2 - 14, `${instance.currentHealth ?? 0}`, statStyle('#ff5c5c')).setOrigin(0.5);
-                container.add([attackText, healthText]);
+                container.add(this.createKeywordBadges(instance));
+
+                // Colored circle behind the number, same visual language as the cost badge above.
+                const attackBg = this.add.circle(-CARD_W / 2 + 16, CARD_H / 2 - 16, 14, 0xd68f3f);
+                const attackText = this.add.text(-CARD_W / 2 + 16, CARD_H / 2 - 16, `${instance.currentAttack ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
+                const healthBg = this.add.circle(CARD_W / 2 - 16, CARD_H / 2 - 16, 14, 0xb0413e);
+                const healthText = this.add.text(CARD_W / 2 - 16, CARD_H / 2 - 16, `${instance.currentHealth ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
+                container.add([attackBg, attackText, healthBg, healthText]);
             }
         }
 
         container.setSize(CARD_W, CARD_H);
         return container;
+    }
+
+    /**
+     * Small colored abbreviation badges for a minion's active keywords, rendered under the
+     * name. Iterates instance.keywords (runtime, mutable) rather than the card's static
+     * definition.keywords — a consumed keyword like divineShield must stop rendering once
+     * popped, and the definition never changes to reflect that.
+     */
+    private createKeywordBadges (instance: CardInstance): Phaser.GameObjects.GameObject[]
+    {
+        const keywords = [...instance.keywords];
+        if (keywords.length === 0) return [];
+
+        const badgeW = 22, badgeH = 14, gap = 4;
+        const totalWidth = keywords.length * badgeW + (keywords.length - 1) * gap;
+        const startX = -totalWidth / 2 + badgeW / 2;
+        const y = 26;
+
+        return keywords.flatMap((keyword, index) =>
+        {
+            const meta = KEYWORD_METADATA[keyword];
+            const x = startX + index * (badgeW + gap);
+            const bg = this.add.rectangle(x, y, badgeW, badgeH, meta.color);
+            const text = this.add.text(x, y, meta.abbr, { fontFamily: 'Arial', fontSize: '9px', color: '#1a1a1a' }).setOrigin(0.5);
+            return [bg, text];
+        });
+    }
+
+    /** Wires the cursor-following keyword help box to a card container. A no-op for cards with no keywords. */
+    private attachKeywordHover (container: Phaser.GameObjects.Container, instance: CardInstance): void
+    {
+        if (instance.keywords.size === 0) return;
+
+        container.on('pointerover', () => this.showHelpBox(instance));
+        container.on('pointerout', () => this.hideHelpBox());
+    }
+
+    private showHelpBox (instance: CardInstance): void
+    {
+        const lines = [...instance.keywords].map((keyword) =>
+        {
+            const meta = KEYWORD_METADATA[keyword];
+            return `${meta.label}: ${meta.description}`;
+        });
+        this.helpBoxText.setText(lines.join('\n\n'));
+        this.helpBoxBg.setSize(this.helpBoxText.width + 16, this.helpBoxText.height + 16);
+        this.helpBox.setVisible(true);
+
+        const pointer = this.input.activePointer;
+        this.positionHelpBox(pointer.x, pointer.y);
+    }
+
+    private hideHelpBox (): void
+    {
+        this.helpBox.setVisible(false);
+    }
+
+    private positionHelpBox (x: number, y: number): void
+    {
+        const offset = 16;
+        const width = this.helpBoxBg.width;
+        const height = this.helpBoxBg.height;
+
+        const px = x + offset + width > 1024 ? x - offset - width : x + offset;
+        const py = y + offset + height > 768 ? y - offset - height : y + offset;
+
+        this.helpBox.setPosition(px, py);
     }
 
     private addOutline (container: Phaser.GameObjects.Container, width: number, height: number, color: number): void

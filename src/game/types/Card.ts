@@ -2,6 +2,9 @@ import type { PlayerId } from './common';
 
 export type CardType = 'minion' | 'spell';
 
+/** Static keyword abilities a minion can have. See CLAUDE.md's card game architecture notes for the full keyword roadmap. */
+export type Keyword = 'taunt' | 'charge' | 'divineShield' | 'windfury' | 'lifesteal';
+
 export type EffectTrigger = 'onPlay' | 'onDeath' | 'startOfTurn' | 'endOfTurn';
 
 export type TargetSelector =
@@ -35,6 +38,7 @@ export interface CardDefinition {
     attack?: number;
     health?: number;
     effects?: CardEffect[];
+    keywords?: Keyword[];
 }
 
 /** Runtime state for one physical copy of a card as it moves through zones. */
@@ -45,6 +49,11 @@ export interface CardInstance {
     zone: 'deck' | 'hand' | 'board' | 'graveyard';
     currentAttack?: number;
     currentHealth?: number;
+    /** Healing caps at this value. Starts at the definition's base health and rises with health buffs — see TurnStateMachine.buff. Distinct from PlayerState.maxHealth, which heroes can be healed past (intentional, see CLAUDE.md). */
+    maxHealth?: number;
     summoningSick: boolean;
-    hasAttackedThisTurn: boolean;
+    /** How many times this minion has attacked this turn — compare against getMaxAttacks() from keywordRules, not a hardcoded 1, since Windfury raises the cap. */
+    attacksThisTurn: number;
+    /** Mutated at runtime as consumable keywords (e.g. divineShield) are used up — distinct from the static CardDefinition.keywords it was seeded from. */
+    keywords: Set<Keyword>;
 }

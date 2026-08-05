@@ -10,6 +10,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: '',
         attack: 2,
         health: 1,
+        keywords: ['divineShield'],
     },
     'stone-guardian': {
         id: 'stone-guardian',
@@ -20,6 +21,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: '',
         attack: 0,
         health: 4,
+        keywords: ['taunt'],
     },
     'marsh-lurker': {
         id: 'marsh-lurker',
@@ -30,6 +32,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: '',
         attack: 2,
         health: 3,
+        keywords: ['charge'],
     },
     'apprentice-tinkerer': {
         id: 'apprentice-tinkerer',
@@ -53,6 +56,18 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: '',
         attack: 4,
         health: 5,
+        keywords: ['lifesteal'],
+    },
+    'wind-raptor': {
+        id: 'wind-raptor',
+        name: 'Wind Raptor',
+        cost: 3,
+        type: 'minion',
+        art: 'wind-raptor',
+        text: '',
+        attack: 2,
+        health: 3,
+        keywords: ['windfury'],
     },
     firebolt: {
         id: 'firebolt',

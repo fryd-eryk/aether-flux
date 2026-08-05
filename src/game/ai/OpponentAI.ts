@@ -1,5 +1,5 @@
 import { CARD_DEFINITIONS } from '../data/cards';
-import type { CardInstance } from '../types/Card';
+import { canDeclareAttack, hasKeyword, tauntRestrictedTargets } from '../state/keywordRules';
 import type { PlayerId } from '../types/common';
 import type { GameState } from '../types/GameState';
 import { computePotentialFaceDamage, scoreAttack, scorePlayCard } from './scoring';
@@ -9,10 +9,6 @@ const PASS_THRESHOLD = 0;
 
 function opponentOf(id: PlayerId): PlayerId {
     return id === 'player' ? 'opponent' : 'player';
-}
-
-function canAttack(card: CardInstance): boolean {
-    return !card.summoningSick && !card.hasAttackedThisTurn;
 }
 
 /**
@@ -46,15 +42,22 @@ export function decideOpponentAction(state: GameState): AIAction | null {
         }
     }
 
-    for (const attacker of ai.board) {
-        if (!canAttack(attacker)) continue; // mirrors TurnStateMachine.declareAttack's own guard
+    // Mirrors TurnStateMachine.computeValidTargets: if the enemy has any Taunt minions, attacks
+    // must target one of those — face and non-Taunt minions aren't legal targets at all.
+    const tauntUp = enemy.board.some((c) => hasKeyword(c, 'taunt'));
+    const legalDefenders = tauntRestrictedTargets(enemy.board);
 
-        const faceScore = scoreAttack(attacker, 'face', lethalAvailable);
-        if (!best || faceScore > best.score) {
-            best = { score: faceScore, action: { kind: 'attack', attackerInstanceId: attacker.instanceId, targetId: enemyId } };
+    for (const attacker of ai.board) {
+        if (!canDeclareAttack(attacker)) continue; // mirrors TurnStateMachine.declareAttack's own guard
+
+        if (!tauntUp) {
+            const faceScore = scoreAttack(attacker, 'face', lethalAvailable);
+            if (!best || faceScore > best.score) {
+                best = { score: faceScore, action: { kind: 'attack', attackerInstanceId: attacker.instanceId, targetId: enemyId } };
+            }
         }
 
-        for (const defender of enemy.board) {
+        for (const defender of legalDefenders) {
             const score = scoreAttack(attacker, defender, lethalAvailable);
             if (!best || score > best.score) {
                 best = { score, action: { kind: 'attack', attackerInstanceId: attacker.instanceId, targetId: defender.instanceId } };

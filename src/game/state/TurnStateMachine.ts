@@ -5,6 +5,7 @@ import type { CardInstance, EffectAction, EffectTrigger, TargetSelector } from '
 import type { PlayerId } from '../types/common';
 import type { GameState, PlayerState } from '../types/GameState';
 import { TurnPhase } from '../types/GameState';
+import { canDeclareAttack, hasKeyword, tauntRestrictedTargets } from './keywordRules';
 
 type PendingAction =
     | { type: 'playCard'; instanceId: string }
@@ -65,7 +66,7 @@ export class TurnStateMachine {
 
         const player = this.gameState.players[this.gameState.activePlayer];
         const attacker = player.board.find((c) => c.instanceId === attackerInstanceId);
-        if (!attacker || attacker.summoningSick || attacker.hasAttackedThisTurn) return;
+        if (!attacker || !canDeclareAttack(attacker)) return;
 
         this.beginTargeting({ type: 'attack', attackerInstanceId }, player.id);
     }
@@ -119,7 +120,7 @@ export class TurnStateMachine {
 
         if (definition.type === 'minion') {
             card.summoningSick = true;
-            card.hasAttackedThisTurn = false;
+            card.attacksThisTurn = 0;
             if (player.board.length < TurnStateMachine.MAX_BOARD_SIZE) {
                 card.zone = 'board';
                 player.board.push(card);
@@ -146,15 +147,21 @@ export class TurnStateMachine {
         if (!attacker) return;
 
         this.setPhase(TurnPhase.Resolving);
-        attacker.hasAttackedThisTurn = true;
+        attacker.attacksThisTurn += 1;
 
         const attackDamage = attacker.currentAttack ?? 0;
-        this.dealDamage(targetId, attackDamage);
+        const damageDealt = this.dealDamage(targetId, attackDamage);
+        if (damageDealt > 0 && hasKeyword(attacker, 'lifesteal')) {
+            this.heal(player.id, damageDealt);
+        }
 
         if (!this.isPlayerId(targetId)) {
             const defender = this.findMinion(targetId);
             if (defender) {
-                this.dealDamage(attackerInstanceId, defender.instance.currentAttack ?? 0);
+                const returnDamageDealt = this.dealDamage(attackerInstanceId, defender.instance.currentAttack ?? 0);
+                if (returnDamageDealt > 0 && hasKeyword(defender.instance, 'lifesteal')) {
+                    this.heal(defender.owner.id, returnDamageDealt);
+                }
             }
         }
 
@@ -180,7 +187,7 @@ export class TurnStateMachine {
 
         for (const card of player.board) {
             card.summoningSick = false;
-            card.hasAttackedThisTurn = false;
+            card.attacksThisTurn = 0;
         }
 
         this.drawCard(playerId);
@@ -217,7 +224,10 @@ export class TurnStateMachine {
     private computeValidTargets(action: PendingAction, ownerId: PlayerId): string[] {
         const opponentId = this.opponentOf(ownerId);
         if (action.type === 'attack') {
-            return [opponentId, ...this.gameState.players[opponentId].board.map((c) => c.instanceId)];
+            const enemyBoard = this.gameState.players[opponentId].board;
+            const tauntUp = enemyBoard.some((c) => hasKeyword(c, 'taunt'));
+            const attackableMinionIds = tauntRestrictedTargets(enemyBoard).map((c) => c.instanceId);
+            return tauntUp ? attackableMinionIds : [opponentId, ...attackableMinionIds];
         }
         return [
             ownerId,
@@ -295,18 +305,26 @@ export class TurnStateMachine {
 
     // --- damage / death --------------------------------------------------------
 
-    private dealDamage(targetId: string, amount: number): void {
+    /** Returns the amount of damage actually applied (0 if absorbed by Divine Shield), so callers (e.g. Lifesteal) can react to what really landed. */
+    private dealDamage(targetId: string, amount: number): number {
         if (this.isPlayerId(targetId)) {
             const player = this.gameState.players[targetId];
+            const before = player.health;
             player.health = Math.max(0, player.health - amount);
-            return;
+            return before - player.health;
         }
         const found = this.findMinion(targetId);
-        if (found) {
-            found.instance.currentHealth = (found.instance.currentHealth ?? 0) - amount;
+        if (!found) return 0;
+
+        if (hasKeyword(found.instance, 'divineShield')) {
+            found.instance.keywords.delete('divineShield');
+            return 0;
         }
+        found.instance.currentHealth = (found.instance.currentHealth ?? 0) - amount;
+        return amount;
     }
 
+    /** Player healing is uncapped by design (overheal past maxHealth is intentional — see CLAUDE.md). Minion healing caps at currentHealth's tracked ceiling, maxHealth, since a minion has no player-style "overheal" concept. */
     private heal(targetId: string, amount: number): void {
         if (this.isPlayerId(targetId)) {
             const player = this.gameState.players[targetId];
@@ -315,7 +333,8 @@ export class TurnStateMachine {
         }
         const found = this.findMinion(targetId);
         if (found) {
-            found.instance.currentHealth = (found.instance.currentHealth ?? 0) + amount;
+            const cap = found.instance.maxHealth ?? found.instance.currentHealth ?? 0;
+            found.instance.currentHealth = Math.min(cap, (found.instance.currentHealth ?? 0) + amount);
         }
     }
 
@@ -324,6 +343,8 @@ export class TurnStateMachine {
         if (found) {
             found.instance.currentAttack = (found.instance.currentAttack ?? 0) + attack;
             found.instance.currentHealth = (found.instance.currentHealth ?? 0) + health;
+            // A health buff raises the healing ceiling too, not just current health, so a later heal can restore up to the new buffed max.
+            found.instance.maxHealth = (found.instance.maxHealth ?? 0) + health;
         }
     }
 
