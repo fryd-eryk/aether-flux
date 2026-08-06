@@ -33,13 +33,29 @@ const PLAYER_BOARD_Y = 652;
 const PLAYER_HAND_Y = 849;
 const PLAYER_HERO_Y = 1009;
 
-// Deck piles share the end-turn/cancel buttons' column, offset further right so hand
+// Deck/graveyard piles share the end-turn/cancel buttons' column, offset further right so hand
 // cards (which can extend close to x=1760 at max hand size) never overlap them.
-const DECK_X = 1860;
+const PILE_X = 1860;
 const OPPONENT_DECK_Y = 300;
 const PLAYER_DECK_Y = 750;
 const DECK_PILE_W = 80;
 const DECK_PILE_H = 100;
+
+// Each player's graveyard sits one row from its own deck, on that player's side of the column:
+// the player's below its deck, the opponent's above its deck. PILE_ROW_GAP has to clear a pile's
+// *full* drawn extent — the stack offset and zone label above it, the count label below it
+// (~152px in total) — not merely DECK_PILE_H, or the two piles' labels overlap.
+const PILE_ROW_GAP = 165;
+const OPPONENT_GRAVEYARD_Y = OPPONENT_DECK_Y - PILE_ROW_GAP;
+const PLAYER_GRAVEYARD_Y = PLAYER_DECK_Y + PILE_ROW_GAP;
+
+// Click-a-pile-to-inspect overlay. Depth sits above every in-game depth — including the 3000 an
+// in-flight draw animation uses — so the overlay stays readable if a pile is opened mid-animation.
+const PILE_VIEW_DEPTH = 5000;
+const PILE_VIEW_MAX_COLUMNS = 8;
+const PILE_VIEW_GAP = 22;
+const PILE_VIEW_TOP = 150;
+const PILE_VIEW_BOTTOM = 1020;
 
 // Where a played card is held for a beat before flying to its resting place.
 const SPOTLIGHT_X = 260;
@@ -47,6 +63,10 @@ const SPOTLIGHT_X = 260;
 const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '13px', color: '#ffffff', align: 'left' };
 const RULE_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '12px', color: '#b8c4d9', fontStyle: 'italic', align: 'center' };
 const SMALL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff' };
+const PILE_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '12px', color: '#9aa7bd' };
+
+/** The two off-board card zones that get a pile visual and a click-to-inspect overlay. */
+type PileZone = 'deck' | 'graveyard';
 
 function statStyle(color: string): Phaser.Types.GameObjects.Text.TextStyle {
     return { fontFamily: 'Arial Black', fontSize: '20px', color };
@@ -75,6 +95,12 @@ export class CardGame extends Scene
         TurnPhase.GameOver,
     ]);
 
+    /** Per-zone pile chrome. The deck keeps the card-back blue it has always used; the graveyard takes a desaturated maroon so the two read apart at a glance in the same column. */
+    private static readonly PILE_STYLES: Record<PileZone, { fill: number; stroke: number; label: string; title: string }> = {
+        deck: { fill: 0x24304a, stroke: 0x8fa8d6, label: 'DECK', title: 'Deck' },
+        graveyard: { fill: 0x33262c, stroke: 0xc08a94, label: 'GRAVE', title: 'Graveyard' },
+    };
+
     private machine!: TurnStateMachine;
 
     private renderedObjects: Phaser.GameObjects.GameObject[] = [];
@@ -94,6 +120,13 @@ export class CardGame extends Scene
     private playerManaText!: Phaser.GameObjects.Text;
     private opponentHealthText!: Phaser.GameObjects.Text;
     private opponentManaText!: Phaser.GameObjects.Text;
+
+    // The pile-inspect overlay is tracked separately from renderedObjects: which pile is open is
+    // *state* that has to survive a board rebuild (the opponent's turn rebuilds the board every
+    // 600ms, which would otherwise snap the overlay shut mid-read), so renderNow() tears the
+    // overlay down with everything else and then repaints it from openPileView at its tail.
+    private pileViewObjects: Phaser.GameObjects.GameObject[] = [];
+    private openPileView?: { playerId: PlayerId; zone: PileZone };
 
     // --- animation orchestration --------------------------------------------------
 
@@ -193,7 +226,7 @@ export class CardGame extends Scene
 
     private deckPilePosition (playerId: PlayerId): { x: number; y: number }
     {
-        return { x: DECK_X, y: playerId === 'opponent' ? OPPONENT_DECK_Y : PLAYER_DECK_Y };
+        return { x: PILE_X, y: playerId === 'opponent' ? OPPONENT_DECK_Y : PLAYER_DECK_Y };
     }
 
     private resolveTargetContainer (targetId: string): Phaser.GameObjects.Container | undefined
@@ -359,6 +392,12 @@ export class CardGame extends Scene
 
     create ()
     {
+        // scene.restart() (the Play Again button) reuses this same class instance, so field
+        // initializers do NOT re-run — reset the overlay state explicitly or a pile left open
+        // when the game ended would reappear over the fresh board, holding dead references.
+        this.pileViewObjects = [];
+        this.openPileView = undefined;
+
         this.add.rectangle(CENTER_X, CENTER_Y, GAME_WIDTH, GAME_HEIGHT, 0x161b26);
 
         this.turnBannerText = this.add.text(38, 28, '', SMALL_STYLE).setDepth(200);
@@ -378,6 +417,7 @@ export class CardGame extends Scene
         this.createHelpBox();
         this.wireDragEvents();
         this.wireHelpBoxEvents();
+        this.input.keyboard?.on('keydown-ESC', () => this.closePileView());
 
         EventBus.on('state:phase-change', this.phaseChangeHandler);
         EventBus.on('state:card-drawn', this.cardDrawnHandler);
@@ -476,7 +516,9 @@ export class CardGame extends Scene
             fontFamily: 'Arial', fontSize: '15px', color: '#ffffff', wordWrap: { width: 290 }
         }).setOrigin(0, 0);
         this.helpBox = this.add.container(0, 0, [this.helpBoxBg, this.helpBoxText]);
-        this.helpBox.setDepth(2000);
+        // Above PILE_VIEW_DEPTH — cards inside the pile-inspect overlay keep their keyword hover,
+        // so the tooltip has to clear the overlay it is being read on top of.
+        this.helpBox.setDepth(PILE_VIEW_DEPTH + 100);
         this.helpBox.setVisible(false);
     }
 
@@ -507,8 +549,10 @@ export class CardGame extends Scene
         this.renderHero('opponent', OPPONENT_HERO_Y);
         this.renderHero('player', PLAYER_HERO_Y);
 
-        this.renderDeckPile(state.players.opponent, OPPONENT_DECK_Y);
-        this.renderDeckPile(state.players.player, PLAYER_DECK_Y);
+        this.renderPile(state.players.opponent, 'graveyard', OPPONENT_GRAVEYARD_Y);
+        this.renderPile(state.players.opponent, 'deck', OPPONENT_DECK_Y);
+        this.renderPile(state.players.player, 'deck', PLAYER_DECK_Y);
+        this.renderPile(state.players.player, 'graveyard', PLAYER_GRAVEYARD_Y);
 
         this.renderHand(state.players.opponent, OPPONENT_HAND_Y, true);
         this.renderHand(state.players.player, PLAYER_HAND_Y, false);
@@ -520,6 +564,10 @@ export class CardGame extends Scene
         {
             this.showGameOver(state.winner);
         }
+
+        // Repaint last so the overlay lands on top of, and re-reads, the board just rebuilt above —
+        // an open pile therefore keeps showing live contents as cards are drawn or die beneath it.
+        this.renderPileView();
 
         // The opponent's turn is only picked up here — the one place the board is guaranteed to
         // actually reflect state.phase === MainIdle — rather than off the phase-change event
@@ -533,6 +581,7 @@ export class CardGame extends Scene
     private clearRendered (): void
     {
         this.hideHelpBox();
+        this.clearPileView();
         for (const obj of this.renderedObjects) obj.destroy();
         this.renderedObjects = [];
         this.cardInstanceByContainer.clear();
@@ -586,16 +635,56 @@ export class CardGame extends Scene
         this.renderedObjects.push(container);
     }
 
-    /** Small stacked card-back pile with a remaining-count label — purely decorative except as the origin point draw animations fly from (see deckPilePosition). */
-    private renderDeckPile (playerState: PlayerState, y: number): void
+    private pileCards (playerState: PlayerState, zone: PileZone): CardInstance[]
     {
-        const container = this.add.container(DECK_X, y);
-        for (let i = 0; i < 3; i++)
+        return zone === 'deck' ? playerState.deck : playerState.graveyard;
+    }
+
+    /**
+     * Small stacked pile with a zone label above and a card-count label below, for either
+     * off-board zone. Doubles as the origin point draw animations fly from (see deckPilePosition)
+     * and as the click target that opens the pile-inspect overlay.
+     */
+    private renderPile (playerState: PlayerState, zone: PileZone, y: number): void
+    {
+        const style = CardGame.PILE_STYLES[zone];
+        const cards = this.pileCards(playerState, zone);
+        const container = this.add.container(PILE_X, y);
+
+        container.add(this.add.text(0, -DECK_PILE_H / 2 - 22, style.label, PILE_LABEL_STYLE).setOrigin(0.5, 0));
+
+        // An empty pile still draws one faded card outline rather than nothing, so the zone keeps
+        // its slot in the column and stays clickable (an empty graveyard is the normal opening state).
+        const layers = Math.min(3, Math.max(1, cards.length));
+        for (let i = 0; i < layers; i++)
         {
             const offset = i * 4;
-            container.add(this.add.rectangle(-offset, -offset, DECK_PILE_W, DECK_PILE_H, 0x24304a).setStrokeStyle(2, 0x8fa8d6));
+            const card = this.add.rectangle(-offset, -offset, DECK_PILE_W, DECK_PILE_H, style.fill).setStrokeStyle(2, style.stroke);
+            if (cards.length === 0) card.setAlpha(0.3);
+            container.add(card);
         }
-        container.add(this.add.text(0, DECK_PILE_H / 2 + 6, `${playerState.deck.length}`, statStyle('#ffffff')).setOrigin(0.5, 0));
+
+        container.add(this.add.text(0, DECK_PILE_H / 2 + 6, `${cards.length}`, statStyle('#ffffff')).setOrigin(0.5, 0));
+
+        const highlight = this.add.rectangle(-4, -4, DECK_PILE_W + 16, DECK_PILE_H + 16).setStrokeStyle(3, 0xffd23f).setVisible(false);
+        container.add(highlight);
+
+        // Hit region is deliberately generous enough to cover the stack's offset corner and the
+        // count label under it. Top-left-based per the Container hit-area rule (see renderHero).
+        const hitW = DECK_PILE_W + 16;
+        const hitH = DECK_PILE_H + 40;
+        container.setSize(hitW, hitH);
+        container.setInteractive({
+            hitArea: new Geom.Rectangle(0, 0, hitW, hitH),
+            hitAreaCallback: Geom.Rectangle.Contains,
+            useHandCursor: true,
+        });
+        container.on('pointerover', () => highlight.setVisible(true));
+        container.on('pointerout', () => highlight.setVisible(false));
+        // Deliberately not guarded(): opening a read-only pile view mutates no game state, so
+        // there is no reason to swallow the click just because an animation is in flight.
+        container.on('pointerup', () => this.showPileView(playerState.id, zone));
+
         this.renderedObjects.push(container);
     }
 
@@ -727,6 +816,141 @@ export class CardGame extends Scene
         button.on('pointerup', () => this.scene.restart());
 
         this.renderedObjects.push(overlay, label, button);
+    }
+
+    // --- pile inspect overlay --------------------------------------------------------
+
+    private showPileView (playerId: PlayerId, zone: PileZone): void
+    {
+        this.openPileView = { playerId, zone };
+        // Painted directly rather than via requestRender(): the overlay must appear on the click
+        // that opened it, and a full render would be deferred behind any in-flight animation.
+        this.renderPileView();
+    }
+
+    private closePileView (): void
+    {
+        this.openPileView = undefined;
+        this.clearPileView();
+    }
+
+    private clearPileView (): void
+    {
+        for (const obj of this.pileViewObjects) obj.destroy();
+        this.pileViewObjects = [];
+    }
+
+    /**
+     * Full-screen dimmed grid of whichever pile is currently open, or a no-op when none is.
+     * Rebuilt wholesale (never patched) on each call, matching how the board itself renders.
+     */
+    private renderPileView (): void
+    {
+        this.clearPileView();
+        if (!this.openPileView) return;
+
+        this.hideHelpBox();
+
+        const { playerId, zone } = this.openPileView;
+        const style = CardGame.PILE_STYLES[zone];
+        const cards = this.pileViewCards(playerId, zone);
+
+        // Interactive so a click anywhere off a card dismisses the view — and, more importantly,
+        // so the board underneath cannot be clicked through it. Phaser's InputPlugin is topOnly by
+        // default, so this full-screen rect swallows every pointer event below PILE_VIEW_DEPTH.
+        const dimmer = this.add.rectangle(CENTER_X, CENTER_Y, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.82)
+            .setDepth(PILE_VIEW_DEPTH)
+            .setInteractive();
+        dimmer.on('pointerup', () => this.closePileView());
+        this.pileViewObjects.push(dimmer);
+
+        const owner = playerId === 'player' ? 'Your' : "Opponent's";
+        const title = this.add.text(CENTER_X, 52, `${owner} ${style.title} — ${cards.length} card${cards.length === 1 ? '' : 's'}`, {
+            fontFamily: 'Arial Black', fontSize: '36px', color: '#ffffff',
+        }).setOrigin(0.5, 0).setDepth(PILE_VIEW_DEPTH + 1);
+        this.pileViewObjects.push(title);
+
+        const close = this.add.text(GAME_WIDTH - 48, 52, '✕ Close', {
+            fontFamily: 'Arial', fontSize: '24px', color: '#ffffff', backgroundColor: '#3a4a6b',
+        }).setOrigin(1, 0).setPadding(16, 9, 16, 9).setDepth(PILE_VIEW_DEPTH + 1).setInteractive({ useHandCursor: true });
+        close.on('pointerup', () => this.closePileView());
+        this.pileViewObjects.push(close);
+
+        const hint = this.add.text(CENTER_X, GAME_HEIGHT - 34, 'Click anywhere or press Esc to close', {
+            fontFamily: 'Arial', fontSize: '16px', color: '#8fa8d6',
+        }).setOrigin(0.5, 1).setDepth(PILE_VIEW_DEPTH + 1);
+        this.pileViewObjects.push(hint);
+
+        if (cards.length === 0)
+        {
+            const empty = this.add.text(CENTER_X, CENTER_Y, `This ${style.title.toLowerCase()} is empty.`, {
+                fontFamily: 'Arial', fontSize: '28px', color: '#b8c4d9', fontStyle: 'italic',
+            }).setOrigin(0.5).setDepth(PILE_VIEW_DEPTH + 1);
+            this.pileViewObjects.push(empty);
+            return;
+        }
+
+        this.renderPileViewGrid(cards);
+    }
+
+    /**
+     * Deck contents are sorted by cost then name so opening your own deck reads as a deck list
+     * and does not leak the shuffled draw order. The graveyard keeps its natural array order,
+     * which TurnStateMachine appends to on each death/discard — i.e. chronological.
+     */
+    private pileViewCards (playerId: PlayerId, zone: PileZone): CardInstance[]
+    {
+        const cards = this.pileCards(this.machine.state.players[playerId], zone);
+        if (zone !== 'deck') return cards;
+
+        return [...cards].sort((a, b) =>
+        {
+            const defA = CARD_DEFINITIONS[a.definitionId];
+            const defB = CARD_DEFINITIONS[b.definitionId];
+            return defA.cost - defB.cost || defA.name.localeCompare(defB.name);
+        });
+    }
+
+    /** Lays the cards out in a centered grid, scaled down just far enough that the whole pile fits on one screen — no scrolling, however big the zone gets. */
+    private renderPileViewGrid (cards: CardInstance[]): void
+    {
+        const columns = Math.min(PILE_VIEW_MAX_COLUMNS, cards.length);
+        const rows = Math.ceil(cards.length / columns);
+
+        const availableW = GAME_WIDTH - 160;
+        const availableH = PILE_VIEW_BOTTOM - PILE_VIEW_TOP;
+        const scale = Math.min(
+            1,
+            availableW / (columns * (CARD_W + PILE_VIEW_GAP)),
+            availableH / (rows * (CARD_H + PILE_VIEW_GAP)),
+        );
+
+        const stepX = (CARD_W + PILE_VIEW_GAP) * scale;
+        const stepY = (CARD_H + PILE_VIEW_GAP) * scale;
+        const originY = PILE_VIEW_TOP + (availableH - rows * stepY) / 2 + stepY / 2;
+
+        cards.forEach((instance, index) =>
+        {
+            const row = Math.floor(index / columns);
+            const column = index % columns;
+            // Centre each row on its own count, so a partial final row sits centered rather than
+            // left-aligned under a full one.
+            const inRow = Math.min(columns, cards.length - row * columns);
+
+            const card = this.createCardContainer(instance, false);
+            card.setPosition(CENTER_X + (column - (inRow - 1) / 2) * stepX, originY + row * stepY);
+            card.setScale(scale);
+            card.setDepth(PILE_VIEW_DEPTH + 1);
+            card.setInteractive(
+                // See renderHero — top-left-based, not centered. The container's scale applies to
+                // the hit area too, so this needs no scale compensation of its own.
+                new Geom.Rectangle(0, 0, CARD_W, CARD_H),
+                Geom.Rectangle.Contains
+            );
+            this.attachKeywordHover(card, instance);
+
+            this.pileViewObjects.push(card);
+        });
     }
 
     // --- card visuals --------------------------------------------------------------
