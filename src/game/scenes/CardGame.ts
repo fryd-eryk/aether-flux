@@ -243,11 +243,34 @@ export class CardGame extends Scene
      */
     private async playCardPlayedAnimation (instanceId: string, playerId: PlayerId): Promise<void>
     {
-        const container = this.instanceContainers.get(instanceId);
+        let container = this.instanceContainers.get(instanceId);
         if (!container)
         {
             await this.playPendingDeaths();
             return;
+        }
+
+        // The container we just found is whatever the last renderHand() built — for the
+        // opponent that's always the face-down version. Swap in a face-up one for the reveal
+        // so the player can actually see what was played, instead of spotlighting a card back.
+        if (playerId === 'opponent')
+        {
+            const player = this.machine.state.players[playerId];
+            const instance = player.board.find((c) => c.instanceId === instanceId)
+                ?? player.graveyard.find((c) => c.instanceId === instanceId);
+            if (instance)
+            {
+                const revealed = this.createCardContainer(instance, false);
+                revealed.setPosition(container.x, container.y);
+
+                const index = this.renderedObjects.indexOf(container);
+                if (index !== -1) this.renderedObjects[index] = revealed;
+                else this.renderedObjects.push(revealed);
+
+                container.destroy();
+                this.instanceContainers.set(instanceId, revealed);
+                container = revealed;
+            }
         }
 
         container.setDepth(2500);
