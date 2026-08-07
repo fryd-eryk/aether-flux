@@ -1,19 +1,19 @@
-import type { CardTier } from '../types/Card';
+import type { CardRarity } from '../types/Card';
 import { CARD_DEFINITIONS } from './cards';
 
-/** How many of a 30-card deck come from each tier — mirrors the 50-card set's own 25:20:5 split. */
-const TIER_COUNTS: Record<CardTier, number> = {
-    standard: 15,
-    moderateHigh: 12,
-    reallyStrong: 3,
+/** How many of a 30-card deck come from each rarity — mirrors the 50-card set's own 25:20:5 split. Legendary/mythical have no cards yet, so they're left out rather than given an arbitrary count. */
+const RARITY_COUNTS: Partial<Record<CardRarity, number>> = {
+    common: 16,
+    rare: 12,
+    exotic: 2,
 };
 
 /** Max copies of a single card id allowed in a generated deck — same convention the old flat STARTER_DECK used. */
 const MAX_COPIES = 2;
 
-function idsForTier(tier: CardTier): string[] {
+function idsForRarity(rarity: CardRarity): string[] {
     return Object.values(CARD_DEFINITIONS)
-        .filter((definition) => definition.tier === tier)
+        .filter((definition) => definition.rarity === rarity)
         .map((definition) => definition.id);
 }
 
@@ -42,13 +42,13 @@ function pickWithCap(pool: string[], count: number): string[] {
 }
 
 /**
- * Builds one randomly-generated 30-card deck, proportionate to the three power tiers
- * (15 standard / 12 moderate-high / 3 really strong). Called once per player at game
+ * Builds one randomly-generated 30-card deck, proportionate to the rarities in
+ * RARITY_COUNTS (15 common / 12 rare / 3 exotic). Called once per player at game
  * start (see CardGame.ts), so each side gets an independently random deck. Card order
  * doesn't matter here — createInitialState shuffles the built deck itself.
  */
 export function generateDeck(): string[] {
-    return (Object.keys(TIER_COUNTS) as CardTier[]).flatMap((tier) =>
-        pickWithCap(idsForTier(tier), TIER_COUNTS[tier])
+    return (Object.keys(RARITY_COUNTS) as CardRarity[]).flatMap((rarity) =>
+        pickWithCap(idsForRarity(rarity), RARITY_COUNTS[rarity]!)
     );
 }
