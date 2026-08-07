@@ -1,5 +1,7 @@
 import { Scene } from 'phaser';
 
+import { CARD_DEFINITIONS } from '../data/cards';
+
 export class Preloader extends Scene
 {
     constructor ()
@@ -29,8 +31,16 @@ export class Preloader extends Scene
 
     preload ()
     {
-        //  Load card art / atlases here once real assets exist.
         this.load.setPath('assets');
+
+        // Each card's art id maps to a jpg under a type-named subfolder. Most don't have an
+        // asset yet — a failed load just fires a per-file loaderror and leaves the texture
+        // absent, which createCardContainer's this.textures.exists() check falls back on.
+        for (const definition of Object.values(CARD_DEFINITIONS))
+        {
+            const folder = definition.type === 'minion' ? 'minions' : 'spells';
+            this.load.image(definition.art, `${folder}/${definition.art}.jpg`);
+        }
     }
 
     create ()

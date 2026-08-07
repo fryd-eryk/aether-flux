@@ -18,20 +18,57 @@ const GAME_HEIGHT = 1080;
 const CENTER_X = GAME_WIDTH / 2;
 const CENTER_Y = GAME_HEIGHT / 2;
 
-const CARD_W = 140;
-const CARD_H = 176;
-const HERO_RADIUS = 53;
+const CARD_W = 155;
+const CARD_H = 220;
+const HERO_RADIUS = 28;
 const HERO_SIZE = HERO_RADIUS * 2;
 const BOARD_ZONE_W = 1600;
 
-// Row Y-positions are hand-tuned so hero/hand/board rows clear each other with a small
-// gap given CARD_H/HERO_RADIUS above — see the git history of this file if those change again.
-const OPPONENT_HERO_Y = 70;
-const OPPONENT_HAND_Y = 230;
-const OPPONENT_BOARD_Y = 427;
-const PLAYER_BOARD_Y = 652;
-const PLAYER_HAND_Y = 849;
-const PLAYER_HERO_Y = 1009;
+// Row Y-positions are hand-tuned so hero/board rows and the two hand states below clear each
+// other with a small gap given CARD_H/HERO_RADIUS above — see the git history of this file if
+// those change again.
+//
+// Hands no longer occupy a permanent dedicated row. Each hand rests "poked" against its owner's
+// screen edge — card center pinned exactly on the edge, so only the CARD_H/2 half that's on-screen
+// is visible (Phaser/the canvas clips the rest for free, no mask needed) — and its owner's hero
+// overlaps that poke, drawn on top via HERO_DEPTH, like the hero is standing in front of a mostly
+// tucked-away fan of cards. The opponent's hand *only* ever exists in this poked state (see the
+// "twist" in wirePlayerHandPeekEvents — hovering it does nothing). The player's hand additionally has a
+// "peeked" state, entered by hovering the trigger band below the battlefield (see
+// PEEK_TRIGGER_*): the hand rises to PLAYER_HAND_PEEK_Y (fully visible) and the hero rises off the
+// poke to PLAYER_HERO_PEEK_Y (just clear of the battlefield) so neither obscures the other. Both
+// are derived from PLAYER_BOARD_Y (via PEEK_GAP) so the peeked hand+hero always fit exactly
+// between the board and the bottom edge: 767 (board bottom) + 14 (gap) + 56 (hero) + 14 (gap) +
+// 220 (hand) + 9 (margin) = 1080.
+//
+// Freeing the opponent's hand from its own row lets OPPONENT_BOARD_Y move up (it no longer needs
+// to clear a full hand row below the opponent's hero), which in turn opens up a deliberately
+// generous gap between the two boards — the freed space's biggest single beneficiary, giving the
+// battlefield itself more visual weight instead of the two rows sitting seam-to-seam.
+const OPPONENT_HERO_Y = 37;
+const OPPONENT_HAND_Y = 0; // poked flush against the top edge — always, see above
+const OPPONENT_BOARD_Y = 265;
+const PLAYER_BOARD_Y = 657;
+const PLAYER_HAND_POKE_Y = GAME_HEIGHT; // poked flush against the bottom edge
+const PLAYER_HERO_Y = 1043; // idle, i.e. poked-hand state
+
+const PEEK_GAP = 14;
+const PLAYER_HERO_PEEK_Y = PLAYER_BOARD_Y + CARD_H / 2 + PEEK_GAP + HERO_RADIUS;
+const PLAYER_HAND_PEEK_Y = PLAYER_HERO_PEEK_Y + HERO_RADIUS + PEEK_GAP + CARD_H / 2;
+
+// Hero containers must out-rank hand containers' depth (hand fans out over 0..handSize-1 — see
+// renderHand) so each hero visually sits in front of its own poked hand rather than being
+// half-buried under it, while staying well clear of drag(1000)/animation depths above.
+const HERO_DEPTH = 100;
+
+// Hovering this band under the battlefield toggles the player's hand between poked and peeked
+// (see wirePlayerHandPeekEvents). It's exactly the row-layout footprint (rowLayout's BOARD_ZONE_W-wide
+// span) from the board's bottom edge down to the screen edge, so it naturally covers the poke
+// sliver, the fully peeked hand, and the peeked hero without also catching the End Turn/Cancel
+// buttons or the deck/graveyard piles, which all live further out at PILE_X.
+const PEEK_TRIGGER_Y = PLAYER_BOARD_Y + CARD_H / 2;
+const PEEK_TRIGGER_X_MIN = CENTER_X - BOARD_ZONE_W / 2;
+const PEEK_TRIGGER_X_MAX = CENTER_X + BOARD_ZONE_W / 2;
 
 // Deck/graveyard piles share the end-turn/cancel buttons' column, offset further right so hand
 // cards (which can extend close to x=1760 at max hand size) never overlap them.
@@ -60,10 +97,22 @@ const PILE_VIEW_BOTTOM = 1020;
 // Where a played card is held for a beat before flying to its resting place.
 const SPOTLIGHT_X = 260;
 
-const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '13px', color: '#ffffff', align: 'left' };
-const RULE_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '12px', color: '#b8c4d9', fontStyle: 'italic', align: 'center' };
+const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '14px', color: '#ffffff', align: 'left' };
+const RULE_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '10px', color: '#b8c4d9', fontStyle: 'italic', align: 'center' };
 const SMALL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff' };
 const PILE_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '12px', color: '#9aa7bd' };
+const COST_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '19px', color: '#ffffff' };
+const TYPE_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '11px', color: '#9aa7bd', fontStyle: 'bold' };
+const KEYWORD_LABEL_BASE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '11px', fontStyle: 'bold' };
+const MISSING_ASSET_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '10px', color: '#888888', align: 'center' };
+
+// Card art zone: ~65% of CARD_H, inset from the card's edges — shared by the art image/fallback
+// box and by the attack/health badges, which anchor to the art's bottom corners, not the card's.
+const ART_W = CARD_W - 16;
+const ART_H = Math.round(CARD_H * 0.65);
+const ART_TOP = -CARD_H / 2 + 42;
+const ART_BOTTOM = ART_TOP + ART_H;
+const ART_CENTER_Y = ART_TOP + ART_H / 2;
 
 /** The two off-board card zones that get a pile visual and a click-to-inspect overlay. */
 type PileZone = 'deck' | 'graveyard';
@@ -105,7 +154,9 @@ export class CardGame extends Scene
 
     private renderedObjects: Phaser.GameObjects.GameObject[] = [];
     private cardInstanceByContainer = new Map<Phaser.GameObjects.Container, string>();
-    private originalPositions = new Map<Phaser.GameObjects.Container, { x: number; y: number }>();
+    // x only — a draggable hand card's y is always the current playerHandY(), so dragend re-reads
+    // that live instead of risking a second, staler copy of it drifting out of sync.
+    private originalPositions = new Map<Phaser.GameObjects.Container, number>();
     private instanceContainers = new Map<string, Phaser.GameObjects.Container>();
     private heroContainers = new Map<PlayerId, Phaser.GameObjects.Container>();
 
@@ -127,6 +178,19 @@ export class CardGame extends Scene
     // overlay down with everything else and then repaints it from openPileView at its tail.
     private pileViewObjects: Phaser.GameObjects.GameObject[] = [];
     private openPileView?: { playerId: PlayerId; zone: PileZone };
+
+    // Whether the player's hand is currently peeked (raised, fully visible) vs. its default poked
+    // state — see the big comment above PLAYER_HAND_POKE_Y. Persists across renderNow() rebuilds
+    // the same way openPileView does, so a mid-peek board rebuild (e.g. a card drawn) repaints the
+    // hand/hero in the right state instead of snapping back to poked.
+    private handPeekActive = false;
+
+    // The hand card currently being dragged, if any — excluded from setHandPeek's batched tween
+    // (see there) so a peek toggle firing mid-drag (dragging through/past PEEK_TRIGGER_Y is the
+    // common case, since the board sits above it) can't fight the drag handler's own per-pointermove
+    // setPosition() on the same container. Without this the card visibly detached from the cursor,
+    // stuttering between the tween's eased position and the drag's direct one every frame.
+    private draggedContainer: Phaser.GameObjects.Container | null = null;
 
     // --- animation orchestration --------------------------------------------------
 
@@ -336,7 +400,16 @@ export class CardGame extends Scene
         return { x: startX + index * spacing, y };
     }
 
-    /** Flies a temporary card preview from the drawing player's deck pile to the drawn card's computed hand slot, then discards the preview — the real hand container appears once the deferred render catches up. */
+    /**
+     * Flies a temporary card preview from the drawing player's deck pile to the drawn card's
+     * computed hand slot, then promotes it into instanceContainers/renderedObjects as that card's
+     * resting container instead of discarding it — a full renderNow() stays deferred for the
+     * *entire* burst of opening-hand draws (they all queue back-to-back into one animating
+     * session, see the class doc comment), so a discarded preview left nothing on screen between
+     * draws. Sibling cards already resting in this hand are re-tweened to their updated slot first,
+     * since a growing hand recenters the whole row (rowLayout's spacing/startX both shift with
+     * count) — without that they'd sit at a stale pre-draw position until the eventual renderNow().
+     */
     private async playDrawAnimation (playerId: PlayerId, instanceId: string): Promise<void>
     {
         const player = this.machine.state.players[playerId];
@@ -345,8 +418,16 @@ export class CardGame extends Scene
 
         const faceDown = playerId === 'opponent';
         const { spacing, startX } = this.rowLayout(player.hand.length, 15);
-        const destY = playerId === 'opponent' ? OPPONENT_HAND_Y : PLAYER_HAND_Y;
+        const destY = playerId === 'opponent' ? OPPONENT_HAND_Y : this.playerHandY();
         const destX = startX + index * spacing;
+
+        player.hand.forEach((sibling, siblingIndex) =>
+        {
+            if (sibling.instanceId === instanceId) return;
+            const container = this.instanceContainers.get(sibling.instanceId);
+            if (!container) return;
+            this.tweens.add({ targets: container, x: startX + siblingIndex * spacing, y: destY, duration: 250, ease: 'Cubic.easeOut' });
+        });
 
         const origin = this.deckPilePosition(playerId);
         const flying = this.createCardContainer(player.hand[index], faceDown);
@@ -355,7 +436,10 @@ export class CardGame extends Scene
         flying.setScale(0.6);
 
         await this.tweenPromise({ targets: flying, x: destX, y: destY, scale: 1, duration: 400, ease: 'Cubic.easeOut' });
-        flying.destroy();
+
+        flying.setDepth(index);
+        this.renderedObjects.push(flying);
+        this.instanceContainers.set(instanceId, flying);
     }
 
     /**
@@ -397,16 +481,17 @@ export class CardGame extends Scene
         // when the game ended would reappear over the fresh board, holding dead references.
         this.pileViewObjects = [];
         this.openPileView = undefined;
+        this.handPeekActive = false;
 
         this.add.rectangle(CENTER_X, CENTER_Y, GAME_WIDTH, GAME_HEIGHT, 0x161b26);
 
-        this.turnBannerText = this.add.text(38, 28, '', SMALL_STYLE).setDepth(200);
+        this.turnBannerText = this.add.text(38, 6, '', SMALL_STYLE).setDepth(200);
 
-        this.opponentHealthText = this.add.text(38, 65, '', statStyle('#ff5c5c')).setDepth(200);
-        this.opponentManaText = this.add.text(38, 96, '', statStyle('#5c9cff')).setDepth(200);
+        this.opponentHealthText = this.add.text(38, 30, '', statStyle('#ff5c5c')).setDepth(200);
+        this.opponentManaText = this.add.text(38, 54, '', statStyle('#5c9cff')).setDepth(200);
 
-        this.playerHealthText = this.add.text(38, 970, '', statStyle('#ff5c5c')).setDepth(200);
-        this.playerManaText = this.add.text(38, 1001, '', statStyle('#5c9cff')).setDepth(200);
+        this.playerHealthText = this.add.text(38, 1023, '', statStyle('#ff5c5c')).setDepth(200);
+        this.playerManaText = this.add.text(38, 1049, '', statStyle('#5c9cff')).setDepth(200);
 
         const boardZoneH = CARD_H + 30;
         this.playerBoardZone = this.add.zone(CENTER_X, PLAYER_BOARD_Y, BOARD_ZONE_W, boardZoneH).setRectangleDropZone(BOARD_ZONE_W, boardZoneH);
@@ -417,6 +502,7 @@ export class CardGame extends Scene
         this.createHelpBox();
         this.wireDragEvents();
         this.wireHelpBoxEvents();
+        this.wirePlayerHandPeekEvents();
         this.input.keyboard?.on('keydown-ESC', () => this.closePileView());
 
         EventBus.on('state:phase-change', this.phaseChangeHandler);
@@ -450,7 +536,14 @@ export class CardGame extends Scene
     {
         this.input.on('dragstart', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject) =>
         {
-            (gameObject as Phaser.GameObjects.Container).setDepth(1000);
+            const container = gameObject as Phaser.GameObjects.Container;
+            container.setDepth(1000);
+            this.draggedContainer = container;
+
+            // The keyword tooltip that was showing for this card (hovering it is how the drag
+            // started) would otherwise linger for the whole drag — pointerout never fires for the
+            // dragged object since it stays centered under the pointer throughout.
+            this.hideHelpBox();
         });
 
         this.input.on('drag', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dragX: number, dragY: number) =>
@@ -469,10 +562,11 @@ export class CardGame extends Scene
         this.input.on('dragend', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject) =>
         {
             const container = gameObject as Phaser.GameObjects.Container;
+            if (this.draggedContainer === container) this.draggedContainer = null;
             if (!container.active) return; // already destroyed by a re-render triggered from the drop above
 
-            const original = this.originalPositions.get(container);
-            if (original) container.setPosition(original.x, original.y);
+            const originalX = this.originalPositions.get(container);
+            if (originalX !== undefined) container.setPosition(originalX, this.playerHandY());
         });
     }
 
@@ -482,6 +576,60 @@ export class CardGame extends Scene
         {
             if (this.helpBox.visible) this.positionHelpBox(pointer.x, pointer.y);
         });
+    }
+
+    /** Current Y for the player's hero — PLAYER_HERO_PEEK_Y once peeked, PLAYER_HERO_Y (idle/poked) otherwise. */
+    private playerHeroY (): number
+    {
+        return this.handPeekActive ? PLAYER_HERO_PEEK_Y : PLAYER_HERO_Y;
+    }
+
+    /** Current Y for the player's hand row — mirrors playerHeroY() for PLAYER_HAND_PEEK_Y/POKE_Y. */
+    private playerHandY (): number
+    {
+        return this.handPeekActive ? PLAYER_HAND_PEEK_Y : PLAYER_HAND_POKE_Y;
+    }
+
+    /**
+     * The player's hand toggles poked/peeked purely off cursor position within PEEK_TRIGGER_*
+     * (see its comment) — deliberately not a Zone with pointerover/pointerout, since the player's
+     * hero sits at a *higher* depth directly over part of that band (see HERO_DEPTH) and Phaser's
+     * default topOnly input would let the hero swallow hover events in the overlap instead of
+     * passing them through. Polling pointermove, like wireHelpBoxEvents does, sidesteps that
+     * entirely. The opponent's hand has no equivalent wiring at all — that's the "nothing happens"
+     * twist — so it only ever renders in its poked state.
+     */
+    private wirePlayerHandPeekEvents (): void
+    {
+        this.input.on('pointermove', (pointer: Phaser.Input.Pointer) =>
+        {
+            const withinTrigger =
+                pointer.x >= PEEK_TRIGGER_X_MIN && pointer.x <= PEEK_TRIGGER_X_MAX && pointer.y >= PEEK_TRIGGER_Y;
+            this.setHandPeek(withinTrigger);
+        });
+    }
+
+    /**
+     * Flips handPeekActive and tweens the player's already-rendered hand containers and hero
+     * container to their new poked/peeked target position in one batched tween per group. Only
+     * used for the live hover transition — a renderNow() that happens mid-peek (e.g. a card drawn)
+     * instead reads playerHeroY()/playerHandY() directly in renderHero/renderHand and paints the
+     * right position immediately, no tween, the same way a mid-animation board rebuild always
+     * paints the current true state rather than an old one.
+     */
+    private setHandPeek (active: boolean): void
+    {
+        if (this.handPeekActive === active) return;
+        this.handPeekActive = active;
+
+        const hero = this.heroContainers.get('player');
+        if (hero) this.tweens.add({ targets: hero, y: this.playerHeroY(), duration: 220, ease: 'Cubic.easeOut' });
+
+        const handY = this.playerHandY();
+        const containers = this.machine.state.players.player.hand
+            .map((instance) => this.instanceContainers.get(instance.instanceId))
+            .filter((container): container is Phaser.GameObjects.Container => !!container && container !== this.draggedContainer);
+        if (containers.length > 0) this.tweens.add({ targets: containers, y: handY, duration: 220, ease: 'Cubic.easeOut' });
     }
 
     private createEndTurnButton (): void
@@ -547,7 +695,7 @@ export class CardGame extends Scene
         this.updateChrome(state);
 
         this.renderHero('opponent', OPPONENT_HERO_Y);
-        this.renderHero('player', PLAYER_HERO_Y);
+        this.renderHero('player', this.playerHeroY());
 
         this.renderPile(state.players.opponent, 'graveyard', OPPONENT_GRAVEYARD_Y);
         this.renderPile(state.players.opponent, 'deck', OPPONENT_DECK_Y);
@@ -555,7 +703,7 @@ export class CardGame extends Scene
         this.renderPile(state.players.player, 'graveyard', PLAYER_GRAVEYARD_Y);
 
         this.renderHand(state.players.opponent, OPPONENT_HAND_Y, true);
-        this.renderHand(state.players.player, PLAYER_HAND_Y, false);
+        this.renderHand(state.players.player, this.playerHandY(), false);
 
         this.renderBoard('opponent', state.players.opponent, OPPONENT_BOARD_Y);
         this.renderBoard('player', state.players.player, PLAYER_BOARD_Y);
@@ -613,6 +761,7 @@ export class CardGame extends Scene
     {
         const state = this.machine.state;
         const container = this.add.container(CENTER_X, y);
+        container.setDepth(HERO_DEPTH);
 
         const circle = this.add.circle(0, 0, HERO_RADIUS, id === 'player' ? 0x2f6fed : 0xb0413e).setStrokeStyle(2, 0xffffff);
         const label = this.add.text(0, 0, id === 'player' ? 'You' : 'Opponent', SMALL_STYLE).setOrigin(0.5);
@@ -732,7 +881,7 @@ export class CardGame extends Scene
 
             if (definition.type === 'minion')
             {
-                this.originalPositions.set(container, { x, y });
+                this.originalPositions.set(container, x);
                 this.cardInstanceByContainer.set(container, instance.instanceId);
                 this.input.setDraggable(container);
             }
@@ -969,26 +1118,45 @@ export class CardGame extends Scene
             // card's right edge so it never runs under the cost badge.
             const nameText = this.add.text(-CARD_W / 2 + 8, -CARD_H / 2 + 8, definition.name, NAME_STYLE)
                 .setOrigin(0, 0)
-                .setWordWrapWidth(CARD_W - 45, true);
-            const costBadge = this.add.circle(CARD_W / 2 - 19, -CARD_H / 2 + 19, 17, 0x2f6fed);
-            const costText = this.add.text(CARD_W / 2 - 19, -CARD_H / 2 + 19, `${definition.cost}`, SMALL_STYLE).setOrigin(0.5);
+                .setWordWrapWidth(CARD_W - 54, true);
+            const costBadge = this.add.circle(CARD_W / 2 - 21, -CARD_H / 2 + 21, 19, 0x2f6fed);
+            const costText = this.add.text(CARD_W / 2 - 21, -CARD_H / 2 + 21, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(0.5);
             container.add([nameText, costBadge, costText]);
 
-            const ruleText = this.add.text(0, -8, definition.text, RULE_TEXT_STYLE)
-                .setOrigin(0.5, 0)
-                .setWordWrapWidth(CARD_W - 21, true);
-            container.add(ruleText);
+            container.add(this.createArtVisual(definition.art));
 
             if (definition.type === 'minion')
             {
-                container.add(this.createKeywordBadges(instance));
-
-                // Colored circle behind the number, same visual language as the cost badge above.
-                const attackBg = this.add.circle(-CARD_W / 2 + 21, CARD_H / 2 - 21, 19, 0xd68f3f);
-                const attackText = this.add.text(-CARD_W / 2 + 21, CARD_H / 2 - 21, `${instance.currentAttack ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
-                const healthBg = this.add.circle(CARD_W / 2 - 21, CARD_H / 2 - 21, 19, 0xb0413e);
-                const healthText = this.add.text(CARD_W / 2 - 21, CARD_H / 2 - 21, `${instance.currentHealth ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
+                // Attack/health anchor to the art zone's bottom corners, not the card's — the
+                // footer below the art is reserved for type/text/keywords.
+                const attackBg = this.add.circle(-ART_W / 2 + 19, ART_BOTTOM - 23, 19, 0xd68f3f);
+                const attackText = this.add.text(-ART_W / 2 + 19, ART_BOTTOM - 23, `${instance.currentAttack ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
+                const healthBg = this.add.circle(ART_W / 2 - 19, ART_BOTTOM - 23, 19, 0xb0413e);
+                const healthText = this.add.text(ART_W / 2 - 19, ART_BOTTOM - 23, `${instance.currentHealth ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
                 container.add([attackBg, attackText, healthBg, healthText]);
+            }
+
+            // Footer: type (always), then rule text (if any), then keywords (if any) — stacked
+            // with a running cursor so an absent row doesn't leave a dead gap in the tight space
+            // below the art.
+            let cursorY = ART_BOTTOM + 4;
+
+            const typeText = this.add.text(0, cursorY, definition.type === 'minion' ? 'Minion' : 'Spell', TYPE_LABEL_STYLE).setOrigin(0.5, 0);
+            container.add(typeText);
+            cursorY += typeText.height + 2;
+
+            if (definition.text !== '')
+            {
+                const ruleText = this.add.text(0, cursorY, definition.text, RULE_TEXT_STYLE)
+                    .setOrigin(0.5, 0)
+                    .setWordWrapWidth(ART_W, true);
+                container.add(ruleText);
+                cursorY += ruleText.height + 2;
+            }
+
+            if (instance.keywords.size > 0)
+            {
+                container.add(this.createKeywordLabels(instance, cursorY));
             }
         }
 
@@ -996,29 +1164,42 @@ export class CardGame extends Scene
         return container;
     }
 
+    /** Card art, ~65% of card height — the actual image if its texture loaded, otherwise a black box with small gray "MISSING ASSET" text (most cards have no art asset yet; see Preloader.preload). */
+    private createArtVisual (art: string): Phaser.GameObjects.GameObject[]
+    {
+        if (this.textures.exists(art))
+        {
+            return [this.add.image(0, ART_CENTER_Y, art).setDisplaySize(ART_W, ART_H)];
+        }
+
+        const box = this.add.rectangle(0, ART_CENTER_Y, ART_W, ART_H, 0x000000).setStrokeStyle(1, 0x333333);
+        const label = this.add.text(0, ART_CENTER_Y, 'MISSING ASSET', MISSING_ASSET_STYLE).setOrigin(0.5).setWordWrapWidth(ART_W - 16, true);
+        return [box, label];
+    }
+
     /**
-     * Small colored abbreviation badges for a minion's active keywords, rendered under the
-     * name. Iterates instance.keywords (runtime, mutable) rather than the card's static
-     * definition.keywords — a consumed keyword like divineShield must stop rendering once
-     * popped, and the definition never changes to reflect that.
+     * Full keyword names for a minion's active keywords — bold, colored per KEYWORD_METADATA,
+     * wrapped into centered rows under the art. Iterates instance.keywords (runtime, mutable)
+     * rather than the card's static definition.keywords — a consumed keyword like divineShield
+     * must stop rendering once popped, and the definition never changes to reflect that.
      */
-    private createKeywordBadges (instance: CardInstance): Phaser.GameObjects.GameObject[]
+    private createKeywordLabels (instance: CardInstance, startY: number): Phaser.GameObjects.GameObject[]
     {
         const keywords = [...instance.keywords];
         if (keywords.length === 0) return [];
 
-        const badgeW = 30, badgeH = 19, gap = 5;
-        const totalWidth = keywords.length * badgeW + (keywords.length - 1) * gap;
-        const startX = -totalWidth / 2 + badgeW / 2;
-        const y = 35;
+        // One label per line, stacked and centered — minions realistically carry 1-2 keywords, so
+        // this trades the horizontal space a wider card might spare for simplicity over packing.
+        const lineHeight = 14;
+        let cursorY = startY;
 
-        return keywords.flatMap((keyword, index) =>
+        return keywords.map((keyword) =>
         {
             const meta = KEYWORD_METADATA[keyword];
-            const x = startX + index * (badgeW + gap);
-            const bg = this.add.rectangle(x, y, badgeW, badgeH, meta.color);
-            const text = this.add.text(x, y, meta.abbr, { fontFamily: 'Arial', fontSize: '12px', color: '#1a1a1a' }).setOrigin(0.5);
-            return [bg, text];
+            const hex = `#${meta.color.toString(16).padStart(6, '0')}`;
+            const text = this.add.text(0, cursorY, meta.label, { ...KEYWORD_LABEL_BASE_STYLE, color: hex }).setOrigin(0.5, 0);
+            cursorY += lineHeight;
+            return text;
         });
     }
 
@@ -1027,7 +1208,9 @@ export class CardGame extends Scene
     {
         if (instance.keywords.size === 0) return;
 
-        container.on('pointerover', () => this.showHelpBox(instance));
+        // Skip while this card is the one being dragged — see wireDragEvents' dragstart, which
+        // hides an already-showing tooltip for it; this stops one from reappearing mid-drag too.
+        container.on('pointerover', () => { if (container !== this.draggedContainer) this.showHelpBox(instance); });
         container.on('pointerout', () => this.hideHelpBox());
     }
 
