@@ -27,6 +27,9 @@ export interface CardEffect {
     action: EffectAction;
 }
 
+/** A card's power-level bucket, used by deckGenerator.ts to build proportionate random decks. */
+export type CardTier = 'standard' | 'moderateHigh' | 'reallyStrong';
+
 /** Static, authored card data — one entry per unique card, not per copy in a deck. */
 export interface CardDefinition {
     id: string;
@@ -39,6 +42,8 @@ export interface CardDefinition {
     health?: number;
     effects?: CardEffect[];
     keywords?: Keyword[];
+    /** Absent for tokens (e.g. summon-effect targets) — deckGenerator.ts only draws from definitions that have a tier, so omitting this is what keeps a token out of generated decks. */
+    tier?: CardTier;
 }
 
 /** Runtime state for one physical copy of a card as it moves through zones. */
