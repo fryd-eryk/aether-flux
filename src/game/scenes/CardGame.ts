@@ -121,6 +121,16 @@ const ART_CENTER_Y = ART_TOP + ART_H / 2;
 /** The two off-board card zones that get a pile visual and a click-to-inspect overlay. */
 type PileZone = 'deck' | 'graveyard';
 
+/**
+ * How createCardContainer renders a card. 'full' is the detailed layout (hand, deck/graveyard
+ * pile view, the played-card spotlight) — name/cost/inset art/stats/type/rule text/keywords.
+ * 'simplified' is the battlefield-only layout — full-bleed art, name/cost/stats in the same
+ * spots as 'full', type centered at the card's bottom edge, everything else omitted to
+ * maximize art coverage in the cramped board row. 'faceDown' is the card-back, used for the
+ * opponent's hand and its matching draw-animation preview.
+ */
+type CardDisplayMode = 'full' | 'simplified' | 'faceDown';
+
 function statStyle(color: string): Phaser.Types.GameObjects.Text.TextStyle {
     return { fontFamily: 'Arial Black', fontSize: '20px', color };
 }
@@ -361,7 +371,7 @@ export class CardGame extends Scene
                 ?? player.graveyard.find((c) => c.instanceId === instanceId);
             if (instance)
             {
-                const revealed = this.createCardContainer(instance, false);
+                const revealed = this.createCardContainer(instance, 'full');
                 revealed.setPosition(container.x, container.y);
 
                 const index = this.renderedObjects.indexOf(container);
@@ -434,7 +444,7 @@ export class CardGame extends Scene
         });
 
         const origin = this.deckPilePosition(playerId);
-        const flying = this.createCardContainer(player.hand[index], faceDown);
+        const flying = this.createCardContainer(player.hand[index], faceDown ? 'faceDown' : 'full');
         flying.setPosition(origin.x, origin.y);
         flying.setDepth(3000);
         flying.setScale(0.6);
@@ -857,7 +867,7 @@ export class CardGame extends Scene
 
         cards.forEach((instance, index) =>
         {
-            const container = this.createCardContainer(instance, faceDown);
+            const container = this.createCardContainer(instance, faceDown ? 'faceDown' : 'full');
             const x = startX + index * spacing;
             container.setPosition(x, y);
             container.setDepth(index);
@@ -911,7 +921,7 @@ export class CardGame extends Scene
 
         cards.forEach((instance, index) =>
         {
-            const container = this.createCardContainer(instance, false);
+            const container = this.createCardContainer(instance, 'simplified');
             container.setPosition(startX + index * spacing, y);
             this.renderedObjects.push(container);
             this.instanceContainers.set(instance.instanceId, container);
@@ -1095,7 +1105,7 @@ export class CardGame extends Scene
             // left-aligned under a full one.
             const inRow = Math.min(columns, cards.length - row * columns);
 
-            const card = this.createCardContainer(instance, false);
+            const card = this.createCardContainer(instance, 'full');
             card.setPosition(CENTER_X + (column - (inRow - 1) / 2) * stepX, originY + row * stepY);
             card.setScale(scale);
             card.setDepth(PILE_VIEW_DEPTH + 1);
@@ -1113,31 +1123,44 @@ export class CardGame extends Scene
 
     // --- card visuals --------------------------------------------------------------
 
-    private createCardContainer (instance: CardInstance, faceDown: boolean): Phaser.GameObjects.Container
+    private createCardContainer (instance: CardInstance, mode: CardDisplayMode): Phaser.GameObjects.Container
     {
         const container = this.add.container(0, 0);
-        const bg = this.add.rectangle(0, 0, CARD_W, CARD_H, faceDown ? 0x24304a : 0x2f3b52).setStrokeStyle(2, 0x8fa8d6);
+        const bg = this.add.rectangle(0, 0, CARD_W, CARD_H, mode === 'faceDown' ? 0x24304a : 0x2f3b52).setStrokeStyle(2, 0x8fa8d6);
         container.add(bg);
 
-        if (!faceDown)
+        if (mode === 'faceDown')
         {
-            const definition = CARD_DEFINITIONS[instance.definitionId];
+            if (this.textures.exists(CARD_BACK_KEY))
+            {
+                container.add(this.add.image(0, 0, CARD_BACK_KEY).setDisplaySize(CARD_W, CARD_H));
+            }
+            container.setSize(CARD_W, CARD_H);
+            return container;
+        }
 
-            // Name top-left, cost top-right — name's word-wrap width is clipped short of the
-            // card's right edge so it never runs under the cost badge.
-            const nameText = this.add.text(-CARD_W / 2 + 8, -CARD_H / 2 + 8, definition.name, NAME_STYLE)
-                .setOrigin(0, 0)
-                .setWordWrapWidth(CARD_W - 54, true);
-            const costBadge = this.add.circle(CARD_W / 2 - 21, -CARD_H / 2 + 21, 19, 0x2f6fed);
-            const costText = this.add.text(CARD_W / 2 - 21, -CARD_H / 2 + 21, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(0.5);
+        const definition = CARD_DEFINITIONS[instance.definitionId];
+
+        // Name top-left, cost top-right — name's word-wrap width is clipped short of the
+        // card's right edge so it never runs under the cost badge. Same spot in both 'full'
+        // and 'simplified' — only the art size/footer differ between the two.
+        const nameText = this.add.text(-CARD_W / 2 + 8, -CARD_H / 2 + 8, definition.name, NAME_STYLE)
+            .setOrigin(0, 0)
+            .setWordWrapWidth(CARD_W - 54, true);
+        const costBadge = this.add.circle(CARD_W / 2 - 21, -CARD_H / 2 + 21, 19, 0x2f6fed);
+        const costText = this.add.text(CARD_W / 2 - 21, -CARD_H / 2 + 21, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(0.5);
+
+        if (mode === 'simplified')
+        {
+            // Full-bleed art behind name/cost/stats — no footer/rule-text/keyword rows, so the
+            // battlefield row reads as art-first. Stats keep 'full' mode's exact anchor points
+            // (the art zone's old bottom corners), per the "same place" spec — they just now sit
+            // over full-bleed art instead of the small inset.
+            container.add(this.createArtVisual(definition.id, CARD_W, CARD_H, 0));
             container.add([nameText, costBadge, costText]);
-
-            container.add(this.createArtVisual(definition.id));
 
             if (definition.type === 'minion')
             {
-                // Attack/health anchor to the art zone's bottom corners, not the card's — the
-                // footer below the art is reserved for type/text/keywords.
                 const attackBg = this.add.circle(-ART_W / 2 + 19, ART_BOTTOM - 23, 19, 0xd68f3f);
                 const attackText = this.add.text(-ART_W / 2 + 19, ART_BOTTOM - 23, `${instance.currentAttack ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
                 const healthBg = this.add.circle(ART_W / 2 - 19, ART_BOTTOM - 23, 19, 0xb0413e);
@@ -1145,48 +1168,66 @@ export class CardGame extends Scene
                 container.add([attackBg, attackText, healthBg, healthText]);
             }
 
-            // Footer: type (always), then rule text (if any), then keywords (if any) — stacked
-            // with a running cursor so an absent row doesn't leave a dead gap in the tight space
-            // below the art.
-            let cursorY = ART_BOTTOM + 4;
-
-            const typeText = this.add.text(0, cursorY, definition.type === 'minion' ? 'Minion' : 'Spell', TYPE_LABEL_STYLE).setOrigin(0.5, 0);
+            const typeText = this.add.text(0, CARD_H / 2 - 8, definition.type === 'minion' ? 'Minion' : 'Spell', TYPE_LABEL_STYLE)
+                .setOrigin(0.5, 1);
             container.add(typeText);
-            cursorY += typeText.height + 2;
 
-            if (definition.text !== '')
-            {
-                const ruleText = this.add.text(0, cursorY, definition.text, RULE_TEXT_STYLE)
-                    .setOrigin(0.5, 0)
-                    .setWordWrapWidth(ART_W, true);
-                container.add(ruleText);
-                cursorY += ruleText.height + 2;
-            }
-
-            if (instance.keywords.size > 0)
-            {
-                container.add(this.createKeywordLabels(instance, cursorY));
-            }
+            container.setSize(CARD_W, CARD_H);
+            return container;
         }
-        else if (this.textures.exists(CARD_BACK_KEY))
+
+        // mode === 'full'
+        container.add([nameText, costBadge, costText]);
+        container.add(this.createArtVisual(definition.id, ART_W, ART_H, ART_CENTER_Y));
+
+        if (definition.type === 'minion')
         {
-            container.add(this.add.image(0, 0, CARD_BACK_KEY).setDisplaySize(CARD_W, CARD_H));
+            // Attack/health anchor to the art zone's bottom corners, not the card's — the
+            // footer below the art is reserved for type/text/keywords.
+            const attackBg = this.add.circle(-ART_W / 2 + 19, ART_BOTTOM - 23, 19, 0xd68f3f);
+            const attackText = this.add.text(-ART_W / 2 + 19, ART_BOTTOM - 23, `${instance.currentAttack ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
+            const healthBg = this.add.circle(ART_W / 2 - 19, ART_BOTTOM - 23, 19, 0xb0413e);
+            const healthText = this.add.text(ART_W / 2 - 19, ART_BOTTOM - 23, `${instance.currentHealth ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
+            container.add([attackBg, attackText, healthBg, healthText]);
+        }
+
+        // Footer: type (always), then rule text (if any), then keywords (if any) — stacked
+        // with a running cursor so an absent row doesn't leave a dead gap in the tight space
+        // below the art.
+        let cursorY = ART_BOTTOM + 4;
+
+        const typeText = this.add.text(0, cursorY, definition.type === 'minion' ? 'Minion' : 'Spell', TYPE_LABEL_STYLE).setOrigin(0.5, 0);
+        container.add(typeText);
+        cursorY += typeText.height + 2;
+
+        if (definition.text !== '')
+        {
+            const ruleText = this.add.text(0, cursorY, definition.text, RULE_TEXT_STYLE)
+                .setOrigin(0.5, 0)
+                .setWordWrapWidth(ART_W, true);
+            container.add(ruleText);
+            cursorY += ruleText.height + 2;
+        }
+
+        if (instance.keywords.size > 0)
+        {
+            container.add(this.createKeywordLabels(instance, cursorY));
         }
 
         container.setSize(CARD_W, CARD_H);
         return container;
     }
 
-    /** Card art, ~65% of card height — the actual image if its texture loaded, otherwise a black box with small gray "MISSING ASSET" text (most cards have no art asset yet; see Preloader.preload). */
-    private createArtVisual (art: string): Phaser.GameObjects.GameObject[]
+    /** Card art — the actual image if its texture loaded, otherwise a black box with small gray "MISSING ASSET" text (most cards have no art asset yet; see Preloader.preload). Sized/positioned by the caller so it can cover just the inset art zone ('full' mode) or the whole card ('simplified' mode). */
+    private createArtVisual (art: string, width: number, height: number, centerY: number): Phaser.GameObjects.GameObject[]
     {
         if (this.textures.exists(art))
         {
-            return [this.add.image(0, ART_CENTER_Y, art).setDisplaySize(ART_W, ART_H)];
+            return [this.add.image(0, centerY, art).setDisplaySize(width, height)];
         }
 
-        const box = this.add.rectangle(0, ART_CENTER_Y, ART_W, ART_H, 0x000000).setStrokeStyle(1, 0x333333);
-        const label = this.add.text(0, ART_CENTER_Y, 'MISSING ASSET', MISSING_ASSET_STYLE).setOrigin(0.5).setWordWrapWidth(ART_W - 16, true);
+        const box = this.add.rectangle(0, centerY, width, height, 0x000000).setStrokeStyle(1, 0x333333);
+        const label = this.add.text(0, centerY, 'MISSING ASSET', MISSING_ASSET_STYLE).setOrigin(0.5).setWordWrapWidth(width - 16, true);
         return [box, label];
     }
 
