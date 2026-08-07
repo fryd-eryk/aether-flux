@@ -868,12 +868,12 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
     },
-    "the-last-bastion": {
-        id: "the-last-bastion",
-        name: "The Last Bastion",
+    "martheus-the-last-bastion": {
+        id: "martheus-the-last-bastion",
+        name: "Martheus, The Last Bastion",
         cost: 6,
         type: "minion",
-        art: "the-last-bastion",
+        art: "martheus-the-last-bastion",
         text: "Vigil: Restore 4 Health to your hero.",
         attack: 5,
         health: 10,
@@ -891,11 +891,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     "ember-whelp": {
         id: "ember-whelp",
         name: "Ember Whelp",
-        cost: 2,
+        cost: 1,
         type: "minion",
         art: "ember-whelp",
         text: "",
-        attack: 2,
+        attack: 1,
         health: 2,
     },
 };
