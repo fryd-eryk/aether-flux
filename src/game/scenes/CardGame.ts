@@ -1,7 +1,8 @@
 import { Geom, Scene } from 'phaser';
 
 import { decideOpponentAction } from '../ai/OpponentAI';
-import { CARD_DEFINITIONS, STARTER_DECK } from '../data/cards';
+import { CARD_DEFINITIONS } from '../data/cards';
+import { generateDeck } from '../data/deckGenerator';
 import { KEYWORD_METADATA } from '../data/keywordMetadata';
 import { EventBus } from '../EventBus';
 import { canDeclareAttack, hasKeyword } from '../state/keywordRules';
@@ -393,7 +394,7 @@ export class CardGame extends Scene
             EventBus.removeListener('state:card-died', this.cardDiedHandler);
         });
 
-        this.machine = new TurnStateMachine(createInitialState(STARTER_DECK, STARTER_DECK));
+        this.machine = new TurnStateMachine(createInitialState(generateDeck(), generateDeck()));
 
         // Paint the empty board (deck piles included) before startGame() fires its opening-hand
         // draws, so the draw animation has a visible deck pile to fly from. Everything from here
