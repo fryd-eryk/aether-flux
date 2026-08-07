@@ -41,6 +41,9 @@ export class Preloader extends Scene
             const folder = definition.type === 'minion' ? 'minions' : 'spells';
             this.load.image(definition.id, `${folder}/${definition.id}.jpg`);
         }
+
+        // Shared face-down texture — key must match CardGame.ts's CARD_BACK_KEY.
+        this.load.image('card-back', 'card-back/default.jpg');
     }
 
     create ()

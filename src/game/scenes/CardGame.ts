@@ -21,6 +21,9 @@ const CENTER_Y = GAME_HEIGHT / 2;
 
 const CARD_W = 155;
 const CARD_H = 220;
+
+// Shared face-down texture — key must match Preloader.ts's load.image call.
+const CARD_BACK_KEY = 'card-back';
 const HERO_RADIUS = 28;
 const HERO_SIZE = HERO_RADIUS * 2;
 const BOARD_ZONE_W = 1600;
@@ -805,11 +808,16 @@ export class CardGame extends Scene
 
         // An empty pile still draws one faded card outline rather than nothing, so the zone keeps
         // its slot in the column and stays clickable (an empty graveyard is the normal opening state).
+        // Only the deck pile uses the card-back texture — a deck is genuinely face-down, unlike a
+        // graveyard, which stays on the plain colored-rectangle stack it always had.
+        const showCardBack = zone === 'deck' && this.textures.exists(CARD_BACK_KEY);
         const layers = Math.min(3, Math.max(1, cards.length));
         for (let i = 0; i < layers; i++)
         {
             const offset = i * 4;
-            const card = this.add.rectangle(-offset, -offset, DECK_PILE_W, DECK_PILE_H, style.fill).setStrokeStyle(2, style.stroke);
+            const card = showCardBack
+                ? this.add.image(-offset, -offset, CARD_BACK_KEY).setDisplaySize(DECK_PILE_W, DECK_PILE_H)
+                : this.add.rectangle(-offset, -offset, DECK_PILE_W, DECK_PILE_H, style.fill).setStrokeStyle(2, style.stroke);
             if (cards.length === 0) card.setAlpha(0.3);
             container.add(card);
         }
@@ -1159,6 +1167,10 @@ export class CardGame extends Scene
             {
                 container.add(this.createKeywordLabels(instance, cursorY));
             }
+        }
+        else if (this.textures.exists(CARD_BACK_KEY))
+        {
+            container.add(this.add.image(0, 0, CARD_BACK_KEY).setDisplaySize(CARD_W, CARD_H));
         }
 
         container.setSize(CARD_W, CARD_H);
