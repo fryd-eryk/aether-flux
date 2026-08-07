@@ -1177,10 +1177,6 @@ export class CardGame extends Scene
                 container.add([attackBg, attackText, healthBg, healthText]);
             }
 
-            const typeText = this.add.text(0, CARD_H / 2 - 8, definition.type === 'minion' ? 'Minion' : 'Spell', TYPE_LABEL_STYLE)
-                .setOrigin(0.5, 1);
-            container.add(typeText);
-
             container.setSize(CARD_W, CARD_H);
             return container;
         }
