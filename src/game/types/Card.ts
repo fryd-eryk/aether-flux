@@ -15,11 +15,18 @@ export type TargetSelector =
     | 'allEnemyMinions'
     | 'allFriendlyMinions';
 
+/**
+ * Narrows what a `target: 'chosen'` action may be pointed at — e.g. "Deal 2 damage to a
+ * minion" must reject the enemy/friendly hero as a target, not just a `chosen` minion or hero.
+ * Ignored for every other TargetSelector, which already resolves to a fixed, unambiguous target.
+ */
+export type ChosenTargetRestriction = 'minion' | 'hero';
+
 export type EffectAction =
-    | { kind: 'damage'; amount: number; target: TargetSelector }
-    | { kind: 'heal'; amount: number; target: TargetSelector }
+    | { kind: 'damage'; amount: number; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
+    | { kind: 'heal'; amount: number; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
     | { kind: 'draw'; count: number }
-    | { kind: 'buff'; attack?: number; health?: number; target: TargetSelector }
+    | { kind: 'buff'; attack?: number; health?: number; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
     | { kind: 'summon'; definitionId: string; count: number };
 
 export interface CardEffect {
@@ -36,7 +43,6 @@ export interface CardDefinition {
     name: string;
     cost: number;
     type: CardType;
-    art: string;
     text: string;
     attack?: number;
     health?: number;

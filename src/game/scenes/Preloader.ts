@@ -33,13 +33,13 @@ export class Preloader extends Scene
     {
         this.load.setPath('assets');
 
-        // Each card's art id maps to a jpg under a type-named subfolder. Most don't have an
+        // Each card's id maps to a jpg under a type-named subfolder. Most don't have an
         // asset yet — a failed load just fires a per-file loaderror and leaves the texture
         // absent, which createCardContainer's this.textures.exists() check falls back on.
         for (const definition of Object.values(CARD_DEFINITIONS))
         {
             const folder = definition.type === 'minion' ? 'minions' : 'spells';
-            this.load.image(definition.art, `${folder}/${definition.art}.jpg`);
+            this.load.image(definition.id, `${folder}/${definition.id}.jpg`);
         }
     }
 
