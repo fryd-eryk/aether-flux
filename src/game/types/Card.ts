@@ -43,7 +43,6 @@ export interface CardDefinition {
     name: string;
     cost: number;
     type: CardType;
-    art: string;
     text: string;
     attack?: number;
     health?: number;

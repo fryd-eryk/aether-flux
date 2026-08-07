@@ -1124,7 +1124,7 @@ export class CardGame extends Scene
             const costText = this.add.text(CARD_W / 2 - 21, -CARD_H / 2 + 21, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(0.5);
             container.add([nameText, costBadge, costText]);
 
-            container.add(this.createArtVisual(definition.art));
+            container.add(this.createArtVisual(definition.id));
 
             if (definition.type === 'minion')
             {
