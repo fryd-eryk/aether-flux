@@ -19,8 +19,10 @@ const GAME_HEIGHT = 1080;
 const CENTER_X = GAME_WIDTH / 2;
 const CENTER_Y = GAME_HEIGHT / 2;
 
-const CARD_W = 155;
-const CARD_H = 220;
+// 2:3 ratio, matching the 832x1248 art assets exactly — so a full-bleed cover-fit (see
+// coverFit) never needs to crop, the art's own aspect ratio already fills the card exactly.
+const CARD_W = 150;
+const CARD_H = 225;
 
 // Shared face-down texture — key must match Preloader.ts's load.image call.
 const CARD_BACK_KEY = 'card-back';
@@ -110,24 +112,25 @@ const TYPE_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 
 const KEYWORD_LABEL_BASE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '11px', fontStyle: 'bold' };
 const MISSING_ASSET_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '10px', color: '#888888', align: 'center' };
 
-// Card art zone: ~65% of CARD_H, inset from the card's edges — shared by the art image/fallback
-// box and by the attack/health badges, which anchor to the art's bottom corners, not the card's.
+// No longer the art's own size — 'full' mode's art is full-bleed (CARD_W x CARD_H) same as
+// 'simplified', see createCardContainer. These now only position 'full' mode's footer (type/
+// rule text/keywords), which still sits where this ~65%-of-CARD_H zone used to end.
 const ART_W = CARD_W - 16;
 const ART_H = Math.round(CARD_H * 0.65);
 const ART_TOP = -CARD_H / 2 + 42;
 const ART_BOTTOM = ART_TOP + ART_H;
-const ART_CENTER_Y = ART_TOP + ART_H / 2;
 
 /** The two off-board card zones that get a pile visual and a click-to-inspect overlay. */
 type PileZone = 'deck' | 'graveyard';
 
 /**
  * How createCardContainer renders a card. 'full' is the detailed layout (hand, deck/graveyard
- * pile view, the played-card spotlight) — name/cost/inset art/stats/type/rule text/keywords.
- * 'simplified' is the battlefield-only layout — full-bleed art, name/cost/stats in the same
- * spots as 'full', type centered at the card's bottom edge, everything else omitted to
- * maximize art coverage in the cramped board row. 'faceDown' is the card-back, used for the
- * opponent's hand and its matching draw-animation preview.
+ * pile view, the played-card spotlight) — full-bleed art with name/cost/stats/type/rule text/
+ * keywords overlaid. 'simplified' is the battlefield-only layout — same full-bleed art and the
+ * same name/cost/stats corner badges as 'full' (attack/health mirror name/cost into the bottom
+ * corners), but no type/rule-text/keyword rows, to maximize clarity in the cramped board row.
+ * 'faceDown' is the card-back, used for the opponent's hand and its matching draw-animation
+ * preview.
  */
 type CardDisplayMode = 'full' | 'simplified' | 'faceDown';
 
@@ -180,7 +183,8 @@ export class CardGame extends Scene
     private cancelButton!: Phaser.GameObjects.Container;
     private helpBox!: Phaser.GameObjects.Container;
     private helpBoxBg!: Phaser.GameObjects.Rectangle;
-    private helpBoxText!: Phaser.GameObjects.Text;
+    /** Rebuilt fresh on every showHelpBox call — see its own comment for why this can't be one static Text. */
+    private helpBoxLines: Phaser.GameObjects.Text[] = [];
     private playerHealthText!: Phaser.GameObjects.Text;
     private playerManaText!: Phaser.GameObjects.Text;
     private opponentHealthText!: Phaser.GameObjects.Text;
@@ -674,10 +678,7 @@ export class CardGame extends Scene
     private createHelpBox (): void
     {
         this.helpBoxBg = this.add.rectangle(0, 0, 10, 10, 0x11151f, 0.95).setOrigin(0, 0).setStrokeStyle(1, 0x8fa8d6);
-        this.helpBoxText = this.add.text(10, 10, '', {
-            fontFamily: 'Arial', fontSize: '15px', color: '#ffffff', wordWrap: { width: 290 }
-        }).setOrigin(0, 0);
-        this.helpBox = this.add.container(0, 0, [this.helpBoxBg, this.helpBoxText]);
+        this.helpBox = this.add.container(0, 0, [this.helpBoxBg]);
         // Above PILE_VIEW_DEPTH — cards inside the pile-inspect overlay keep their keyword hover,
         // so the tooltip has to clear the overlay it is being read on top of.
         this.helpBox.setDepth(PILE_VIEW_DEPTH + 100);
@@ -1161,19 +1162,19 @@ export class CardGame extends Scene
 
         if (mode === 'simplified')
         {
-            // Full-bleed art behind name/cost/stats — no footer/rule-text/keyword rows, so the
-            // battlefield row reads as art-first. Stats keep 'full' mode's exact anchor points
-            // (the art zone's old bottom corners), per the "same place" spec — they just now sit
-            // over full-bleed art instead of the small inset.
+            // Full-bleed art behind everything — no type/rule-text/keyword rows, so the
+            // battlefield row reads as art-first. All four badges mirror each other into the
+            // card's corners: name/cost at top-left/top-right, attack/health at bottom-left/
+            // bottom-right, all at the same 21px inset.
             container.add(this.createArtVisual(definition.id, CARD_W, CARD_H, 0));
             container.add([nameText, costBadge, costText]);
 
             if (definition.type === 'minion')
             {
-                const attackBg = this.add.circle(-ART_W / 2 + 19, ART_BOTTOM - 23, 19, 0xd68f3f);
-                const attackText = this.add.text(-ART_W / 2 + 19, ART_BOTTOM - 23, `${instance.currentAttack ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
-                const healthBg = this.add.circle(ART_W / 2 - 19, ART_BOTTOM - 23, 19, 0xb0413e);
-                const healthText = this.add.text(ART_W / 2 - 19, ART_BOTTOM - 23, `${instance.currentHealth ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
+                const attackBg = this.add.circle(-CARD_W / 2 + 21, CARD_H / 2 - 21, 19, 0xd68f3f);
+                const attackText = this.add.text(-CARD_W / 2 + 21, CARD_H / 2 - 21, `${instance.currentAttack ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
+                const healthBg = this.add.circle(CARD_W / 2 - 21, CARD_H / 2 - 21, 19, 0xb0413e);
+                const healthText = this.add.text(CARD_W / 2 - 21, CARD_H / 2 - 21, `${instance.currentHealth ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
                 container.add([attackBg, attackText, healthBg, healthText]);
             }
 
@@ -1182,8 +1183,8 @@ export class CardGame extends Scene
         }
 
         // mode === 'full'
+        container.add(this.createArtVisual(definition.id, CARD_W, CARD_H, 0));
         container.add([nameText, costBadge, costText]);
-        container.add(this.createArtVisual(definition.id, ART_W, ART_H, ART_CENTER_Y));
 
         if (definition.type === 'minion')
         {
@@ -1303,15 +1304,42 @@ export class CardGame extends Scene
         container.on('pointerout', () => this.hideHelpBox());
     }
 
+    /**
+     * A plain Phaser Text can't mix styles within one string, so a colored/bold keyword label
+     * next to its plain-styled description needs two Text objects per keyword instead of one
+     * joined multi-line string — rebuilt every hover since the keyword set differs per card.
+     */
     private showHelpBox (instance: CardInstance): void
     {
-        const lines = [...instance.keywords].map((keyword) =>
+        this.helpBoxLines.forEach((line) => line.destroy());
+        this.helpBoxLines = [];
+
+        const margin = 10;
+        const maxWidth = 290;
+        let cursorY = margin;
+        let maxRight = 0;
+
+        for (const keyword of instance.keywords)
         {
             const meta = KEYWORD_METADATA[keyword];
-            return `${meta.label}: ${meta.description}`;
-        });
-        this.helpBoxText.setText(lines.join('\n\n'));
-        this.helpBoxBg.setSize(this.helpBoxText.width + 20, this.helpBoxText.height + 20);
+            const hex = `#${meta.color.toString(16).padStart(6, '0')}`;
+
+            const label = this.add.text(margin, cursorY, `${meta.label}: `, {
+                fontFamily: 'Arial', fontSize: '15px', color: hex, fontStyle: 'bold',
+            }).setOrigin(0, 0);
+            const description = this.add.text(margin + label.width, cursorY, meta.description, {
+                fontFamily: 'Arial', fontSize: '15px', color: '#ffffff',
+                wordWrap: { width: Math.max(40, maxWidth - label.width) },
+            }).setOrigin(0, 0);
+
+            this.helpBox.add([label, description]);
+            this.helpBoxLines.push(label, description);
+
+            maxRight = Math.max(maxRight, label.x + label.width, description.x + description.width);
+            cursorY += Math.max(label.height, description.height) + 14;
+        }
+
+        this.helpBoxBg.setSize(maxRight + margin, cursorY + margin - 4);
         this.helpBox.setVisible(true);
 
         const pointer = this.input.activePointer;
