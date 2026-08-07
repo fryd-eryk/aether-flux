@@ -825,9 +825,16 @@ export class CardGame extends Scene
         for (let i = 0; i < layers; i++)
         {
             const offset = i * 4;
-            const card = showCardBack
-                ? this.add.image(-offset, -offset, CARD_BACK_KEY).setDisplaySize(DECK_PILE_W, DECK_PILE_H)
-                : this.add.rectangle(-offset, -offset, DECK_PILE_W, DECK_PILE_H, style.fill).setStrokeStyle(2, style.stroke);
+            let card: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
+            if (showCardBack)
+            {
+                card = this.add.image(-offset, -offset, CARD_BACK_KEY);
+                this.coverFit(card, DECK_PILE_W, DECK_PILE_H);
+            }
+            else
+            {
+                card = this.add.rectangle(-offset, -offset, DECK_PILE_W, DECK_PILE_H, style.fill).setStrokeStyle(2, style.stroke);
+            }
             if (cards.length === 0) card.setAlpha(0.3);
             container.add(card);
         }
@@ -1133,7 +1140,9 @@ export class CardGame extends Scene
         {
             if (this.textures.exists(CARD_BACK_KEY))
             {
-                container.add(this.add.image(0, 0, CARD_BACK_KEY).setDisplaySize(CARD_W, CARD_H));
+                const back = this.add.image(0, 0, CARD_BACK_KEY);
+                this.coverFit(back, CARD_W, CARD_H);
+                container.add(back);
             }
             container.setSize(CARD_W, CARD_H);
             return container;
@@ -1223,12 +1232,42 @@ export class CardGame extends Scene
     {
         if (this.textures.exists(art))
         {
-            return [this.add.image(0, centerY, art).setDisplaySize(width, height)];
+            const image = this.add.image(0, centerY, art);
+            this.coverFit(image, width, height);
+            return [image];
         }
 
         const box = this.add.rectangle(0, centerY, width, height, 0x000000).setStrokeStyle(1, 0x333333);
         const label = this.add.text(0, centerY, 'MISSING ASSET', MISSING_ASSET_STYLE).setOrigin(0.5).setWordWrapWidth(width - 16, true);
         return [box, label];
+    }
+
+    /**
+     * CSS `background-size: cover; background-position: center` for a Phaser Image — fills
+     * exactly width x height with no stretching, cropping whichever axis overflows and keeping
+     * the crop centered. Crops the *source* texture to the target aspect ratio first (in texture
+     * pixels, via setCrop) and only then stretches that already-matching-aspect-ratio rectangle
+     * to fit via setDisplaySize — since the crop's aspect ratio already equals the target's, that
+     * final stretch is uniform and introduces no distortion.
+     */
+    private coverFit (image: Phaser.GameObjects.Image, width: number, height: number): void
+    {
+        const sourceW = image.width;
+        const sourceH = image.height;
+        const targetAspect = width / height;
+
+        if (sourceW / sourceH > targetAspect)
+        {
+            const cropW = sourceH * targetAspect;
+            image.setCrop((sourceW - cropW) / 2, 0, cropW, sourceH);
+        }
+        else
+        {
+            const cropH = sourceW / targetAspect;
+            image.setCrop(0, (sourceH - cropH) / 2, sourceW, cropH);
+        }
+
+        image.setDisplaySize(width, height);
     }
 
     /**
