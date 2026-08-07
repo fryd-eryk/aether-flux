@@ -149,7 +149,12 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "damage", amount: 2, target: "chosen", chosenRestriction: "minion" },
+                action: {
+                    kind: "damage",
+                    amount: 2,
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                },
             },
         ],
         rarity: "common",
@@ -211,7 +216,12 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "damage", amount: 3, target: "chosen", chosenRestriction: "minion" },
+                action: {
+                    kind: "damage",
+                    amount: 3,
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                },
             },
         ],
         rarity: "common",
@@ -397,7 +407,12 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "damage", amount: 5, target: "chosen", chosenRestriction: "minion" },
+                action: {
+                    kind: "damage",
+                    amount: 5,
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                },
             },
         ],
         rarity: "common",
@@ -479,7 +494,12 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "damage", amount: 4, target: "chosen", chosenRestriction: "minion" },
+                action: {
+                    kind: "damage",
+                    amount: 4,
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                },
             },
             { trigger: "onPlay", action: { kind: "draw", count: 1 } },
         ],
@@ -518,7 +538,12 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "damage", amount: 3, target: "chosen", chosenRestriction: "minion" },
+                action: {
+                    kind: "damage",
+                    amount: 3,
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                },
             },
         ],
         rarity: "rare",
@@ -700,9 +725,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
     },
-    "tempest-caller": {
-        id: "tempest-caller",
-        name: "Tempest Caller",
+    "tempest-call": {
+        id: "tempest-call",
+        name: "Tempest Call",
         cost: 6,
         type: "spell",
         text: "Deal 5 damage to all enemy minions.",
@@ -761,13 +786,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Apocalypse",
         cost: 8,
         type: "spell",
-        text: "Deal 10 damage to all enemy minions.",
+        text: "Deal 9 damage to all enemy minions.",
         effects: [
             {
                 trigger: "onPlay",
                 action: {
                     kind: "damage",
-                    amount: 10,
+                    amount: 9,
                     target: "allEnemyMinions",
                 },
             },
@@ -840,4 +865,3 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         health: 2,
     },
 };
-
