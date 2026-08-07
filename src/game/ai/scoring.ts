@@ -1,6 +1,6 @@
 import { CARD_DEFINITIONS } from '../data/cards';
 import { canDeclareAttack, hasKeyword } from '../state/keywordRules';
-import type { CardDefinition, CardInstance, EffectAction } from '../types/Card';
+import type { CardDefinition, CardInstance, ChosenTargetRestriction, EffectAction } from '../types/Card';
 import type { PlayerId } from '../types/common';
 import type { GameState } from '../types/GameState';
 
@@ -30,7 +30,14 @@ export function computePotentialFaceDamage(state: GameState, aiId: PlayerId): nu
             const damageEffect = definition.effects?.find(
                 (e) => e.trigger === 'onPlay' && e.action.kind === 'damage' && e.action.target === 'chosen'
             );
-            if (damageEffect && damageEffect.action.kind === 'damage') total += damageEffect.action.amount;
+            // A minion-restricted damage effect (e.g. Pocket Sand's "to a minion") can never hit face.
+            if (
+                damageEffect &&
+                damageEffect.action.kind === 'damage' &&
+                damageEffect.action.chosenRestriction !== 'minion'
+            ) {
+                total += damageEffect.action.amount;
+            }
         } else if (definition.keywords?.includes('charge')) {
             // A Charge minion could be played and swung at face for lethal in the same turn.
             total += definition.attack ?? 0;
@@ -74,7 +81,7 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
 
 /** Scores + picks a target for the one chosen-target effect a card is allowed (see TurnStateMachine.needsChosenTarget). */
 function scoreChosenTarget(state: GameState, aiId: PlayerId, action: EffectAction, lethalAvailable: boolean): ScoredTarget {
-    if (action.kind === 'damage') return scoreDamageSpell(state, aiId, action.amount, lethalAvailable);
+    if (action.kind === 'damage') return scoreDamageSpell(state, aiId, action.amount, lethalAvailable, action.chosenRestriction);
     if (action.kind === 'heal') return scoreHealSpell(state, aiId, action.amount);
     return { score: 0 };
 }
@@ -112,12 +119,21 @@ export function scorePlayCard(
     return { score: flatEffectValue + (chosenTarget?.score ?? 0), targetId: chosenTarget?.targetId };
 }
 
-function scoreDamageSpell(state: GameState, aiId: PlayerId, amount: number, lethalAvailable: boolean): ScoredTarget {
+function scoreDamageSpell(
+    state: GameState,
+    aiId: PlayerId,
+    amount: number,
+    lethalAvailable: boolean,
+    restriction?: ChosenTargetRestriction
+): ScoredTarget {
     const enemyId = opponentOf(aiId);
     const enemy = state.players[enemyId];
 
-    const faceScore = amount * (lethalAvailable ? 100 : 1.5);
-    let best: ScoredTarget = { score: faceScore, targetId: enemyId };
+    // A minion-restricted effect (e.g. "Deal 2 damage to a minion") isn't a legal way to hit
+    // face — see TurnStateMachine.computeValidTargets — so don't seed a face candidate for it.
+    // If no minion ends up scoring higher than this, the card just isn't worth playing right now.
+    let best: ScoredTarget =
+        restriction === 'minion' ? { score: -1 } : { score: amount * (lethalAvailable ? 100 : 1.5), targetId: enemyId };
 
     for (const minion of enemy.board) {
         const health = minion.currentHealth ?? 0;

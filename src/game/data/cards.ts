@@ -162,7 +162,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "damage", amount: 2, target: "chosen" },
+                action: { kind: "damage", amount: 2, target: "chosen", chosenRestriction: "minion" },
             },
         ],
         rarity: "common",
@@ -229,7 +229,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "damage", amount: 3, target: "chosen" },
+                action: { kind: "damage", amount: 3, target: "chosen", chosenRestriction: "minion" },
             },
         ],
         rarity: "common",
@@ -430,7 +430,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "damage", amount: 5, target: "chosen" },
+                action: { kind: "damage", amount: 5, target: "chosen", chosenRestriction: "minion" },
             },
         ],
         rarity: "common",
@@ -517,7 +517,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "damage", amount: 4, target: "chosen" },
+                action: { kind: "damage", amount: 4, target: "chosen", chosenRestriction: "minion" },
             },
             { trigger: "onPlay", action: { kind: "draw", count: 1 } },
         ],
@@ -559,7 +559,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "damage", amount: 3, target: "chosen" },
+                action: { kind: "damage", amount: 3, target: "chosen", chosenRestriction: "minion" },
             },
         ],
         rarity: "rare",

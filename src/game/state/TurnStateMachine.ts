@@ -1,7 +1,7 @@
 import { CARD_DEFINITIONS } from '../data/cards';
 import { createCardInstance } from '../data/cardFactory';
 import { EventBus } from '../EventBus';
-import type { CardInstance, EffectAction, EffectTrigger, TargetSelector } from '../types/Card';
+import type { CardInstance, ChosenTargetRestriction, EffectAction, EffectTrigger, TargetSelector } from '../types/Card';
 import type { PlayerId } from '../types/common';
 import type { GameState, PlayerState } from '../types/GameState';
 import { TurnPhase } from '../types/GameState';
@@ -227,12 +227,28 @@ export class TurnStateMachine {
             const attackableMinionIds = tauntRestrictedTargets(enemyBoard).map((c) => c.instanceId);
             return tauntUp ? attackableMinionIds : [opponentId, ...attackableMinionIds];
         }
-        return [
+
+        const allTargets = [
             ownerId,
             opponentId,
             ...this.gameState.players[ownerId].board.map((c) => c.instanceId),
             ...this.gameState.players[opponentId].board.map((c) => c.instanceId),
         ];
+
+        const restriction = this.chosenTargetRestriction(action.instanceId, ownerId);
+        if (restriction === 'minion') return allTargets.filter((id) => !this.isPlayerId(id));
+        if (restriction === 'hero') return allTargets.filter((id) => this.isPlayerId(id));
+        return allTargets;
+    }
+
+    /** The chosenRestriction (if any) of the onPlay effect that's about to prompt targeting for this hand card — see needsChosenTarget, which only enters AwaitingTarget for a card that has exactly one such effect. */
+    private chosenTargetRestriction(instanceId: string, ownerId: PlayerId): ChosenTargetRestriction | undefined {
+        const card = this.gameState.players[ownerId].hand.find((c) => c.instanceId === instanceId);
+        const definition = card ? CARD_DEFINITIONS[card.definitionId] : undefined;
+        const chosenEffect = definition?.effects?.find(
+            (e) => e.trigger === 'onPlay' && 'target' in e.action && e.action.target === 'chosen'
+        );
+        return chosenEffect && 'chosenRestriction' in chosenEffect.action ? chosenEffect.action.chosenRestriction : undefined;
     }
 
     private needsChosenTarget(effects: { action: EffectAction }[] | undefined): boolean {
