@@ -126,12 +126,10 @@ export class TurnStateMachine {
                 player.board.push(card);
             } else {
                 // Board full: the minion is discarded rather than played, since it has nowhere to be summoned.
-                card.zone = 'graveyard';
-                player.graveyard.push(card);
+                this.moveToGraveyard(card, player);
             }
         } else {
-            card.zone = 'graveyard';
-            player.graveyard.push(card);
+            this.moveToGraveyard(card, player);
         }
 
         this.setPhase(TurnPhase.Resolving);
@@ -305,6 +303,18 @@ export class TurnStateMachine {
 
     // --- damage / death --------------------------------------------------------
 
+    /** Moves a card to its owner's graveyard, resetting a minion's stats back to its definition's base attack/health — a dead or discarded minion shouldn't keep displaying whatever damage/buffs it had at the moment it left play. */
+    private moveToGraveyard(card: CardInstance, player: PlayerState): void {
+        const definition = CARD_DEFINITIONS[card.definitionId];
+        if (definition?.type === 'minion') {
+            card.currentAttack = definition.attack;
+            card.currentHealth = definition.health;
+            card.maxHealth = definition.health;
+        }
+        card.zone = 'graveyard';
+        player.graveyard.push(card);
+    }
+
     /** Returns the amount of damage actually applied (0 if absorbed by Divine Shield), so callers (e.g. Lifesteal) can react to what really landed. */
     private dealDamage(targetId: string, amount: number): number {
         if (this.isPlayerId(targetId)) {
@@ -356,8 +366,7 @@ export class TurnStateMachine {
 
             player.board = player.board.filter((c) => (c.currentHealth ?? 0) > 0);
             for (const card of dead) {
-                card.zone = 'graveyard';
-                player.graveyard.push(card);
+                this.moveToGraveyard(card, player);
                 EventBus.emit('state:card-died', { instanceId: card.instanceId });
                 this.triggerEffects(card, 'onDeath', player.id);
             }

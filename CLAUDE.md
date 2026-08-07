@@ -12,6 +12,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 No test suite or lint script is configured (`.eslintrc.json` only extends `next/core-web-vitals`, not wired to a script).
 
+## Git / worktrees
+
+`git push` from a worktree in this environment always hangs — it hits a pending
+login/credential-manager prompt that never resolves on its own (confirmed: a
+backgrounded push sat with zero output until manually killed). Don't retry it
+or wait it out. Commit your work in the worktree, then **stop and tell the
+user** the branch/commit is ready — they'll push and merge it into `main`
+themselves. Don't attempt the push, and don't try to merge a worktree branch
+into `main` as part of finishing a task.
+
 ## Architecture
 
 Next.js (`output: 'export'`, see `next.config.mjs`) renders a single page
