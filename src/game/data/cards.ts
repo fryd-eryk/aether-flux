@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (32) -----------------------------------------------------
+    // --- Common rarity (32) ---
     "goblin-skirmisher": {
         id: "goblin-skirmisher",
         name: "Goblin Skirmisher",
@@ -93,7 +93,15 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Anthem: Draw a card.",
         attack: 1,
         health: 1,
-        effects: [{ trigger: "onPlay", action: { kind: "draw", count: 1 } }],
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "draw",
+                    count: 1,
+                },
+            },
+        ],
         rarity: "common",
     },
     "radiant-light": {
@@ -105,7 +113,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "heal", amount: 6, target: "chosen" },
+                action: {
+                    kind: "heal",
+                    amount: 6,
+                    target: "chosen",
+                },
             },
         ],
         rarity: "common",
@@ -153,7 +165,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "heal", amount: 2, target: "friendlyHero" },
+                action: {
+                    kind: "heal",
+                    amount: 2,
+                    target: "friendlyHero",
+                },
             },
         ],
         rarity: "common",
@@ -188,7 +204,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onDeath",
-                action: { kind: "damage", amount: 1, target: "enemyHero" },
+                action: {
+                    kind: "damage",
+                    amount: 1,
+                    target: "enemyHero",
+                },
             },
         ],
         rarity: "common",
@@ -222,7 +242,15 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Anthem: Draw a card.",
         attack: 2,
         health: 2,
-        effects: [{ trigger: "onPlay", action: { kind: "draw", count: 1 } }],
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "draw",
+                    count: 1,
+                },
+            },
+        ],
         rarity: "common",
     },
     "riverstone-golem": {
@@ -256,7 +284,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "heal", amount: 4, target: "chosen" },
+                action: {
+                    kind: "heal",
+                    amount: 4,
+                    target: "chosen",
+                },
             },
         ],
         rarity: "common",
@@ -343,7 +375,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "damage", amount: 6, target: "chosen" },
+                action: {
+                    kind: "damage",
+                    amount: 6,
+                    target: "chosen",
+                },
             },
         ],
         rarity: "common",
@@ -364,7 +400,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         cost: 5,
         type: "minion",
         text: "",
-        attack: 3,
+        attack: 2,
         health: 7,
         keywords: ["taunt"],
         rarity: "common",
@@ -380,7 +416,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "heal", amount: 3, target: "friendlyHero" },
+                action: {
+                    kind: "heal",
+                    amount: 3,
+                    target: "friendlyHero",
+                },
             },
         ],
         rarity: "common",
@@ -405,7 +445,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
     },
 
-    // --- Rare rarity (16) --------------------------------------------------
+    // --- Rare rarity (16) ---
     "frenzied-cultist": {
         id: "frenzied-cultist",
         name: "Frenzied Cultist",
@@ -417,7 +457,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onDeath",
-                action: { kind: "damage", amount: 2, target: "enemyHero" },
+                action: {
+                    kind: "damage",
+                    amount: 2,
+                    target: "enemyHero",
+                },
             },
         ],
         rarity: "rare",
@@ -434,7 +478,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "startOfTurn",
-                action: { kind: "heal", amount: 2, target: "friendlyHero" },
+                action: {
+                    kind: "heal",
+                    amount: 2,
+                    target: "friendlyHero",
+                },
             },
         ],
         rarity: "rare",
@@ -448,7 +496,15 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 3,
         health: 2,
         keywords: ["taunt"],
-        effects: [{ trigger: "onDeath", action: { kind: "draw", count: 1 } }],
+        effects: [
+            {
+                trigger: "onDeath",
+                action: {
+                    kind: "draw",
+                    count: 1,
+                },
+            },
+        ],
         rarity: "rare",
     },
     "boneshard-finger": {
@@ -467,7 +523,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     chosenRestriction: "minion",
                 },
             },
-            { trigger: "onPlay", action: { kind: "draw", count: 1 } },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "draw",
+                    count: 1,
+                },
+            },
         ],
         rarity: "rare",
     },
@@ -500,7 +562,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "",
         attack: 4,
         health: 5,
-        keywords: ["taunt", "divineShield"],
+        keywords: ["taunt","divineShield"],
         rarity: "rare",
     },
     "emberheart-shaman": {
@@ -553,7 +615,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onDeath",
-                action: { kind: "damage", amount: 3, target: "enemyHero" },
+                action: {
+                    kind: "damage",
+                    amount: 3,
+                    target: "enemyHero",
+                },
             },
         ],
         rarity: "rare",
@@ -589,7 +655,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "heal", amount: 6, target: "friendlyHero" },
+                action: {
+                    kind: "heal",
+                    amount: 6,
+                    target: "friendlyHero",
+                },
             },
             {
                 trigger: "onPlay",
@@ -613,7 +683,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onDeath",
-                action: { kind: "damage", amount: 4, target: "enemyHero" },
+                action: {
+                    kind: "damage",
+                    amount: 4,
+                    target: "enemyHero",
+                },
             },
         ],
         rarity: "rare",
@@ -630,7 +704,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "heal", amount: 8, target: "friendlyHero" },
+                action: {
+                    kind: "heal",
+                    amount: 8,
+                    target: "friendlyHero",
+                },
             },
         ],
         rarity: "rare",
@@ -684,13 +762,17 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "endOfTurn",
-                action: { kind: "damage", amount: 1, target: "enemyHero" },
+                action: {
+                    kind: "damage",
+                    amount: 1,
+                    target: "enemyHero",
+                },
             },
         ],
         rarity: "rare",
     },
 
-    // --- Exotic rarity (8) --------------------------------------------------
+    // --- Exotic rarity (8) ---
     "charging-direwolf": {
         id: "charging-direwolf",
         name: "Charging Direwolf",
@@ -699,7 +781,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "",
         attack: 5,
         health: 4,
-        keywords: ["charge", "windfury"],
+        keywords: ["charge","windfury"],
         rarity: "exotic",
     },
     "cinderplume-phoenix": {
@@ -740,9 +822,19 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: { kind: "heal", amount: 12, target: "friendlyHero" },
+                action: {
+                    kind: "heal",
+                    amount: 12,
+                    target: "friendlyHero",
+                },
             },
-            { trigger: "onPlay", action: { kind: "draw", count: 3 } },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "draw",
+                    count: 3,
+                },
+            },
         ],
         rarity: "exotic",
     },
@@ -758,7 +850,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "startOfTurn",
-                action: { kind: "heal", amount: 2, target: "friendlyHero" },
+                action: {
+                    kind: "heal",
+                    amount: 2,
+                    target: "friendlyHero",
+                },
             },
         ],
         rarity: "exotic",
@@ -771,11 +867,15 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Deathcry: Deal 8 damage to the enemy hero.",
         attack: 8,
         health: 8,
-        keywords: ["taunt", "divineShield"],
+        keywords: ["taunt","divineShield"],
         effects: [
             {
                 trigger: "onDeath",
-                action: { kind: "damage", amount: 8, target: "enemyHero" },
+                action: {
+                    kind: "damage",
+                    amount: 8,
+                    target: "enemyHero",
+                },
             },
         ],
         rarity: "exotic",
@@ -814,11 +914,15 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Vigil: Restore 4 Health to your hero.",
         attack: 5,
         health: 10,
-        keywords: ["taunt", "divineShield"],
+        keywords: ["taunt","divineShield"],
         effects: [
             {
                 trigger: "startOfTurn",
-                action: { kind: "heal", amount: 4, target: "friendlyHero" },
+                action: {
+                    kind: "heal",
+                    amount: 4,
+                    target: "friendlyHero",
+                },
             },
         ],
         rarity: "exotic",
@@ -831,7 +935,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Anthem: Give your minions +1/+2.",
         attack: 5,
         health: 6,
-        keywords: ["lifesteal", "windfury"],
+        keywords: ["lifesteal","windfury"],
         effects: [
             {
                 trigger: "onPlay",

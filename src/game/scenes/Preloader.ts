@@ -44,6 +44,12 @@ export class Preloader extends Scene
 
         // Shared face-down texture — key must match CardGame.ts's CARD_BACK_KEY.
         this.load.image('card-back', 'card-back/default.jpg');
+
+        // 'full' mode's header/footer bars — pre-authored PNGs with the decorative mana-cost swirl
+        // and the rounded-corner shape already baked into their alpha channels. Keys must match
+        // cardLayout.ts's HEADER_BG_KEY/FOOTER_BG_KEY.
+        this.load.image('card-header-bg', 'textures/card-header-bg.png');
+        this.load.image('card-footer-bg', 'textures/card-footer-bg.png');
     }
 
     create ()

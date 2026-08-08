@@ -52,6 +52,12 @@ SPEC.md for the React↔Phaser bridge and the Next.js/Phaser import gotcha.
 dependency) → `src/game/scenes/CardGame.ts` (renders state, forwards input)
 → `src/game/ai/OpponentAI.ts` + `scoring.ts` (opponent's turn).
 
+**Card authoring**: prefer the visual editor at `/card-creator`
+(`src/cardCreator/`) over hand-editing `cards.ts` — live 1:1 preview via the
+real `CardView` code, type-checked form, saves straight to `cards.ts` via the
+browser's File System Access API (Chrome/Edge only). See SPEC.md's "Card
+Creator" section for how it's wired up.
+
 ## Game design decisions
 
 Things that look fixable but are deliberate — don't silently "correct" these;
@@ -78,6 +84,17 @@ design, not a bug fix.
   text says "a minion" (or "a hero") must set `chosenRestriction` to match, or
   it silently accepts illegal targets — see SPEC.md's "Card design
   conventions" before adding a new targeted effect.
+- **Every new rule (keyword, effect kind, targeting behavior) must be checked
+  against the opponent AI, not just the player-facing path.** `ai/scoring.ts`
+  (`scorePlayCard`, `scoreAttack`, `computePotentialFaceDamage`) and
+  `OpponentAI.ts` are hand-authored heuristics — they don't infer new mechanics
+  from `TurnStateMachine`/`keywordRules.ts` automatically, so the opponent can
+  silently misplay (or soft-lock) a new rule that renders and enforces
+  correctly for the player. This applies whether the new card/rule was added
+  by hand or via the Card Creator (`/card-creator`) — that tool only edits
+  `cards.ts`, it never touches `ai/scoring.ts`. Actually watch the AI play the
+  new card (or trace it through `scoring.ts` by hand) before considering the
+  change done.
 
 ## Gotchas & Lessons Learned
 

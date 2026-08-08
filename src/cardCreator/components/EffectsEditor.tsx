@@ -1,0 +1,334 @@
+import type {
+    CardDefinition,
+    CardEffect,
+    ChosenTargetRestriction,
+    EffectAction,
+    EffectTrigger,
+    TargetSelector,
+} from '@/game/types/Card';
+import { TRIGGER_METADATA } from '@/game/data/triggerMetadata';
+import type { FieldErrors } from '../validateCardDefinition';
+import styles from '@/styles/CardCreator.module.css';
+
+const TRIGGERS = Object.keys(TRIGGER_METADATA) as EffectTrigger[];
+const ACTION_KINDS: EffectAction['kind'][] = ['damage', 'heal', 'draw', 'buff', 'summon'];
+const TARGETS: TargetSelector[] = ['self', 'enemyHero', 'friendlyHero', 'chosen', 'allEnemyMinions', 'allFriendlyMinions'];
+const RESTRICTIONS: ChosenTargetRestriction[] = ['minion', 'hero'];
+
+function defaultActionFor(kind: EffectAction['kind']): EffectAction {
+    switch (kind) {
+        case 'damage':
+        case 'heal':
+            return { kind, amount: 1, target: 'chosen', chosenRestriction: 'minion' };
+        case 'draw':
+            return { kind, count: 1 };
+        case 'buff':
+            return { kind, attack: 1, health: 1, target: 'allFriendlyMinions' };
+        case 'summon':
+            return { kind, definitionId: '', count: 1 };
+    }
+}
+
+interface EffectsEditorProps {
+    effects: CardEffect[];
+    onChange: (effects: CardEffect[]) => void;
+    errors: FieldErrors;
+    allCards: Record<string, CardDefinition>;
+}
+
+export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEditorProps) {
+    const summonOptions = Object.values(allCards).sort((a, b) => a.name.localeCompare(b.name));
+
+    function updateEffect(index: number, next: CardEffect) {
+        onChange(effects.map((effect, i) => (i === index ? next : effect)));
+    }
+
+    function removeEffect(index: number) {
+        onChange(effects.filter((_, i) => i !== index));
+    }
+
+    function moveEffect(index: number, delta: number) {
+        const target = index + delta;
+        if (target < 0 || target >= effects.length) return;
+        const next = effects.slice();
+        [next[index], next[target]] = [next[target], next[index]];
+        onChange(next);
+    }
+
+    function addEffect() {
+        onChange([...effects, { trigger: 'onPlay', action: defaultActionFor('damage') }]);
+    }
+
+    return (
+        <div>
+            {effects.map((effect, index) => {
+                const prefix = `effects.${index}`;
+                const action = effect.action;
+                const isChosen = 'target' in action && action.target === 'chosen';
+
+                return (
+                    <div key={index} className={styles.effectRow}>
+                        <div className={styles.effectRowHeader}>
+                            <select
+                                className={styles.selectInput}
+                                style={{ width: 'auto' }}
+                                value={effect.trigger}
+                                onChange={(e) => updateEffect(index, { ...effect, trigger: e.target.value as EffectTrigger })}
+                            >
+                                {TRIGGERS.map((trigger) => (
+                                    <option key={trigger} value={trigger}>
+                                        {TRIGGER_METADATA[trigger].label} ({trigger})
+                                    </option>
+                                ))}
+                            </select>
+                            <select
+                                className={styles.selectInput}
+                                style={{ width: 'auto' }}
+                                value={action.kind}
+                                onChange={(e) =>
+                                    updateEffect(index, { ...effect, action: defaultActionFor(e.target.value as EffectAction['kind']) })
+                                }
+                            >
+                                {ACTION_KINDS.map((kind) => (
+                                    <option key={kind} value={kind}>
+                                        {kind}
+                                    </option>
+                                ))}
+                            </select>
+                            <div className={styles.effectRowButtons}>
+                                <button type="button" className={styles.smallButton} disabled={index === 0} onClick={() => moveEffect(index, -1)}>
+                                    ↑
+                                </button>
+                                <button
+                                    type="button"
+                                    className={styles.smallButton}
+                                    disabled={index === effects.length - 1}
+                                    onClick={() => moveEffect(index, 1)}
+                                >
+                                    ↓
+                                </button>
+                                <button type="button" className={styles.smallButton} onClick={() => removeEffect(index)}>
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className={styles.fieldRow}>
+                            {(action.kind === 'damage' || action.kind === 'heal') && (
+                                <>
+                                    <div className={styles.field}>
+                                        <label className={styles.fieldLabel}>Amount</label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            step={1}
+                                            className={styles.numberInput}
+                                            value={action.amount}
+                                            onChange={(e) =>
+                                                updateEffect(index, { ...effect, action: { ...action, amount: Number(e.target.value) } })
+                                            }
+                                        />
+                                        {errors[`${prefix}.amount`] && <span className={styles.fieldError}>{errors[`${prefix}.amount`]}</span>}
+                                    </div>
+                                    <div className={styles.field}>
+                                        <label className={styles.fieldLabel}>Target</label>
+                                        <select
+                                            className={styles.selectInput}
+                                            value={action.target}
+                                            onChange={(e) => {
+                                                const target = e.target.value as TargetSelector;
+                                                // Leaving chosenRestriction unset when target is 'chosen' is a legitimate
+                                                // choice (e.g. Firebolt/Radiant Light target "any minion or hero") — only
+                                                // force-clear it when target moves away from 'chosen' entirely, don't
+                                                // invent a restriction that wasn't there.
+                                                const chosenRestriction = target === 'chosen' ? action.chosenRestriction : undefined;
+                                                updateEffect(index, { ...effect, action: { ...action, target, chosenRestriction } });
+                                            }}
+                                        >
+                                            {TARGETS.map((target) => (
+                                                <option key={target} value={target}>
+                                                    {target}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {isChosen && (
+                                        <div className={styles.field}>
+                                            <label className={styles.fieldLabel}>Chosen restriction</label>
+                                            <select
+                                                className={styles.selectInput}
+                                                value={action.chosenRestriction ?? ''}
+                                                onChange={(e) =>
+                                                    updateEffect(index, {
+                                                        ...effect,
+                                                        action: {
+                                                            ...action,
+                                                            chosenRestriction: e.target.value === '' ? undefined : (e.target.value as ChosenTargetRestriction),
+                                                        },
+                                                    })
+                                                }
+                                            >
+                                                <option value="">— any (minion or hero) —</option>
+                                                {RESTRICTIONS.map((restriction) => (
+                                                    <option key={restriction} value={restriction}>
+                                                        {restriction}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {errors[`${prefix}.chosenRestriction`] && (
+                                                <span className={styles.fieldError}>{errors[`${prefix}.chosenRestriction`]}</span>
+                                            )}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {action.kind === 'draw' && (
+                                <div className={styles.field}>
+                                    <label className={styles.fieldLabel}>Count</label>
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        step={1}
+                                        className={styles.numberInput}
+                                        value={action.count}
+                                        onChange={(e) =>
+                                            updateEffect(index, { ...effect, action: { ...action, count: Number(e.target.value) } })
+                                        }
+                                    />
+                                    {errors[`${prefix}.count`] && <span className={styles.fieldError}>{errors[`${prefix}.count`]}</span>}
+                                </div>
+                            )}
+
+                            {action.kind === 'buff' && (
+                                <>
+                                    <div className={styles.field}>
+                                        <label className={styles.fieldLabel}>Attack</label>
+                                        <input
+                                            type="number"
+                                            step={1}
+                                            className={styles.numberInput}
+                                            value={action.attack ?? ''}
+                                            onChange={(e) =>
+                                                updateEffect(index, {
+                                                    ...effect,
+                                                    action: { ...action, attack: e.target.value === '' ? undefined : Number(e.target.value) },
+                                                })
+                                            }
+                                        />
+                                        {errors[`${prefix}.attack`] && <span className={styles.fieldError}>{errors[`${prefix}.attack`]}</span>}
+                                    </div>
+                                    <div className={styles.field}>
+                                        <label className={styles.fieldLabel}>Health</label>
+                                        <input
+                                            type="number"
+                                            step={1}
+                                            className={styles.numberInput}
+                                            value={action.health ?? ''}
+                                            onChange={(e) =>
+                                                updateEffect(index, {
+                                                    ...effect,
+                                                    action: { ...action, health: e.target.value === '' ? undefined : Number(e.target.value) },
+                                                })
+                                            }
+                                        />
+                                    </div>
+                                    <div className={styles.field}>
+                                        <label className={styles.fieldLabel}>Target</label>
+                                        <select
+                                            className={styles.selectInput}
+                                            value={action.target}
+                                            onChange={(e) => {
+                                                const target = e.target.value as TargetSelector;
+                                                // Leaving chosenRestriction unset when target is 'chosen' is a legitimate
+                                                // choice (e.g. Firebolt/Radiant Light target "any minion or hero") — only
+                                                // force-clear it when target moves away from 'chosen' entirely, don't
+                                                // invent a restriction that wasn't there.
+                                                const chosenRestriction = target === 'chosen' ? action.chosenRestriction : undefined;
+                                                updateEffect(index, { ...effect, action: { ...action, target, chosenRestriction } });
+                                            }}
+                                        >
+                                            {TARGETS.map((target) => (
+                                                <option key={target} value={target}>
+                                                    {target}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {isChosen && (
+                                        <div className={styles.field}>
+                                            <label className={styles.fieldLabel}>Chosen restriction</label>
+                                            <select
+                                                className={styles.selectInput}
+                                                value={action.chosenRestriction ?? ''}
+                                                onChange={(e) =>
+                                                    updateEffect(index, {
+                                                        ...effect,
+                                                        action: {
+                                                            ...action,
+                                                            chosenRestriction: e.target.value === '' ? undefined : (e.target.value as ChosenTargetRestriction),
+                                                        },
+                                                    })
+                                                }
+                                            >
+                                                <option value="">— any (minion or hero) —</option>
+                                                {RESTRICTIONS.map((restriction) => (
+                                                    <option key={restriction} value={restriction}>
+                                                        {restriction}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {action.kind === 'summon' && (
+                                <>
+                                    <div className={styles.field}>
+                                        <label className={styles.fieldLabel}>Summon</label>
+                                        <select
+                                            className={styles.selectInput}
+                                            value={action.definitionId}
+                                            onChange={(e) =>
+                                                updateEffect(index, { ...effect, action: { ...action, definitionId: e.target.value } })
+                                            }
+                                        >
+                                            <option value="">— pick a card —</option>
+                                            {summonOptions.map((card) => (
+                                                <option key={card.id} value={card.id}>
+                                                    {card.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {errors[`${prefix}.definitionId`] && (
+                                            <span className={styles.fieldError}>{errors[`${prefix}.definitionId`]}</span>
+                                        )}
+                                    </div>
+                                    <div className={styles.field}>
+                                        <label className={styles.fieldLabel}>Count</label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            step={1}
+                                            className={styles.numberInput}
+                                            value={action.count}
+                                            onChange={(e) =>
+                                                updateEffect(index, { ...effect, action: { ...action, count: Number(e.target.value) } })
+                                            }
+                                        />
+                                        {errors[`${prefix}.count`] && <span className={styles.fieldError}>{errors[`${prefix}.count`]}</span>}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                );
+            })}
+
+            <button type="button" className={styles.addEffectButton} onClick={addEffect}>
+                + Add effect
+            </button>
+        </div>
+    );
+}

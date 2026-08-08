@@ -125,12 +125,16 @@ export const KEYWORD_SEPARATOR_STYLE: Phaser.Types.GameObjects.Text.TextStyle = 
 export const MISSING_ASSET_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '10px', color: '#888888', align: 'center' };
 export const PILL_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '9px', color: '#ffffff', fontStyle: 'bold' }, 2);
 export const STAT_FUSED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial Black', fontSize: '15px', color: '#ffffff' });
+// 'full' mode's inset atk/hp box (createStatBadgeInset) sits on an opaque white background, so the
+// art-legibility stroke trick the rest of on-card text relies on would just look muddy here — plain
+// dark text instead.
+export const STAT_FUSED_LIGHT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial Black', fontSize: '12px', color: '#1a1a2e' };
 
 // New card layout constants (createCardContainer) — starting points tuned by eye against
-// src/refs/card-layout-ref.png, not pixel-perfect gospel.
-export const HEADER_H = 30; // top gradient band height, holding the title
-export const FOOTER_H = 64; // 'full' mode's bottom gradient band height (keywords + rule text), sits just above the type banner
-export const TYPE_BANNER_H = 18; // 'full' mode's bottom-edge green type bar
+// src/refs/card-layout-ref-v1.png (superseded for 'full' mode by v2, see below), not pixel-perfect gospel.
+export const HEADER_H = 30; // top band height, holding the title — shared by 'full' and 'simplified'
+// COST_BADGE_R stays 'simplified'-mode-only now (its 'full' mode counterpart no longer overflows the
+// corner) — also still used by HelpBoxController's own independent tooltip cost badge.
 export const COST_BADGE_R = 22; // cost circle, centered exactly on the card's top-right corner so it overflows both edges
 // ATKHP_W / ATKHP_H (fused atk/hp box) are declared up near CARD_W/CARD_H — see the comment there.
 export const PILL_H = 14;
@@ -140,19 +144,52 @@ export const PILL_INSET_X = 6;
 export const PILL_INSET_Y = 8; // 'simplified' mode's bottom-left keyword/trigger pill stack
 export const TOOLTIP_COST_CLEARANCE = 14; // extra top padding in the hover tooltip when it draws its own overflowing cost badge
 
+// 'full' mode layout (v2 — src/refs/card-layout-ref-v2.jpg): the header/footer bars are pre-authored
+// PNGs (art-legibility swirl and the "rounded corners descending down the card's sides" shape are
+// both baked into their alpha channels — see createHeaderFull/createFooterBar) rather than
+// hand-drawn Graphics, plus a semi-transparent rounded description box that grows upward from a
+// fixed bottom anchor. Both PNGs are authored at 832px wide — the same native width as the card art
+// (see CARD_W's comment) — so rendering them at CARD_W via fitWidth keeps them pixel-aligned with
+// the art underneath; their *content* positioning (title/cost/dot/type/atk-hp text) is then tuned by
+// eye against their "flat bar" region (the part that's opaque across the full width — the sides taper
+// down/up into transparency beyond that), like the rest of this file.
+export const HEADER_BG_KEY = 'card-header-bg';
+export const FOOTER_BG_KEY = 'card-footer-bg';
+export const HEADER_CONTENT_H_FULL = 16; // header PNG's flat-bar height at CARD_W scale (86px @ 832px native) — title/cost text center on this, not the full (taller, tapering) image height
+export const FOOTER_BAR_H = 14; // footer PNG's flat-bar height at CARD_W scale (78px @ 832px native) — rarity dot/type/atk-hp center on this
+export const RARITY_DOT_R = 4;
+export const RARITY_DOT_INSET = 8; // gap from the card's left/bottom edges to the dot's center
+export const ATKHP_W_FULL = 34; // 'full' mode's inset (non-overflowing) atk/hp box — distinct from ATKHP_W/H above, which stay 'simplified'-mode-only
+export const ATKHP_H_FULL = 13;
+export const ATKHP_BOX_RADIUS = 3;
+export const ATKHP_INSET = 6; // gap from the card's right edge to the inset atk/hp box
+export const DESC_BOX_RADIUS = 5;
+export const DESC_BOX_INSET_X = 4; // gap from the card's left/right edges to the description box
+export const DESC_BOX_PAD_Y = 8; // internal top/bottom padding between the box edge and its text
+export const DESC_BOX_KEYWORD_LINE_H = 14; // fixed height budgeted for the keyword line, matching createKeywordLabels' font metrics
+export const DESC_BOX_LINE_GAP = 2; // gap between the keyword line and the rule text below it
+// Fixed bottom anchor the description box's *content* (text) is pinned to — see
+// createDescriptionBox. Deliberately a literal, not derived from FOOTER_BAR_H — the box's drawn
+// background is separately stretched down past this anchor to CARD_H / 2 so it visually continues
+// behind the footer bar (which paints over it on top), but that must never move where the text
+// itself lands, so the two are intentionally decoupled.
+export const DESC_BOX_BOTTOM_Y = CARD_H / 2 - 18;
+
 /** The two off-board card zones that get a pile visual and a click-to-inspect overlay. */
 export type PileZone = 'deck' | 'graveyard';
 
 /**
  * How createCardContainer renders a card. 'full' is the detailed layout (hand, deck/graveyard
- * pile view, the played-card spotlight) — full-bleed art with a gradient header (title + an
- * overflowing cost badge) and a gradient footer (keyword labels, then rule text) plus a bottom
- * type banner and a fused, overflowing atk/hp box. 'simplified' is the battlefield-only layout —
- * same full-bleed art and header/title, but no cost badge, no footer/rule-text/type banner; a
+ * pile view, the played-card spotlight) — full-bleed art with a solid header (title + an inset,
+ * non-overflowing mana-cost number over a masked decorative texture), a semi-transparent rounded
+ * description box (keyword labels then rule text) that grows upward from a fixed bottom anchor so
+ * its last line always lands in the same place, and a solid footer bar (gradient-filled rarity dot
+ * + type text, plus an inset atk/hp box). 'simplified' is the battlefield-only layout — same
+ * full-bleed art and gradient header/title, but no cost badge, no description box/footer bar; a
  * minion's keywords and triggered-effect flavor words instead render as compact bottom-left
- * pills (see createStatusPills), to keep the cramped board row as clutter-free as possible.
- * 'faceDown' is the card-back, used for the opponent's hand and its matching draw-animation
- * preview.
+ * pills (see createStatusPills), and its atk/hp uses the older overflowing corner box, to keep the
+ * cramped board row as clutter-free as possible. 'faceDown' is the card-back, used for the
+ * opponent's hand and its matching draw-animation preview.
  */
 export type CardDisplayMode = 'full' | 'simplified' | 'faceDown';
 
@@ -200,4 +237,17 @@ export function coverFit(image: Phaser.GameObjects.Image, width: number, height:
     }
 
     image.setDisplaySize(width, height);
+}
+
+/**
+ * Scales a Phaser Image to an exact target width, preserving its native aspect ratio (no crop) —
+ * unlike coverFit, which fills a fixed box by cropping. Used for the 'full' mode header/footer PNGs
+ * (createHeaderFull/createFooterBar), which are authored at CARD_W's native art resolution (832px
+ * wide) and must render at their real proportions, alpha-shaped edges included, rather than being
+ * force-fit into a hand-picked box.
+ */
+export function fitWidth(image: Phaser.GameObjects.Image, width: number): void
+{
+    const scale = width / image.width;
+    image.setDisplaySize(width, image.height * scale);
 }
