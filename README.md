@@ -1,6 +1,6 @@
 # Card Game
 
-A simplified Hearthstone-style 2D card game, built with [Phaser 4](https://github.com/phaserjs/phaser)
+A simplified 2D card game (MTG / Hearthstone), built with [Phaser 4](https://github.com/phaserjs/phaser)
 and [Next.js](https://github.com/vercel/next.js), started from Phaser Studio's official
 Next.js template.
 

@@ -1,142 +1,57 @@
 import { Geom, Scene } from 'phaser';
 
-import { decideOpponentAction } from '../ai/OpponentAI';
-import { CARD_DEFINITIONS } from '../data/cards';
-import { generateDeck } from '../data/deckGenerator';
-import { KEYWORD_METADATA } from '../data/keywordMetadata';
-import { EventBus } from '../EventBus';
-import { canDeclareAttack, hasKeyword } from '../state/keywordRules';
-import { createInitialState } from '../state/createInitialState';
-import { TurnStateMachine } from '../state/TurnStateMachine';
-import type { CardInstance } from '../types/Card';
-import type { PlayerId } from '../types/common';
-import type { GameState, PlayerState } from '../types/GameState';
-import { TurnPhase } from '../types/GameState';
-
-// Base game resolution — must match the `width`/`height` in game/main.ts's Scale config.
-const GAME_WIDTH = 1920;
-const GAME_HEIGHT = 1080;
-const CENTER_X = GAME_WIDTH / 2;
-const CENTER_Y = GAME_HEIGHT / 2;
-
-// 2:3 ratio, matching the 832x1248 art assets exactly — so a full-bleed cover-fit (see
-// coverFit) never needs to crop, the art's own aspect ratio already fills the card exactly.
-const CARD_W = 150;
-const CARD_H = 225;
-
-// Shared face-down texture — key must match Preloader.ts's load.image call.
-const CARD_BACK_KEY = 'card-back';
-const HERO_RADIUS = 28;
-const HERO_SIZE = HERO_RADIUS * 2;
-const BOARD_ZONE_W = 1600;
-
-// Row Y-positions are hand-tuned so hero/board rows and the two hand states below clear each
-// other with a small gap given CARD_H/HERO_RADIUS above — see the git history of this file if
-// those change again.
-//
-// Hands no longer occupy a permanent dedicated row. Each hand rests "poked" against its owner's
-// screen edge — card center pinned exactly on the edge, so only the CARD_H/2 half that's on-screen
-// is visible (Phaser/the canvas clips the rest for free, no mask needed) — and its owner's hero
-// overlaps that poke, drawn on top via HERO_DEPTH, like the hero is standing in front of a mostly
-// tucked-away fan of cards. The opponent's hand *only* ever exists in this poked state (see the
-// "twist" in wirePlayerHandPeekEvents — hovering it does nothing). The player's hand additionally has a
-// "peeked" state, entered by hovering the trigger band below the battlefield (see
-// PEEK_TRIGGER_*): the hand rises to PLAYER_HAND_PEEK_Y (fully visible) and the hero rises off the
-// poke to PLAYER_HERO_PEEK_Y (just clear of the battlefield) so neither obscures the other. Both
-// are derived from PLAYER_BOARD_Y (via PEEK_GAP) so the peeked hand+hero always fit exactly
-// between the board and the bottom edge: 767 (board bottom) + 14 (gap) + 56 (hero) + 14 (gap) +
-// 220 (hand) + 9 (margin) = 1080.
-//
-// Freeing the opponent's hand from its own row lets OPPONENT_BOARD_Y move up (it no longer needs
-// to clear a full hand row below the opponent's hero), which in turn opens up a deliberately
-// generous gap between the two boards — the freed space's biggest single beneficiary, giving the
-// battlefield itself more visual weight instead of the two rows sitting seam-to-seam.
-const OPPONENT_HERO_Y = 37;
-const OPPONENT_HAND_Y = 0; // poked flush against the top edge — always, see above
-const OPPONENT_BOARD_Y = 265;
-const PLAYER_BOARD_Y = 657;
-const PLAYER_HAND_POKE_Y = GAME_HEIGHT; // poked flush against the bottom edge
-const PLAYER_HERO_Y = 1043; // idle, i.e. poked-hand state
-
-const PEEK_GAP = 14;
-const PLAYER_HERO_PEEK_Y = PLAYER_BOARD_Y + CARD_H / 2 + PEEK_GAP + HERO_RADIUS;
-const PLAYER_HAND_PEEK_Y = PLAYER_HERO_PEEK_Y + HERO_RADIUS + PEEK_GAP + CARD_H / 2;
-
-// Hero containers must out-rank hand containers' depth (hand fans out over 0..handSize-1 — see
-// renderHand) so each hero visually sits in front of its own poked hand rather than being
-// half-buried under it, while staying well clear of drag(1000)/animation depths above.
-const HERO_DEPTH = 100;
-
-// Hovering this band under the battlefield toggles the player's hand between poked and peeked
-// (see wirePlayerHandPeekEvents). It's exactly the row-layout footprint (rowLayout's BOARD_ZONE_W-wide
-// span) from the board's bottom edge down to the screen edge, so it naturally covers the poke
-// sliver, the fully peeked hand, and the peeked hero without also catching the End Turn/Cancel
-// buttons or the deck/graveyard piles, which all live further out at PILE_X.
-const PEEK_TRIGGER_Y = PLAYER_BOARD_Y + CARD_H / 2;
-const PEEK_TRIGGER_X_MIN = CENTER_X - BOARD_ZONE_W / 2;
-const PEEK_TRIGGER_X_MAX = CENTER_X + BOARD_ZONE_W / 2;
-
-// Deck/graveyard piles share the end-turn/cancel buttons' column, offset further right so hand
-// cards (which can extend close to x=1760 at max hand size) never overlap them.
-const PILE_X = 1860;
-const OPPONENT_DECK_Y = 300;
-const PLAYER_DECK_Y = 750;
-const DECK_PILE_W = 80;
-const DECK_PILE_H = 100;
-
-// Each player's graveyard sits one row from its own deck, on that player's side of the column:
-// the player's below its deck, the opponent's above its deck. PILE_ROW_GAP has to clear a pile's
-// *full* drawn extent — the stack offset and zone label above it, the count label below it
-// (~152px in total) — not merely DECK_PILE_H, or the two piles' labels overlap.
-const PILE_ROW_GAP = 165;
-const OPPONENT_GRAVEYARD_Y = OPPONENT_DECK_Y - PILE_ROW_GAP;
-const PLAYER_GRAVEYARD_Y = PLAYER_DECK_Y + PILE_ROW_GAP;
-
-// Click-a-pile-to-inspect overlay. Depth sits above every in-game depth — including the 3000 an
-// in-flight draw animation uses — so the overlay stays readable if a pile is opened mid-animation.
-const PILE_VIEW_DEPTH = 5000;
-const PILE_VIEW_MAX_COLUMNS = 8;
-const PILE_VIEW_GAP = 22;
-const PILE_VIEW_TOP = 150;
-const PILE_VIEW_BOTTOM = 1020;
-
-// Where a played card is held for a beat before flying to its resting place.
-const SPOTLIGHT_X = 260;
-
-const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '14px', color: '#ffffff', align: 'left' };
-const RULE_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '10px', color: '#b8c4d9', fontStyle: 'italic', align: 'center' };
-const SMALL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff' };
-const PILE_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '12px', color: '#9aa7bd' };
-const COST_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '19px', color: '#ffffff' };
-const TYPE_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '11px', color: '#9aa7bd', fontStyle: 'bold' };
-const KEYWORD_LABEL_BASE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '11px', fontStyle: 'bold' };
-const MISSING_ASSET_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '10px', color: '#888888', align: 'center' };
-
-// No longer the art's own size — 'full' mode's art is full-bleed (CARD_W x CARD_H) same as
-// 'simplified', see createCardContainer. These now only position 'full' mode's footer (type/
-// rule text/keywords), which still sits where this ~65%-of-CARD_H zone used to end.
-const ART_W = CARD_W - 16;
-const ART_H = Math.round(CARD_H * 0.65);
-const ART_TOP = -CARD_H / 2 + 42;
-const ART_BOTTOM = ART_TOP + ART_H;
-
-/** The two off-board card zones that get a pile visual and a click-to-inspect overlay. */
-type PileZone = 'deck' | 'graveyard';
-
-/**
- * How createCardContainer renders a card. 'full' is the detailed layout (hand, deck/graveyard
- * pile view, the played-card spotlight) — full-bleed art with name/cost/stats/type/rule text/
- * keywords overlaid. 'simplified' is the battlefield-only layout — same full-bleed art and the
- * same name/cost/stats corner badges as 'full' (attack/health mirror name/cost into the bottom
- * corners), but no type/rule-text/keyword rows, to maximize clarity in the cramped board row.
- * 'faceDown' is the card-back, used for the opponent's hand and its matching draw-animation
- * preview.
- */
-type CardDisplayMode = 'full' | 'simplified' | 'faceDown';
-
-function statStyle(color: string): Phaser.Types.GameObjects.Text.TextStyle {
-    return { fontFamily: 'Arial Black', fontSize: '20px', color };
-}
+import { decideOpponentAction } from '../../ai/OpponentAI';
+import { CARD_DEFINITIONS } from '../../data/cards';
+import { generateDeck } from '../../data/deckGenerator';
+import { EventBus } from '../../EventBus';
+import { canDeclareAttack, hasKeyword } from '../../state/keywordRules';
+import { createInitialState } from '../../state/createInitialState';
+import { TurnStateMachine } from '../../state/TurnStateMachine';
+import type { PlayerId } from '../../types/common';
+import type { GameState, PlayerState } from '../../types/GameState';
+import { TurnPhase } from '../../types/GameState';
+import {
+    BOARD_ZONE_W,
+    CARD_BACK_KEY,
+    CARD_H,
+    CARD_W,
+    CENTER_X,
+    CENTER_Y,
+    coverFit,
+    DECK_PILE_H,
+    DECK_PILE_W,
+    GAME_HEIGHT,
+    GAME_WIDTH,
+    getPileCards,
+    HERO_DEPTH,
+    HERO_RADIUS,
+    HERO_SIZE,
+    OPPONENT_BOARD_Y,
+    OPPONENT_DECK_Y,
+    OPPONENT_GRAVEYARD_Y,
+    OPPONENT_HAND_Y,
+    OPPONENT_HERO_Y,
+    PEEK_TRIGGER_X_MAX,
+    PEEK_TRIGGER_X_MIN,
+    PEEK_TRIGGER_Y,
+    PILE_LABEL_STYLE,
+    PILE_STYLES,
+    PILE_X,
+    PLAYER_BOARD_Y,
+    PLAYER_DECK_Y,
+    PLAYER_GRAVEYARD_Y,
+    PLAYER_HAND_PEEK_Y,
+    PLAYER_HAND_POKE_Y,
+    PLAYER_HERO_PEEK_Y,
+    PLAYER_HERO_Y,
+    type PileZone,
+    SMALL_STYLE,
+    SPOTLIGHT_X,
+    statStyle,
+} from './cardLayout';
+import { CardView } from './CardView';
+import { HelpBoxController } from './HelpBoxController';
+import { PileViewController } from './PileViewController';
 
 /**
  * Renders TurnStateMachine's GameState and forwards input into it. This scene owns no
@@ -152,6 +67,12 @@ function statStyle(color: string): Phaser.Types.GameObjects.Text.TextStyle {
  * renderNow() last actually painted — which, since GameState is already fully resolved by then,
  * is always the correct "before" picture for a move/fade/fly tween — and only once the queue
  * drains does the deferred renderNow() finally paint the true final state.
+ *
+ * Card visuals are built by CardView, the hover tooltip by HelpBoxController, and the
+ * deck/graveyard inspect overlay by PileViewController — see those files for the display
+ * layouts. This class owns the render pass that places their output (renderHero/renderPile/
+ * renderHand/renderBoard/renderNow) and the animation choreography, since both directly mutate
+ * this scene's core bookkeeping (instanceContainers, renderedObjects, heroContainers).
  */
 export class CardGame extends Scene
 {
@@ -161,13 +82,11 @@ export class CardGame extends Scene
         TurnPhase.GameOver,
     ]);
 
-    /** Per-zone pile chrome. The deck keeps the card-back blue it has always used; the graveyard takes a desaturated maroon so the two read apart at a glance in the same column. */
-    private static readonly PILE_STYLES: Record<PileZone, { fill: number; stroke: number; label: string; title: string }> = {
-        deck: { fill: 0x24304a, stroke: 0x8fa8d6, label: 'DECK', title: 'Deck' },
-        graveyard: { fill: 0x33262c, stroke: 0xc08a94, label: 'GRAVE', title: 'Graveyard' },
-    };
-
     private machine!: TurnStateMachine;
+
+    private cardView!: CardView;
+    private helpBoxController!: HelpBoxController;
+    private pileView!: PileViewController;
 
     private renderedObjects: Phaser.GameObjects.GameObject[] = [];
     private cardInstanceByContainer = new Map<Phaser.GameObjects.Container, string>();
@@ -181,26 +100,15 @@ export class CardGame extends Scene
     private turnBannerText!: Phaser.GameObjects.Text;
     private endTurnButton!: Phaser.GameObjects.Container;
     private cancelButton!: Phaser.GameObjects.Container;
-    private helpBox!: Phaser.GameObjects.Container;
-    private helpBoxBg!: Phaser.GameObjects.Rectangle;
-    /** Rebuilt fresh on every showHelpBox call — see its own comment for why this can't be one static Text. */
-    private helpBoxLines: Phaser.GameObjects.Text[] = [];
     private playerHealthText!: Phaser.GameObjects.Text;
     private playerManaText!: Phaser.GameObjects.Text;
     private opponentHealthText!: Phaser.GameObjects.Text;
     private opponentManaText!: Phaser.GameObjects.Text;
 
-    // The pile-inspect overlay is tracked separately from renderedObjects: which pile is open is
-    // *state* that has to survive a board rebuild (the opponent's turn rebuilds the board every
-    // 600ms, which would otherwise snap the overlay shut mid-read), so renderNow() tears the
-    // overlay down with everything else and then repaints it from openPileView at its tail.
-    private pileViewObjects: Phaser.GameObjects.GameObject[] = [];
-    private openPileView?: { playerId: PlayerId; zone: PileZone };
-
     // Whether the player's hand is currently peeked (raised, fully visible) vs. its default poked
-    // state — see the big comment above PLAYER_HAND_POKE_Y. Persists across renderNow() rebuilds
-    // the same way openPileView does, so a mid-peek board rebuild (e.g. a card drawn) repaints the
-    // hand/hero in the right state instead of snapping back to poked.
+    // state — see the big comment above PLAYER_HAND_POKE_Y in cardLayout.ts. Persists across
+    // renderNow() rebuilds (a mid-peek board rebuild, e.g. a card drawn, repaints the hand/hero in
+    // the right state instead of snapping back to poked).
     private handPeekActive = false;
 
     // The hand card currently being dragged, if any — excluded from setHandPeek's batched tween
@@ -375,7 +283,7 @@ export class CardGame extends Scene
                 ?? player.graveyard.find((c) => c.instanceId === instanceId);
             if (instance)
             {
-                const revealed = this.createCardContainer(instance, 'full');
+                const revealed = this.cardView.createCardContainer(instance, 'full');
                 revealed.setPosition(container.x, container.y);
 
                 const index = this.renderedObjects.indexOf(container);
@@ -448,7 +356,7 @@ export class CardGame extends Scene
         });
 
         const origin = this.deckPilePosition(playerId);
-        const flying = this.createCardContainer(player.hand[index], faceDown ? 'faceDown' : 'full');
+        const flying = this.cardView.createCardContainer(player.hand[index], faceDown ? 'faceDown' : 'full');
         flying.setPosition(origin.x, origin.y);
         flying.setDepth(3000);
         flying.setScale(0.6);
@@ -495,11 +403,14 @@ export class CardGame extends Scene
     create ()
     {
         // scene.restart() (the Play Again button) reuses this same class instance, so field
-        // initializers do NOT re-run — reset the overlay state explicitly or a pile left open
-        // when the game ended would reappear over the fresh board, holding dead references.
-        this.pileViewObjects = [];
-        this.openPileView = undefined;
+        // initializers do NOT re-run — reset handPeekActive explicitly, and construct fresh
+        // cardView/helpBoxController/pileView so their internal state (including which pile-view
+        // overlay was open) doesn't leak from a finished game into the next one.
         this.handPeekActive = false;
+
+        this.cardView = new CardView(this);
+        this.helpBoxController = new HelpBoxController(this, () => this.draggedContainer);
+        this.pileView = new PileViewController(this, this.cardView, this.helpBoxController);
 
         this.add.rectangle(CENTER_X, CENTER_Y, GAME_WIDTH, GAME_HEIGHT, 0x161b26);
 
@@ -517,11 +428,9 @@ export class CardGame extends Scene
 
         this.createEndTurnButton();
         this.createCancelButton();
-        this.createHelpBox();
         this.wireDragEvents();
-        this.wireHelpBoxEvents();
         this.wirePlayerHandPeekEvents();
-        this.input.keyboard?.on('keydown-ESC', () => this.closePileView());
+        this.input.keyboard?.on('keydown-ESC', () => this.pileView.close());
 
         EventBus.on('state:phase-change', this.phaseChangeHandler);
         EventBus.on('state:card-drawn', this.cardDrawnHandler);
@@ -561,7 +470,7 @@ export class CardGame extends Scene
             // The keyword tooltip that was showing for this card (hovering it is how the drag
             // started) would otherwise linger for the whole drag — pointerout never fires for the
             // dragged object since it stays centered under the pointer throughout.
-            this.hideHelpBox();
+            this.helpBoxController.hideHelpBox();
         });
 
         this.input.on('drag', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dragX: number, dragY: number) =>
@@ -588,14 +497,6 @@ export class CardGame extends Scene
         });
     }
 
-    private wireHelpBoxEvents (): void
-    {
-        this.input.on('pointermove', (pointer: Phaser.Input.Pointer) =>
-        {
-            if (this.helpBox.visible) this.positionHelpBox(pointer.x, pointer.y);
-        });
-    }
-
     /** Current Y for the player's hero — PLAYER_HERO_PEEK_Y once peeked, PLAYER_HERO_Y (idle/poked) otherwise. */
     private playerHeroY (): number
     {
@@ -610,12 +511,12 @@ export class CardGame extends Scene
 
     /**
      * The player's hand toggles poked/peeked purely off cursor position within PEEK_TRIGGER_*
-     * (see its comment) — deliberately not a Zone with pointerover/pointerout, since the player's
-     * hero sits at a *higher* depth directly over part of that band (see HERO_DEPTH) and Phaser's
-     * default topOnly input would let the hero swallow hover events in the overlap instead of
-     * passing them through. Polling pointermove, like wireHelpBoxEvents does, sidesteps that
-     * entirely. The opponent's hand has no equivalent wiring at all — that's the "nothing happens"
-     * twist — so it only ever renders in its poked state.
+     * (see its comment in cardLayout.ts) — deliberately not a Zone with pointerover/pointerout,
+     * since the player's hero sits at a *higher* depth directly over part of that band (see
+     * HERO_DEPTH) and Phaser's default topOnly input would let the hero swallow hover events in
+     * the overlap instead of passing them through. Polling pointermove sidesteps that entirely.
+     * The opponent's hand has no equivalent wiring at all — that's the "nothing happens" twist —
+     * so it only ever renders in its poked state.
      */
     private wirePlayerHandPeekEvents (): void
     {
@@ -675,16 +576,6 @@ export class CardGame extends Scene
         this.cancelButton = container;
     }
 
-    private createHelpBox (): void
-    {
-        this.helpBoxBg = this.add.rectangle(0, 0, 10, 10, 0x11151f, 0.95).setOrigin(0, 0).setStrokeStyle(1, 0x8fa8d6);
-        this.helpBox = this.add.container(0, 0, [this.helpBoxBg]);
-        // Above PILE_VIEW_DEPTH — cards inside the pile-inspect overlay keep their keyword hover,
-        // so the tooltip has to clear the overlay it is being read on top of.
-        this.helpBox.setDepth(PILE_VIEW_DEPTH + 100);
-        this.helpBox.setVisible(false);
-    }
-
     // --- render ------------------------------------------------------------------
 
     /** Banner text, health/mana readouts, and End Turn/Cancel button state — cheap, and safe to refresh immediately even while the heavy board rebuild below is deferred behind an in-flight animation. */
@@ -730,7 +621,7 @@ export class CardGame extends Scene
 
         // Repaint last so the overlay lands on top of, and re-reads, the board just rebuilt above —
         // an open pile therefore keeps showing live contents as cards are drawn or die beneath it.
-        this.renderPileView();
+        this.pileView.render(state);
 
         // The opponent's turn is only picked up here — the one place the board is guaranteed to
         // actually reflect state.phase === MainIdle — rather than off the phase-change event
@@ -743,8 +634,8 @@ export class CardGame extends Scene
 
     private clearRendered (): void
     {
-        this.hideHelpBox();
-        this.clearPileView();
+        this.helpBoxController.hideHelpBox();
+        this.pileView.clear();
         for (const obj of this.renderedObjects) obj.destroy();
         this.renderedObjects = [];
         this.cardInstanceByContainer.clear();
@@ -789,7 +680,14 @@ export class CardGame extends Scene
 
         this.heroContainers.set(id, container);
 
-        const isValidTarget = state.phase === TurnPhase.AwaitingTarget && state.pendingTarget?.validTargetIds.includes(id);
+        // pendingTarget's owner is always state.activePlayer (beginTargeting is only ever called
+        // from playCard/declareAttack on the active player's own card) — gating on that here stops
+        // the human from resolving the opponent's pending target (or vice versa) by clicking through
+        // it, which is otherwise indistinguishable from a legitimate target prompt for either side.
+        const isValidTarget =
+            state.phase === TurnPhase.AwaitingTarget &&
+            state.activePlayer === 'player' &&
+            state.pendingTarget?.validTargetIds.includes(id);
         if (isValidTarget)
         {
             this.addOutline(container, HERO_SIZE, HERO_SIZE, 0xffd23f);
@@ -799,11 +697,6 @@ export class CardGame extends Scene
         this.renderedObjects.push(container);
     }
 
-    private pileCards (playerState: PlayerState, zone: PileZone): CardInstance[]
-    {
-        return zone === 'deck' ? playerState.deck : playerState.graveyard;
-    }
-
     /**
      * Small stacked pile with a zone label above and a card-count label below, for either
      * off-board zone. Doubles as the origin point draw animations fly from (see deckPilePosition)
@@ -811,8 +704,8 @@ export class CardGame extends Scene
      */
     private renderPile (playerState: PlayerState, zone: PileZone, y: number): void
     {
-        const style = CardGame.PILE_STYLES[zone];
-        const cards = this.pileCards(playerState, zone);
+        const style = PILE_STYLES[zone];
+        const cards = getPileCards(playerState, zone);
         const container = this.add.container(PILE_X, y);
 
         container.add(this.add.text(0, -DECK_PILE_H / 2 - 22, style.label, PILE_LABEL_STYLE).setOrigin(0.5, 0));
@@ -830,7 +723,7 @@ export class CardGame extends Scene
             if (showCardBack)
             {
                 card = this.add.image(-offset, -offset, CARD_BACK_KEY);
-                this.coverFit(card, DECK_PILE_W, DECK_PILE_H);
+                coverFit(card, DECK_PILE_W, DECK_PILE_H);
             }
             else
             {
@@ -859,7 +752,7 @@ export class CardGame extends Scene
         container.on('pointerout', () => highlight.setVisible(false));
         // Deliberately not guarded(): opening a read-only pile view mutates no game state, so
         // there is no reason to swallow the click just because an animation is in flight.
-        container.on('pointerup', () => this.showPileView(playerState.id, zone));
+        container.on('pointerup', () => this.pileView.open(playerState.id, zone, this.machine.state));
 
         this.renderedObjects.push(container);
     }
@@ -875,7 +768,7 @@ export class CardGame extends Scene
 
         cards.forEach((instance, index) =>
         {
-            const container = this.createCardContainer(instance, faceDown ? 'faceDown' : 'full');
+            const container = this.cardView.createCardContainer(instance, faceDown ? 'faceDown' : 'full');
             const x = startX + index * spacing;
             container.setPosition(x, y);
             container.setDepth(index);
@@ -890,7 +783,7 @@ export class CardGame extends Scene
                 new Geom.Rectangle(0, 0, CARD_W, CARD_H),
                 Geom.Rectangle.Contains
             );
-            this.attachKeywordHover(container, instance);
+            this.helpBoxController.attachKeywordHover(container, instance);
 
             if (!isMyTurn || state.phase !== TurnPhase.MainIdle) return;
 
@@ -929,7 +822,7 @@ export class CardGame extends Scene
 
         cards.forEach((instance, index) =>
         {
-            const container = this.createCardContainer(instance, 'simplified');
+            const container = this.cardView.createCardContainer(instance, 'simplified');
             container.setPosition(startX + index * spacing, y);
             this.renderedObjects.push(container);
             this.instanceContainers.set(instance.instanceId, container);
@@ -940,9 +833,14 @@ export class CardGame extends Scene
                 new Geom.Rectangle(0, 0, CARD_W, CARD_H),
                 Geom.Rectangle.Contains
             );
-            this.attachKeywordHover(container, instance);
+            this.helpBoxController.attachKeywordHover(container, instance, true);
 
-            const isValidTarget = state.phase === TurnPhase.AwaitingTarget && state.pendingTarget?.validTargetIds.includes(instance.instanceId);
+            // See the matching comment in renderHero — only the player whose pending action this is
+            // (always state.activePlayer) may resolve its target.
+            const isValidTarget =
+                state.phase === TurnPhase.AwaitingTarget &&
+                state.activePlayer === 'player' &&
+                state.pendingTarget?.validTargetIds.includes(instance.instanceId);
             const canAttack =
                 state.phase === TurnPhase.MainIdle &&
                 ownerId === 'player' &&
@@ -992,375 +890,6 @@ export class CardGame extends Scene
         button.on('pointerup', () => this.scene.restart());
 
         this.renderedObjects.push(overlay, label, button);
-    }
-
-    // --- pile inspect overlay --------------------------------------------------------
-
-    private showPileView (playerId: PlayerId, zone: PileZone): void
-    {
-        this.openPileView = { playerId, zone };
-        // Painted directly rather than via requestRender(): the overlay must appear on the click
-        // that opened it, and a full render would be deferred behind any in-flight animation.
-        this.renderPileView();
-    }
-
-    private closePileView (): void
-    {
-        this.openPileView = undefined;
-        this.clearPileView();
-    }
-
-    private clearPileView (): void
-    {
-        for (const obj of this.pileViewObjects) obj.destroy();
-        this.pileViewObjects = [];
-    }
-
-    /**
-     * Full-screen dimmed grid of whichever pile is currently open, or a no-op when none is.
-     * Rebuilt wholesale (never patched) on each call, matching how the board itself renders.
-     */
-    private renderPileView (): void
-    {
-        this.clearPileView();
-        if (!this.openPileView) return;
-
-        this.hideHelpBox();
-
-        const { playerId, zone } = this.openPileView;
-        const style = CardGame.PILE_STYLES[zone];
-        const cards = this.pileViewCards(playerId, zone);
-
-        // Interactive so a click anywhere off a card dismisses the view — and, more importantly,
-        // so the board underneath cannot be clicked through it. Phaser's InputPlugin is topOnly by
-        // default, so this full-screen rect swallows every pointer event below PILE_VIEW_DEPTH.
-        const dimmer = this.add.rectangle(CENTER_X, CENTER_Y, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.82)
-            .setDepth(PILE_VIEW_DEPTH)
-            .setInteractive();
-        dimmer.on('pointerup', () => this.closePileView());
-        this.pileViewObjects.push(dimmer);
-
-        const owner = playerId === 'player' ? 'Your' : "Opponent's";
-        const title = this.add.text(CENTER_X, 52, `${owner} ${style.title} — ${cards.length} card${cards.length === 1 ? '' : 's'}`, {
-            fontFamily: 'Arial Black', fontSize: '36px', color: '#ffffff',
-        }).setOrigin(0.5, 0).setDepth(PILE_VIEW_DEPTH + 1);
-        this.pileViewObjects.push(title);
-
-        const close = this.add.text(GAME_WIDTH - 48, 52, '✕ Close', {
-            fontFamily: 'Arial', fontSize: '24px', color: '#ffffff', backgroundColor: '#3a4a6b',
-        }).setOrigin(1, 0).setPadding(16, 9, 16, 9).setDepth(PILE_VIEW_DEPTH + 1).setInteractive({ useHandCursor: true });
-        close.on('pointerup', () => this.closePileView());
-        this.pileViewObjects.push(close);
-
-        const hint = this.add.text(CENTER_X, GAME_HEIGHT - 34, 'Click anywhere or press Esc to close', {
-            fontFamily: 'Arial', fontSize: '16px', color: '#8fa8d6',
-        }).setOrigin(0.5, 1).setDepth(PILE_VIEW_DEPTH + 1);
-        this.pileViewObjects.push(hint);
-
-        if (cards.length === 0)
-        {
-            const empty = this.add.text(CENTER_X, CENTER_Y, `This ${style.title.toLowerCase()} is empty.`, {
-                fontFamily: 'Arial', fontSize: '28px', color: '#b8c4d9', fontStyle: 'italic',
-            }).setOrigin(0.5).setDepth(PILE_VIEW_DEPTH + 1);
-            this.pileViewObjects.push(empty);
-            return;
-        }
-
-        this.renderPileViewGrid(cards);
-    }
-
-    /**
-     * Deck contents are sorted by cost then name so opening your own deck reads as a deck list
-     * and does not leak the shuffled draw order. The graveyard keeps its natural array order,
-     * which TurnStateMachine appends to on each death/discard — i.e. chronological.
-     */
-    private pileViewCards (playerId: PlayerId, zone: PileZone): CardInstance[]
-    {
-        const cards = this.pileCards(this.machine.state.players[playerId], zone);
-        if (zone !== 'deck') return cards;
-
-        return [...cards].sort((a, b) =>
-        {
-            const defA = CARD_DEFINITIONS[a.definitionId];
-            const defB = CARD_DEFINITIONS[b.definitionId];
-            return defA.cost - defB.cost || defA.name.localeCompare(defB.name);
-        });
-    }
-
-    /** Lays the cards out in a centered grid, scaled down just far enough that the whole pile fits on one screen — no scrolling, however big the zone gets. */
-    private renderPileViewGrid (cards: CardInstance[]): void
-    {
-        const columns = Math.min(PILE_VIEW_MAX_COLUMNS, cards.length);
-        const rows = Math.ceil(cards.length / columns);
-
-        const availableW = GAME_WIDTH - 160;
-        const availableH = PILE_VIEW_BOTTOM - PILE_VIEW_TOP;
-        const scale = Math.min(
-            1,
-            availableW / (columns * (CARD_W + PILE_VIEW_GAP)),
-            availableH / (rows * (CARD_H + PILE_VIEW_GAP)),
-        );
-
-        const stepX = (CARD_W + PILE_VIEW_GAP) * scale;
-        const stepY = (CARD_H + PILE_VIEW_GAP) * scale;
-        const originY = PILE_VIEW_TOP + (availableH - rows * stepY) / 2 + stepY / 2;
-
-        cards.forEach((instance, index) =>
-        {
-            const row = Math.floor(index / columns);
-            const column = index % columns;
-            // Centre each row on its own count, so a partial final row sits centered rather than
-            // left-aligned under a full one.
-            const inRow = Math.min(columns, cards.length - row * columns);
-
-            const card = this.createCardContainer(instance, 'full');
-            card.setPosition(CENTER_X + (column - (inRow - 1) / 2) * stepX, originY + row * stepY);
-            card.setScale(scale);
-            card.setDepth(PILE_VIEW_DEPTH + 1);
-            card.setInteractive(
-                // See renderHero — top-left-based, not centered. The container's scale applies to
-                // the hit area too, so this needs no scale compensation of its own.
-                new Geom.Rectangle(0, 0, CARD_W, CARD_H),
-                Geom.Rectangle.Contains
-            );
-            this.attachKeywordHover(card, instance);
-
-            this.pileViewObjects.push(card);
-        });
-    }
-
-    // --- card visuals --------------------------------------------------------------
-
-    private createCardContainer (instance: CardInstance, mode: CardDisplayMode): Phaser.GameObjects.Container
-    {
-        const container = this.add.container(0, 0);
-        const bg = this.add.rectangle(0, 0, CARD_W, CARD_H, mode === 'faceDown' ? 0x24304a : 0x2f3b52).setStrokeStyle(2, 0x8fa8d6);
-        container.add(bg);
-
-        if (mode === 'faceDown')
-        {
-            if (this.textures.exists(CARD_BACK_KEY))
-            {
-                const back = this.add.image(0, 0, CARD_BACK_KEY);
-                this.coverFit(back, CARD_W, CARD_H);
-                container.add(back);
-            }
-            container.setSize(CARD_W, CARD_H);
-            return container;
-        }
-
-        const definition = CARD_DEFINITIONS[instance.definitionId];
-
-        // Name top-left, cost top-right — name's word-wrap width is clipped short of the
-        // card's right edge so it never runs under the cost badge. Same spot in both 'full'
-        // and 'simplified' — only the art size/footer differ between the two.
-        const nameText = this.add.text(-CARD_W / 2 + 8, -CARD_H / 2 + 8, definition.name, NAME_STYLE)
-            .setOrigin(0, 0)
-            .setWordWrapWidth(CARD_W - 54, true);
-        const costBadge = this.add.circle(CARD_W / 2 - 21, -CARD_H / 2 + 21, 19, 0x2f6fed);
-        const costText = this.add.text(CARD_W / 2 - 21, -CARD_H / 2 + 21, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(0.5);
-
-        if (mode === 'simplified')
-        {
-            // Full-bleed art behind everything — no type/rule-text/keyword rows, so the
-            // battlefield row reads as art-first. All four badges mirror each other into the
-            // card's corners: name/cost at top-left/top-right, attack/health at bottom-left/
-            // bottom-right, all at the same 21px inset.
-            container.add(this.createArtVisual(definition.id, CARD_W, CARD_H, 0));
-            container.add([nameText, costBadge, costText]);
-
-            if (definition.type === 'minion')
-            {
-                const attackBg = this.add.circle(-CARD_W / 2 + 21, CARD_H / 2 - 21, 19, 0xd68f3f);
-                const attackText = this.add.text(-CARD_W / 2 + 21, CARD_H / 2 - 21, `${instance.currentAttack ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
-                const healthBg = this.add.circle(CARD_W / 2 - 21, CARD_H / 2 - 21, 19, 0xb0413e);
-                const healthText = this.add.text(CARD_W / 2 - 21, CARD_H / 2 - 21, `${instance.currentHealth ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
-                container.add([attackBg, attackText, healthBg, healthText]);
-            }
-
-            container.setSize(CARD_W, CARD_H);
-            return container;
-        }
-
-        // mode === 'full'
-        container.add(this.createArtVisual(definition.id, CARD_W, CARD_H, 0));
-        container.add([nameText, costBadge, costText]);
-
-        if (definition.type === 'minion')
-        {
-            // Attack/health anchor to the art zone's bottom corners, not the card's — the
-            // footer below the art is reserved for type/text/keywords.
-            const attackBg = this.add.circle(-ART_W / 2 + 19, ART_BOTTOM - 23, 19, 0xd68f3f);
-            const attackText = this.add.text(-ART_W / 2 + 19, ART_BOTTOM - 23, `${instance.currentAttack ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
-            const healthBg = this.add.circle(ART_W / 2 - 19, ART_BOTTOM - 23, 19, 0xb0413e);
-            const healthText = this.add.text(ART_W / 2 - 19, ART_BOTTOM - 23, `${instance.currentHealth ?? 0}`, statStyle('#ffffff')).setOrigin(0.5);
-            container.add([attackBg, attackText, healthBg, healthText]);
-        }
-
-        // Footer: type (always), then rule text (if any), then keywords (if any) — stacked
-        // with a running cursor so an absent row doesn't leave a dead gap in the tight space
-        // below the art.
-        let cursorY = ART_BOTTOM + 4;
-
-        const typeText = this.add.text(0, cursorY, definition.type === 'minion' ? 'Minion' : 'Spell', TYPE_LABEL_STYLE).setOrigin(0.5, 0);
-        container.add(typeText);
-        cursorY += typeText.height + 2;
-
-        if (definition.text !== '')
-        {
-            const ruleText = this.add.text(0, cursorY, definition.text, RULE_TEXT_STYLE)
-                .setOrigin(0.5, 0)
-                .setWordWrapWidth(ART_W, true);
-            container.add(ruleText);
-            cursorY += ruleText.height + 2;
-        }
-
-        if (instance.keywords.size > 0)
-        {
-            container.add(this.createKeywordLabels(instance, cursorY));
-        }
-
-        container.setSize(CARD_W, CARD_H);
-        return container;
-    }
-
-    /** Card art — the actual image if its texture loaded, otherwise a black box with small gray "MISSING ASSET" text (most cards have no art asset yet; see Preloader.preload). Sized/positioned by the caller so it can cover just the inset art zone ('full' mode) or the whole card ('simplified' mode). */
-    private createArtVisual (art: string, width: number, height: number, centerY: number): Phaser.GameObjects.GameObject[]
-    {
-        if (this.textures.exists(art))
-        {
-            const image = this.add.image(0, centerY, art);
-            this.coverFit(image, width, height);
-            return [image];
-        }
-
-        const box = this.add.rectangle(0, centerY, width, height, 0x000000).setStrokeStyle(1, 0x333333);
-        const label = this.add.text(0, centerY, 'MISSING ASSET', MISSING_ASSET_STYLE).setOrigin(0.5).setWordWrapWidth(width - 16, true);
-        return [box, label];
-    }
-
-    /**
-     * CSS `background-size: cover; background-position: center` for a Phaser Image — fills
-     * exactly width x height with no stretching, cropping whichever axis overflows and keeping
-     * the crop centered. Crops the *source* texture to the target aspect ratio first (in texture
-     * pixels, via setCrop) and only then stretches that already-matching-aspect-ratio rectangle
-     * to fit via setDisplaySize — since the crop's aspect ratio already equals the target's, that
-     * final stretch is uniform and introduces no distortion.
-     */
-    private coverFit (image: Phaser.GameObjects.Image, width: number, height: number): void
-    {
-        const sourceW = image.width;
-        const sourceH = image.height;
-        const targetAspect = width / height;
-
-        if (sourceW / sourceH > targetAspect)
-        {
-            const cropW = sourceH * targetAspect;
-            image.setCrop((sourceW - cropW) / 2, 0, cropW, sourceH);
-        }
-        else
-        {
-            const cropH = sourceW / targetAspect;
-            image.setCrop(0, (sourceH - cropH) / 2, sourceW, cropH);
-        }
-
-        image.setDisplaySize(width, height);
-    }
-
-    /**
-     * Full keyword names for a minion's active keywords — bold, colored per KEYWORD_METADATA,
-     * wrapped into centered rows under the art. Iterates instance.keywords (runtime, mutable)
-     * rather than the card's static definition.keywords — a consumed keyword like divineShield
-     * must stop rendering once popped, and the definition never changes to reflect that.
-     */
-    private createKeywordLabels (instance: CardInstance, startY: number): Phaser.GameObjects.GameObject[]
-    {
-        const keywords = [...instance.keywords];
-        if (keywords.length === 0) return [];
-
-        // One label per line, stacked and centered — minions realistically carry 1-2 keywords, so
-        // this trades the horizontal space a wider card might spare for simplicity over packing.
-        const lineHeight = 14;
-        let cursorY = startY;
-
-        return keywords.map((keyword) =>
-        {
-            const meta = KEYWORD_METADATA[keyword];
-            const hex = `#${meta.color.toString(16).padStart(6, '0')}`;
-            const text = this.add.text(0, cursorY, meta.label, { ...KEYWORD_LABEL_BASE_STYLE, color: hex }).setOrigin(0.5, 0);
-            cursorY += lineHeight;
-            return text;
-        });
-    }
-
-    /** Wires the cursor-following keyword help box to a card container. A no-op for cards with no keywords. */
-    private attachKeywordHover (container: Phaser.GameObjects.Container, instance: CardInstance): void
-    {
-        if (instance.keywords.size === 0) return;
-
-        // Skip while this card is the one being dragged — see wireDragEvents' dragstart, which
-        // hides an already-showing tooltip for it; this stops one from reappearing mid-drag too.
-        container.on('pointerover', () => { if (container !== this.draggedContainer) this.showHelpBox(instance); });
-        container.on('pointerout', () => this.hideHelpBox());
-    }
-
-    /**
-     * A plain Phaser Text can't mix styles within one string, so a colored/bold keyword label
-     * next to its plain-styled description needs two Text objects per keyword instead of one
-     * joined multi-line string — rebuilt every hover since the keyword set differs per card.
-     */
-    private showHelpBox (instance: CardInstance): void
-    {
-        this.helpBoxLines.forEach((line) => line.destroy());
-        this.helpBoxLines = [];
-
-        const margin = 10;
-        const maxWidth = 290;
-        let cursorY = margin;
-        let maxRight = 0;
-
-        for (const keyword of instance.keywords)
-        {
-            const meta = KEYWORD_METADATA[keyword];
-            const hex = `#${meta.color.toString(16).padStart(6, '0')}`;
-
-            const label = this.add.text(margin, cursorY, `${meta.label}: `, {
-                fontFamily: 'Arial', fontSize: '15px', color: hex, fontStyle: 'bold',
-            }).setOrigin(0, 0);
-            const description = this.add.text(margin + label.width, cursorY, meta.description, {
-                fontFamily: 'Arial', fontSize: '15px', color: '#ffffff',
-                wordWrap: { width: Math.max(40, maxWidth - label.width) },
-            }).setOrigin(0, 0);
-
-            this.helpBox.add([label, description]);
-            this.helpBoxLines.push(label, description);
-
-            maxRight = Math.max(maxRight, label.x + label.width, description.x + description.width);
-            cursorY += Math.max(label.height, description.height) + 14;
-        }
-
-        this.helpBoxBg.setSize(maxRight + margin, cursorY + margin - 4);
-        this.helpBox.setVisible(true);
-
-        const pointer = this.input.activePointer;
-        this.positionHelpBox(pointer.x, pointer.y);
-    }
-
-    private hideHelpBox (): void
-    {
-        this.helpBox.setVisible(false);
-    }
-
-    private positionHelpBox (x: number, y: number): void
-    {
-        const offset = 20;
-        const width = this.helpBoxBg.width;
-        const height = this.helpBoxBg.height;
-
-        const px = x + offset + width > GAME_WIDTH ? x - offset - width : x + offset;
-        const py = y + offset + height > GAME_HEIGHT ? y - offset - height : y + offset;
-
-        this.helpBox.setPosition(px, py);
     }
 
     private addOutline (container: Phaser.GameObjects.Container, width: number, height: number, color: number): void

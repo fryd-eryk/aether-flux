@@ -128,18 +128,39 @@ function scoreDamageSpell(
 ): ScoredTarget {
     const enemyId = opponentOf(aiId);
     const enemy = state.players[enemyId];
+    const ai = state.players[aiId];
 
     // A minion-restricted effect (e.g. "Deal 2 damage to a minion") isn't a legal way to hit
     // face — see TurnStateMachine.computeValidTargets — so don't seed a face candidate for it.
-    // If no minion ends up scoring higher than this, the card just isn't worth playing right now.
+    // -Infinity (rather than a fixed sentinel like -1) guarantees the friendly-minion loop below
+    // can still win and set a targetId even when every candidate scores negative — see its comment.
     let best: ScoredTarget =
-        restriction === 'minion' ? { score: -1 } : { score: amount * (lethalAvailable ? 100 : 1.5), targetId: enemyId };
+        restriction === 'minion' ? { score: -Infinity } : { score: amount * (lethalAvailable ? 100 : 1.5), targetId: enemyId };
 
     for (const minion of enemy.board) {
         const health = minion.currentHealth ?? 0;
         const value = (minion.currentAttack ?? 0) + health;
         const score = amount >= health ? value * 3 : amount * 0.5;
         if (score > best.score) best = { score, targetId: minion.instanceId };
+    }
+
+    // TurnStateMachine.computeValidTargets treats "a minion" as ANY minion, friendly included —
+    // so when the enemy board can't offer a (better) target, the AI must still be able to resolve
+    // one of its own, or playCard leaves the state machine stuck in AwaitingTarget forever (nothing
+    // else ever calls selectTarget for it — see OpponentAI.decideOpponentAction/runOpponentTurn).
+    // Hitting our own minion is modeled as a cost, not a benefit: roughly what the minion is worth
+    // if the hit would kill it outright, or half the raw damage as "wasted" chip damage otherwise.
+    // scorePlayCard adds this to the card's flat value (e.g. Boneshard Finger's card draw), so the
+    // AI ends up genuinely weighing "lose this minion" against "draw a card" instead of freezing.
+    // (Unrestricted/hero-restricted damage already always has the enemy-face fallback above, so
+    // this loop is scoped to the minion-only case that actually needs it.)
+    if (restriction === 'minion') {
+        for (const minion of ai.board) {
+            const health = minion.currentHealth ?? 0;
+            const value = (minion.currentAttack ?? 0) + health;
+            const score = amount >= health ? -value * 3 : -amount * 0.5;
+            if (score > best.score) best = { score, targetId: minion.instanceId };
+        }
     }
 
     return best;
