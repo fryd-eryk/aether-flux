@@ -128,14 +128,14 @@ export const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ 
 export const RULE_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '10px', color: '#e8ecf5', fontStyle: 'italic', align: 'left' }, 2);
 export const SMALL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff' };
 export const PILE_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '12px', color: '#9aa7bd' };
-export const COST_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '19px', color: '#ffffff' });
+export const COST_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial Black', fontSize: '14px', color: '#ffffff' });
 // Repurposed as the bottom type banner's label (was small centered gray text) — white on a
 // solid green bar now, see createCardContainer's 'full' mode.
-export const TYPE_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '11px', color: '#ffffff', fontStyle: 'bold', align: 'left' }, 2);
-export const KEYWORD_LABEL_BASE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '11px', fontStyle: 'bold' }, 2);
+export const TYPE_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '9px', color: '#9e9e9e', align: 'left' }, 0);
+export const KEYWORD_LABEL_BASE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '10px', fontStyle: 'bold' }, 2);
 // The ", " joining multiple keyword labels on their shared line — plain (unbolded, uncolored) so
 // the colored keyword names stay the visual focus.
-export const KEYWORD_SEPARATOR_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '11px', color: '#e8ecf5' }, 2);
+export const KEYWORD_SEPARATOR_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '10px', color: '#e8ecf5' }, 2);
 export const MISSING_ASSET_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '10px', color: '#888888', align: 'center', resolution: CARD_TEXT_RESOLUTION };
 export const PILL_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '9px', color: '#ffffff', fontStyle: 'bold' }, 2);
 export const STAT_FUSED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial Black', fontSize: '15px', color: '#ffffff' });
@@ -179,7 +179,7 @@ export const ATKHP_BOX_RADIUS = 3;
 export const ATKHP_INSET = 6; // gap from the card's right edge to the inset atk/hp box
 export const DESC_BOX_RADIUS = 5;
 export const DESC_BOX_INSET_X = 4; // gap from the card's left/right edges to the description box
-export const DESC_BOX_PAD_Y = 8; // internal top/bottom padding between the box edge and its text
+export const DESC_BOX_PAD_Y = 6; // internal top/bottom padding between the box edge and its text
 export const DESC_BOX_KEYWORD_LINE_H = 14; // fixed height budgeted for the keyword line, matching createKeywordLabels' font metrics
 export const DESC_BOX_LINE_GAP = 2; // gap between the keyword line and the rule text below it
 // Fixed bottom anchor the description box's *content* (text) is pinned to — see
@@ -187,7 +187,7 @@ export const DESC_BOX_LINE_GAP = 2; // gap between the keyword line and the rule
 // background is separately stretched down past this anchor to CARD_H / 2 so it visually continues
 // behind the footer bar (which paints over it on top), but that must never move where the text
 // itself lands, so the two are intentionally decoupled.
-export const DESC_BOX_BOTTOM_Y = CARD_H / 2 - 18;
+export const DESC_BOX_BOTTOM_Y = CARD_H / 2 - 12;
 
 /** The two off-board card zones that get a pile visual and a click-to-inspect overlay. */
 export type PileZone = 'deck' | 'graveyard';

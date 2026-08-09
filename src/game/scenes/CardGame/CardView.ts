@@ -108,7 +108,7 @@ export class CardView
         // of any of this — set once at the bottom of this method.
         container.add(this.createHeaderFull(definition));
 
-        const nameText = this.scene.add.text(-CARD_W / 2 + 8, -CARD_H / 2 + 2, definition.name, NAME_STYLE).setOrigin(0, 0);
+        const nameText = this.scene.add.text(-CARD_W / 2 + 1, -CARD_H / 2, definition.name, NAME_STYLE).setOrigin(0, 0);
         this.fitCardName(nameText, CARD_W - 40);
         container.add(nameText);
 
@@ -236,7 +236,7 @@ export class CardView
         dot.fillCircle(dotX, footerCenterY, RARITY_DOT_R);
         objects.push(dot);
 
-        const typeText = this.scene.add.text(dotX + RARITY_DOT_R + 5, footerCenterY, definition.type === 'minion' ? 'Minion' : 'Spell', TYPE_LABEL_STYLE).setOrigin(0, 0.5);
+        const typeText = this.scene.add.text(dotX + RARITY_DOT_R + 3, footerCenterY, definition.type === 'minion' ? 'Minion' : 'Spell', TYPE_LABEL_STYLE).setOrigin(0, 0.5);
         objects.push(typeText);
 
         objects.push(...this.createStatBadgeInset(instance, definition, footerCenterY));
@@ -313,7 +313,7 @@ export class CardView
 
             if (index < keywords.length - 1)
             {
-                const separator = this.scene.add.text(cursorX, startY, ', ', KEYWORD_SEPARATOR_STYLE).setOrigin(0, 0);
+                const separator = this.scene.add.text(cursorX, startY, ',', KEYWORD_SEPARATOR_STYLE).setOrigin(0, 0);
                 objects.push(separator);
                 cursorX += separator.width;
             }

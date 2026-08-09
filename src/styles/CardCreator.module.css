@@ -39,6 +39,39 @@
     font-size: 12px;
 }
 
+.sortRow {
+    display: flex;
+    gap: 6px;
+}
+
+.sortSelect {
+    flex: 1;
+    box-sizing: border-box;
+    padding: 5px 6px;
+    background: #1c2330;
+    border: 1px solid #333d52;
+    border-radius: 4px;
+    color: #e8ecf5;
+    font-size: 12px;
+    font-family: inherit;
+}
+
+.sortDirButton {
+    flex: 0 0 auto;
+    padding: 5px 10px;
+    background: #24304a;
+    border: 1px solid #3f5075;
+    border-radius: 3px;
+    color: #c7cdd6;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+}
+
+.sortDirButton:hover {
+    background: #2c3c5c;
+}
+
 .newButton {
     width: 100%;
     padding: 7px 8px;
