@@ -448,21 +448,29 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Warding Acolyte",
         cost: 3,
         type: "minion",
-        text: "Vigil: Restore 1 Health to your hero.",
+        text: "Anthem: Restore 2 Health to your hero. Deal 1 damage.",
         attack: 1,
-        health: 4,
-        keywords: ["divineShield"],
+        health: 3,
         effects: [
             {
-                trigger: "startOfTurn",
+                trigger: "onPlay",
                 action: {
                     kind: "heal",
-                    amount: 1,
+                    amount: 2,
                     target: "friendlyHero",
+                },
+            },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 1,
+                    target: "chosen",
                 },
             },
         ],
         rarity: "rare",
+        artVerticalAlign: "bottom",
     },
     "grave-warden": {
         id: "grave-warden",

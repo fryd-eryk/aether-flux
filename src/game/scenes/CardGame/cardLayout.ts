@@ -124,7 +124,7 @@ export function withStroke(style: Phaser.Types.GameObjects.Text.TextStyle, thick
     return { ...style, stroke: '#000000', strokeThickness: thickness, resolution: CARD_TEXT_RESOLUTION };
 }
 
-export const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '14px', color: '#ffffff', align: 'left' });
+export const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '12px', color: '#ffffff', align: 'left' });
 export const RULE_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '10px', color: '#e8ecf5', fontStyle: 'italic', align: 'left' }, 2);
 export const SMALL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff' };
 export const PILE_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '12px', color: '#9aa7bd' };
@@ -138,7 +138,7 @@ export const KEYWORD_LABEL_BASE_STYLE: Phaser.Types.GameObjects.Text.TextStyle =
 export const KEYWORD_SEPARATOR_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '10px', color: '#e8ecf5' }, 2);
 export const MISSING_ASSET_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '10px', color: '#888888', align: 'center', resolution: CARD_TEXT_RESOLUTION };
 export const PILL_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '9px', color: '#ffffff', fontStyle: 'bold' }, 2);
-export const STAT_FUSED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial Black', fontSize: '15px', color: '#ffffff' });
+export const STAT_FUSED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial Black', fontSize: '14px', color: '#ffffff' });
 // 'full' mode's inset atk/hp box (createStatBadgeInset) sits on an opaque white background, so the
 // art-legibility stroke trick the rest of on-card text relies on would just look muddy here — plain
 // dark text instead.

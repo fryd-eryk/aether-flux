@@ -1,10 +1,10 @@
-import type { Scene } from 'phaser';
+import type { Scene } from "phaser";
 
-import { CARD_DEFINITIONS } from '../../data/cards';
-import { KEYWORD_METADATA } from '../../data/keywordMetadata';
-import { RARITY_METADATA, UNRANKED_RARITY_COLOR } from '../../data/rarityMetadata';
-import { distinctTriggers, TRIGGER_METADATA } from '../../data/triggerMetadata';
-import type { CardDefinition, CardInstance } from '../../types/Card';
+import { CARD_DEFINITIONS } from "../../data/cards";
+import { KEYWORD_METADATA } from "../../data/keywordMetadata";
+import { RARITY_METADATA, UNRANKED_RARITY_COLOR } from "../../data/rarityMetadata";
+import { distinctTriggers, TRIGGER_METADATA } from "../../data/triggerMetadata";
+import type { CardDefinition, CardInstance } from "../../types/Card";
 import {
     ATKHP_BOX_RADIUS,
     ATKHP_H,
@@ -46,7 +46,7 @@ import {
     STAT_FUSED_LIGHT_STYLE,
     STAT_FUSED_STYLE,
     TYPE_LABEL_STYLE,
-} from './cardLayout';
+} from "./cardLayout";
 
 /**
  * Builds a card's visual container in one of CardDisplayMode's three layouts — see the doc
@@ -54,20 +54,16 @@ import {
  * instance/definition and returns Phaser objects, without touching any game state or scene
  * bookkeeping outside the container it hands back.
  */
-export class CardView
-{
-    constructor (private scene: Scene) {}
+export class CardView {
+    constructor(private scene: Scene) {}
 
-    createCardContainer (instance: CardInstance, mode: CardDisplayMode, definitionOverride?: CardDefinition): Phaser.GameObjects.Container
-    {
+    createCardContainer(instance: CardInstance, mode: CardDisplayMode, definitionOverride?: CardDefinition): Phaser.GameObjects.Container {
         const container = this.scene.add.container(0, 0);
         const bg = this.scene.add.rectangle(0, 0, CARD_W, CARD_H, 0x000000).setStrokeStyle(2, 0x000000);
         container.add(bg);
 
-        if (mode === 'faceDown')
-        {
-            if (this.scene.textures.exists(CARD_BACK_KEY))
-            {
+        if (mode === "faceDown") {
+            if (this.scene.textures.exists(CARD_BACK_KEY)) {
                 const back = this.scene.add.image(0, 0, CARD_BACK_KEY);
                 coverFit(back, CARD_W, CARD_H);
                 container.add(back);
@@ -81,11 +77,10 @@ export class CardView
         // Full-bleed art is the lowest z-order layer in both modes — everything else (header/footer,
         // text, badges) paints on top of it. artVerticalAlign only applies in 'full' mode — see its
         // doc comment on CardDefinition and artBoxFor's below.
-        const artBox = mode === 'full' ? this.artBoxFor(definition.artVerticalAlign) : { height: CARD_H, centerY: 0 };
+        const artBox = mode === "full" ? this.artBoxFor(definition.artVerticalAlign) : { height: CARD_H, centerY: 0 };
         container.add(this.createArtVisual(definition.id, CARD_W, artBox.height, artBox.centerY));
 
-        if (mode === 'simplified')
-        {
+        if (mode === "simplified") {
             container.add(this.createHeaderGradient());
 
             // Name top-left — no cost badge to dodge, so the title can run almost the full card width.
@@ -110,8 +105,8 @@ export class CardView
         // of any of this — set once at the bottom of this method.
         container.add(this.createHeaderFull(definition));
 
-        const nameText = this.scene.add.text(-CARD_W / 2 + 1, -CARD_H / 2, definition.name, NAME_STYLE).setOrigin(0, 0);
-        this.fitCardName(nameText, CARD_W - 40);
+        const nameText = this.scene.add.text(-CARD_W / 2 + 3, -CARD_H / 2 - 1, definition.name, NAME_STYLE).setOrigin(0, 0);
+        this.fitCardName(nameText, CARD_W - 23);
         container.add(nameText);
 
         container.add(this.createDescriptionBox(instance, definition));
@@ -122,8 +117,7 @@ export class CardView
     }
 
     /** Top gradient band behind the title, in both non-face-down modes. WebGL-only Phaser feature; this project's AUTO renderer type is effectively always WebGL in real browsers. */
-    private createHeaderGradient (): Phaser.GameObjects.Graphics
-    {
+    private createHeaderGradient(): Phaser.GameObjects.Graphics {
         const gfx = this.scene.add.graphics();
         gfx.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0.85, 0.85, 0.1, 0.1);
         gfx.fillRect(-CARD_W / 2, -CARD_H / 2, CARD_W, HEADER_H);
@@ -137,23 +131,19 @@ export class CardView
      * the mana-cost number on top, inset (no more corner-overflowing circle badge). Title text is
      * added by the caller, matching 'simplified' mode's nameText handling.
      */
-    private createHeaderFull (definition: CardDefinition): Phaser.GameObjects.GameObject[]
-    {
+    private createHeaderFull(definition: CardDefinition): Phaser.GameObjects.GameObject[] {
         const objects: Phaser.GameObjects.GameObject[] = [];
         const headerCenterY = -CARD_H / 2 + HEADER_CONTENT_H_FULL / 2;
 
-        if (this.scene.textures.exists(HEADER_BG_KEY))
-        {
+        if (this.scene.textures.exists(HEADER_BG_KEY)) {
             const bg = this.scene.add.image(0, -CARD_H / 2, HEADER_BG_KEY).setOrigin(0.5, 0);
             fitWidth(bg, CARD_W);
             objects.push(bg);
-        }
-        else
-        {
+        } else {
             objects.push(this.scene.add.rectangle(0, headerCenterY, CARD_W, HEADER_CONTENT_H_FULL, 0x000000));
         }
 
-        const costText = this.scene.add.text(CARD_W / 2 - 8, headerCenterY, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(1, 0.5);
+        const costText = this.scene.add.text(CARD_W / 2 - 3, headerCenterY, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(1, 0.5);
         objects.push(costText);
 
         return objects;
@@ -172,18 +162,17 @@ export class CardView
      * paints over that extension and hides it, rather than the box appearing to stop short right at
      * the footer's edge. Renders nothing if the card has neither keywords nor rule text.
      */
-    private createDescriptionBox (instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[]
-    {
+    private createDescriptionBox(instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[] {
         const hasKeywords = instance.keywords.size > 0;
-        const hasText = definition.text !== '';
+        const hasText = definition.text !== "";
         if (!hasKeywords && !hasText) return [];
 
         let ruleText: Phaser.GameObjects.Text | null = null;
         let contentHeight = hasKeywords ? DESC_BOX_KEYWORD_LINE_H : 0;
 
-        if (hasText)
-        {
-            ruleText = this.scene.add.text(-CARD_W / 2 + 8, 0, definition.text, RULE_TEXT_STYLE)
+        if (hasText) {
+            ruleText = this.scene.add
+                .text(-CARD_W / 2 + 8, 0, definition.text, RULE_TEXT_STYLE)
                 .setOrigin(0, 0)
                 .setWordWrapWidth(CARD_W - 16, true);
             contentHeight += (hasKeywords ? DESC_BOX_LINE_GAP : 0) + ruleText.height;
@@ -199,14 +188,12 @@ export class CardView
         const objects: Phaser.GameObjects.GameObject[] = [box];
         let cursorY = boxTop + DESC_BOX_PAD_Y;
 
-        if (hasKeywords)
-        {
+        if (hasKeywords) {
             objects.push(...this.createKeywordLabels(instance, cursorY));
             cursorY += DESC_BOX_KEYWORD_LINE_H + DESC_BOX_LINE_GAP;
         }
 
-        if (ruleText)
-        {
+        if (ruleText) {
             ruleText.setY(cursorY);
             objects.push(ruleText);
         }
@@ -215,19 +202,15 @@ export class CardView
     }
 
     /** 'full' mode's footer: the pre-authored card-footer-bg PNG (rounded corners ascending up the card's sides baked into its alpha channel, mirroring the header's shape) holding the rarity dot + card type (left) and an inset (non-overflowing) atk/hp box (right, minion-only). */
-    private createFooterBar (instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[]
-    {
+    private createFooterBar(instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[] {
         const footerCenterY = CARD_H / 2 - FOOTER_BAR_H / 2;
         const objects: Phaser.GameObjects.GameObject[] = [];
 
-        if (this.scene.textures.exists(FOOTER_BG_KEY))
-        {
+        if (this.scene.textures.exists(FOOTER_BG_KEY)) {
             const bg = this.scene.add.image(0, CARD_H / 2, FOOTER_BG_KEY).setOrigin(0.5, 1);
             fitWidth(bg, CARD_W);
             objects.push(bg);
-        }
-        else
-        {
+        } else {
             objects.push(this.scene.add.rectangle(0, footerCenterY, CARD_W, FOOTER_BAR_H, 0x000000));
         }
 
@@ -238,7 +221,7 @@ export class CardView
         dot.fillCircle(dotX, footerCenterY, RARITY_DOT_R);
         objects.push(dot);
 
-        const typeText = this.scene.add.text(dotX + RARITY_DOT_R + 3, footerCenterY, definition.type === 'minion' ? 'Minion' : 'Spell', TYPE_LABEL_STYLE).setOrigin(0, 0.5);
+        const typeText = this.scene.add.text(dotX + RARITY_DOT_R + 3, footerCenterY, definition.type === "minion" ? "Minion" : "Spell", TYPE_LABEL_STYLE).setOrigin(0, 0.5);
         objects.push(typeText);
 
         objects.push(...this.createStatBadgeInset(instance, definition, footerCenterY));
@@ -247,9 +230,8 @@ export class CardView
     }
 
     /** 'full' mode's atk/hp box — an opaque white rounded rect inset from the card's bottom-right corner (not overflowing it, unlike 'simplified' mode's createStatBadge). Minion-only. */
-    private createStatBadgeInset (instance: CardInstance, definition: CardDefinition, footerCenterY: number): Phaser.GameObjects.GameObject[]
-    {
-        if (definition.type !== 'minion') return [];
+    private createStatBadgeInset(instance: CardInstance, definition: CardDefinition, footerCenterY: number): Phaser.GameObjects.GameObject[] {
+        if (definition.type !== "minion") return [];
 
         const boxLeft = CARD_W / 2 - ATKHP_INSET - ATKHP_W_FULL;
         const boxTop = footerCenterY - ATKHP_H_FULL / 2;
@@ -264,9 +246,8 @@ export class CardView
     }
 
     /** Fused "atk/hp" box, minion-only — a single small dark-red box replacing the old separate attack/health circles, centered exactly on the card's bottom-right corner so it deliberately overflows both edges. 'simplified' mode only — 'full' mode uses the inset createStatBadgeInset instead. */
-    private createStatBadge (instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[]
-    {
-        if (definition.type !== 'minion') return [];
+    private createStatBadge(instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[] {
+        if (definition.type !== "minion") return [];
 
         const box = this.scene.add.rectangle(CARD_W / 2, CARD_H / 2, ATKHP_W, ATKHP_H, 0xb0413e).setStrokeStyle(2, 0x1a1a1a);
         const text = this.scene.add.text(CARD_W / 2, CARD_H / 2, `${instance.currentAttack ?? 0}/${instance.currentHealth ?? 0}`, STAT_FUSED_STYLE).setOrigin(0.5);
@@ -288,28 +269,32 @@ export class CardView
      * overflow, but coverFit necessarily crops a bit more of the source art to fit
      * the smaller box — an expected side effect, not a bug.
      */
-    private artBoxFor (align: CardDefinition['artVerticalAlign']): { height: number; centerY: number }
-    {
-        switch (align)
-        {
-            case 'top': return { height: CARD_H - HEADER_CONTENT_H_FULL, centerY: HEADER_CONTENT_H_FULL / 2 };
-            case 'bottom': return { height: CARD_H - FOOTER_BAR_H, centerY: -FOOTER_BAR_H / 2 };
-            default: return { height: CARD_H, centerY: 0 };
+    private artBoxFor(align: CardDefinition["artVerticalAlign"]): { height: number; centerY: number } {
+        switch (align) {
+            case "top":
+                return { height: CARD_H - HEADER_CONTENT_H_FULL, centerY: HEADER_CONTENT_H_FULL / 2 };
+            case "bottom":
+                return { height: CARD_H - FOOTER_BAR_H, centerY: -FOOTER_BAR_H / 2 };
+            default:
+                return { height: CARD_H, centerY: 0 };
         }
     }
 
-    /** Card art — the actual image if its texture loaded, otherwise a black box with small gray "MISSING ASSET" text (most cards have no art asset yet; see Preloader.preload). Sized/positioned by the caller so it can cover just the inset art zone ('full' mode) or the whole card ('simplified' mode). */
-    private createArtVisual (art: string, width: number, height: number, centerY: number): Phaser.GameObjects.GameObject[]
-    {
-        if (this.scene.textures.exists(art))
-        {
+    /** Card art — the actual image if its texture loaded, otherwise a black box with small gray "MISSING ASSET" text
+     * (most cards have no art asset yet; see Preloader.preload). Sized/positioned by the caller so it can cover just
+     * the inset art zone ('full' mode) or the whole card ('simplified' mode). */
+    private createArtVisual(art: string, width: number, height: number, centerY: number): Phaser.GameObjects.GameObject[] {
+        if (this.scene.textures.exists(art)) {
             const image = this.scene.add.image(0, centerY, art);
             coverFit(image, width, height);
             return [image];
         }
 
         const box = this.scene.add.rectangle(0, centerY, width, height, 0x000000).setStrokeStyle(1, 0x333333);
-        const label = this.scene.add.text(0, centerY, 'MISSING ASSET', MISSING_ASSET_STYLE).setOrigin(0.5).setWordWrapWidth(width - 16, true);
+        const label = this.scene.add
+            .text(0, centerY, "MISSING ASSET", MISSING_ASSET_STYLE)
+            .setOrigin(0.5)
+            .setWordWrapWidth(width - 16, true);
         return [box, label];
     }
 
@@ -321,8 +306,7 @@ export class CardView
      * consumed keyword like divineShield must stop rendering once popped, and the definition
      * never changes to reflect that.
      */
-    private createKeywordLabels (instance: CardInstance, startY: number): Phaser.GameObjects.GameObject[]
-    {
+    private createKeywordLabels(instance: CardInstance, startY: number): Phaser.GameObjects.GameObject[] {
         const keywords = [...instance.keywords];
         if (keywords.length === 0) return [];
 
@@ -330,17 +314,15 @@ export class CardView
         const objects: Phaser.GameObjects.GameObject[] = [];
         let cursorX = startX;
 
-        keywords.forEach((keyword, index) =>
-        {
+        keywords.forEach((keyword, index) => {
             const meta = KEYWORD_METADATA[keyword];
-            const hex = `#${meta.color.toString(16).padStart(6, '0')}`;
+            const hex = `#${meta.color.toString(16).padStart(6, "0")}`;
             const label = this.scene.add.text(cursorX, startY, meta.label, { ...KEYWORD_LABEL_BASE_STYLE, color: hex }).setOrigin(0, 0);
             objects.push(label);
             cursorX += label.width;
 
-            if (index < keywords.length - 1)
-            {
-                const separator = this.scene.add.text(cursorX, startY, ',', KEYWORD_SEPARATOR_STYLE).setOrigin(0, 0);
+            if (index < keywords.length - 1) {
+                const separator = this.scene.add.text(cursorX, startY, ",", KEYWORD_SEPARATOR_STYLE).setOrigin(0, 0);
                 objects.push(separator);
                 cursorX += separator.width;
             }
@@ -358,15 +340,13 @@ export class CardView
      * nudge at the floor size doesn't have that problem. Only falls back to wrapping if neither
      * gets the name to fit — narrow cards would otherwise chop long names mid-word constantly.
      */
-    private fitCardName (text: Phaser.GameObjects.Text, maxWidth: number): void
-    {
+    private fitCardName(text: Phaser.GameObjects.Text, maxWidth: number): void {
         if (text.width <= maxWidth) return;
 
         const minFontSize = 9;
-        const mildLetterSpacing = -0.5;
+        const mildLetterSpacing = -0.4;
 
-        for (let fontSize = 14; fontSize >= minFontSize; fontSize -= 1)
-        {
+        for (let fontSize = 12; fontSize >= minFontSize; fontSize -= 1) {
             text.setFontSize(fontSize);
             if (text.width <= maxWidth) return;
         }
@@ -387,12 +367,8 @@ export class CardView
      * wrapping to a second row above the first if a pill would run into the atk/hp box's
      * reserved bottom-right corner.
      */
-    private createStatusPills (instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[]
-    {
-        const entries = [
-            ...[...instance.keywords].map((keyword) => KEYWORD_METADATA[keyword]),
-            ...distinctTriggers(definition.effects).map((trigger) => TRIGGER_METADATA[trigger]),
-        ];
+    private createStatusPills(instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[] {
+        const entries = [...[...instance.keywords].map((keyword) => KEYWORD_METADATA[keyword]), ...distinctTriggers(definition.effects).map((trigger) => TRIGGER_METADATA[trigger])];
         if (entries.length === 0) return [];
 
         const objects: Phaser.GameObjects.GameObject[] = [];
@@ -401,13 +377,11 @@ export class CardView
         let cursorX = startX;
         let cursorY = CARD_H / 2 - PILL_INSET_Y - PILL_H;
 
-        for (const { label, color } of entries)
-        {
+        for (const { label, color } of entries) {
             const text = this.scene.add.text(0, 0, label, PILL_LABEL_STYLE).setOrigin(0, 0.5);
             const pillWidth = text.width + PILL_PAD_X * 2;
 
-            if (cursorX + pillWidth > rowLimitX && cursorX > startX)
-            {
+            if (cursorX + pillWidth > rowLimitX && cursorX > startX) {
                 cursorX = startX;
                 cursorY -= PILL_H + PILL_ROW_GAP;
             }
