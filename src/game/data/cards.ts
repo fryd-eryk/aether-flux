@@ -245,6 +245,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "common",
+        artVerticalAlign: "bottom",
     },
     "silencing-rune": {
         id: "silencing-rune",
