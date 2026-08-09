@@ -54,6 +54,13 @@ function serializeEffectAction(action: EffectAction, level: number): string {
             lines.push(`${indent(level)}definitionId: ${JSON.stringify(action.definitionId)},`);
             lines.push(`${indent(level)}count: ${action.count},`);
             break;
+        case 'freeze':
+        case 'silence':
+            lines.push(`${indent(level)}target: ${JSON.stringify(action.target)},`);
+            if (action.chosenRestriction) {
+                lines.push(`${indent(level)}chosenRestriction: ${JSON.stringify(action.chosenRestriction)},`);
+            }
+            break;
     }
 
     return `{\n${lines.join('\n')}\n${indent(level - 1)}}`;

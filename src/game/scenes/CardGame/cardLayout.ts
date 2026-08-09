@@ -27,25 +27,29 @@ export const HERO_RADIUS = 28;
 export const HERO_SIZE = HERO_RADIUS * 2;
 export const BOARD_ZONE_W = 1600;
 
-// Row Y-positions are hand-tuned so hero/board rows and the two hand states below clear each
+// Row Y-positions are hand-tuned so hero/board rows and the hand states below clear each
 // other with a small gap given CARD_H/HERO_RADIUS above — see the git history of this file if
 // those change again.
 //
-// Hands no longer occupy a permanent dedicated row. Each hand rests "poked" against its owner's
+// Hands don't occupy a permanent dedicated row. Each hand rests "poked" against its owner's
 // screen edge — card center pinned exactly on the edge, so only the CARD_H/2 half that's on-screen
 // is visible (Phaser/the canvas clips the rest for free, no mask needed) — and its owner's hero
 // overlaps that poke, drawn on top via HERO_DEPTH, like the hero is standing in front of a mostly
-// tucked-away fan of cards. The opponent's hand *only* ever exists in this poked state (see the
-// "twist" in wirePlayerHandPeekEvents — hovering it does nothing). The player's hand additionally has a
-// "peeked" state, entered by hovering the trigger band below the battlefield (see
-// PEEK_TRIGGER_*): the hand rises to PLAYER_HAND_PEEK_Y (fully visible) and the hero rises off the
-// poke to PLAYER_HERO_PEEK_Y (just clear of the battlefield) so neither obscures the other. Both
-// are derived from PLAYER_BOARD_Y (via PEEK_GAP) so the peeked hand+hero always fit exactly
-// between the board and the bottom edge. PLAYER_HAND_PEEK_Y additionally backs off by
+// tucked-away fan of cards. The hero never moves off HERO_Y for either side — only individual
+// hand cards animate (see HAND_ARC_* / PLAYER_HAND_PEEK_Y below).
+//
+// Idle hand cards fan out in a slight arc (see HAND_ARC_* and handCardSlot in index.ts) rather
+// than sitting in a flat row — center card upright and least-hidden, cards further out rotate
+// away from center and sit closer to the flush poke edge (more hidden), mimicking a fan pivoting
+// from a point beyond the screen edge. The opponent's hand *only* ever exists in this idle arced
+// state — it never peeks (a deliberate "nothing happens" twist, see renderHand in index.ts). The
+// player's hand additionally supports peeking ONE card at a time on hover: that card alone
+// straightens (rotation 0) and rises to PLAYER_HAND_PEEK_Y, fully clear of the screen's bottom
+// edge; every other card stays in its idle arced slot. PLAYER_HAND_PEEK_Y backs off by
 // HAND_PEEK_BOTTOM_CLEARANCE, since a hand card's own bottom edge isn't its true visual extent —
 // the fused atk/hp box (see ATKHP_H in createStatBadge) is centered on and overflows past the
 // card's bottom-right corner, so without that clearance it would render clipped by the screen's
-// bottom edge whenever the hand is fully peeked.
+// bottom edge once peeked.
 //
 // Freeing the opponent's hand from its own row lets OPPONENT_BOARD_Y move up (it no longer needs
 // to clear a full hand row below the opponent's hero), which in turn opens up a deliberately
@@ -56,28 +60,45 @@ export const OPPONENT_HAND_Y = 0; // poked flush against the top edge — always
 export const OPPONENT_BOARD_Y = 265;
 export const PLAYER_BOARD_Y = 657;
 export const PLAYER_HAND_POKE_Y = GAME_HEIGHT; // poked flush against the bottom edge
-export const PLAYER_HERO_Y = 1043; // idle, i.e. poked-hand state
+export const PLAYER_HERO_Y = 1043; // fixed — the hero never moves, see above
 
-export const PEEK_GAP = 14;
-export const PLAYER_HERO_PEEK_Y = PLAYER_BOARD_Y + CARD_H / 2 + PEEK_GAP + HERO_RADIUS;
-// See the HAND_PEEK_BOTTOM_CLEARANCE comment above — pulls the peeked hand row up just enough
-// that the atk/hp box's overflow past a card's bottom edge still lands on-screen.
+// See the HAND_PEEK_BOTTOM_CLEARANCE comment above — pulls the peeked card up just enough that
+// the atk/hp box's overflow past its bottom edge still lands on-screen. The extra 20px is plain
+// breathing room, tuned by eye, so a peeked card doesn't sit flush against the screen's edge.
 export const HAND_PEEK_BOTTOM_CLEARANCE = ATKHP_H / 2;
-export const PLAYER_HAND_PEEK_Y = PLAYER_HERO_PEEK_Y + HERO_RADIUS + PEEK_GAP + CARD_H / 2 - HAND_PEEK_BOTTOM_CLEARANCE;
+export const PLAYER_HAND_PEEK_Y = GAME_HEIGHT - CARD_H / 2 - HAND_PEEK_BOTTOM_CLEARANCE - 20;
 
-// Hero containers must out-rank hand containers' depth (hand fans out over 0..handSize-1 — see
+// Hero containers must out-rank hand containers' default fan depth (0..handSize-1 — see
 // renderHand) so each hero visually sits in front of its own poked hand rather than being
 // half-buried under it, while staying well clear of drag(1000)/animation depths above.
 export const HERO_DEPTH = 100;
 
-// Hovering this band under the battlefield toggles the player's hand between poked and peeked
-// (see wirePlayerHandPeekEvents). It's exactly the row-layout footprint (rowLayout's BOARD_ZONE_W-wide
-// span) from the board's bottom edge down to the screen edge, so it naturally covers the poke
-// sliver, the fully peeked hand, and the peeked hero without also catching the End Turn/Cancel
-// buttons or the deck/graveyard piles, which all live further out at PILE_X.
-export const PEEK_TRIGGER_Y = PLAYER_BOARD_Y + CARD_H / 2;
-export const PEEK_TRIGGER_X_MIN = CENTER_X - BOARD_ZONE_W / 2;
-export const PEEK_TRIGGER_X_MAX = CENTER_X + BOARD_ZONE_W / 2;
+// Depth for whichever single hand card is currently peeked (hover) — must out-rank every hand
+// card's own fan depth AND HERO_DEPTH (a centered peek must never be partially hidden behind the
+// hero), while staying well clear of drag's depth (1000) above.
+export const HAND_PEEK_DEPTH = 400;
+
+// Hand fan/arc (handCardSlot in index.ts, used for both hands' idle layout). A card `n` slots
+// from the hand's center rotates by `n * HAND_ARC_ANGLE_STEP_DEG`, clamped at
+// HAND_ARC_MAX_ANGLE_DEG so a very large hand's outermost cards don't over-rotate, and sits
+// `HAND_ARC_LIFT * cos(rotation)` closer to (player) or further past (opponent) the flush poke
+// edge than the center card — the cosine falloff mimics a true circular fan, where more-rotated
+// outer cards sit nearer the fan's rim (i.e. more hidden), matching a real fanned hand.
+export const HAND_ARC_ANGLE_STEP_DEG = 4;
+export const HAND_ARC_MAX_ANGLE_DEG = 18;
+export const HAND_ARC_LIFT = 46;
+
+// Anti-crowding floor for the hand row (handRowLayout in index.ts, kept separate from the plain
+// rowLayout board/hand share — this floor is a 'full'-mode cost-badge concern that doesn't apply
+// to renderBoard's cost-badge-less 'simplified' cards). 'full' mode's cost number sits
+// right-anchored 3px from the card's right edge (COST_TEXT_STYLE at CARD_W/2-3) and is a single
+// digit (~11px wide at that font — every card cost in cards.ts is single-digit). Per-card depth
+// is ascending left-to-right, so a rightward neighbor always paints over the card to its left;
+// once that neighbor's left edge intrudes past the digit's own left edge — i.e. spacing drops
+// below CARD_W - 3 - 11 — the digit itself starts getting covered. Below this floor, the hand
+// scales down as a whole instead of shrinking spacing further (z-order alone can't avoid the
+// coverage — see handRowLayout's doc comment).
+export const HAND_MIN_SPACING = CARD_W - 3 - 11;
 
 // Deck/graveyard piles share the end-turn/cancel buttons' column, offset further right so hand
 // cards (which can extend close to x=1760 at max hand size) never overlap them.

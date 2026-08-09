@@ -21,9 +21,9 @@
     "card-game"
   ],
   "scripts": {
-    "dev": "node log.js dev & next dev -p 8080",
+    "dev": "node log.js dev & next dev -p 3000",
     "build": "node log.js build & next build",
-    "dev-nolog": "next dev -p 8080",
+    "dev-nolog": "next dev -p 3000",
     "build-nolog": "next build"
   },
   "dependencies": {

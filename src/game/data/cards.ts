@@ -239,6 +239,8 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 trigger: "onPlay",
                 action: {
                     kind: "freeze",
+                    target: "chosen",
+                    chosenRestriction: "minion",
                 },
             },
         ],
@@ -255,6 +257,8 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 trigger: "onPlay",
                 action: {
                     kind: "silence",
+                    target: "chosen",
+                    chosenRestriction: "minion",
                 },
             },
         ],

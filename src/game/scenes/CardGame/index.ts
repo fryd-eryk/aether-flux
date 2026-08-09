@@ -23,6 +23,11 @@ import {
     GAME_HEIGHT,
     GAME_WIDTH,
     getPileCards,
+    HAND_ARC_ANGLE_STEP_DEG,
+    HAND_ARC_LIFT,
+    HAND_ARC_MAX_ANGLE_DEG,
+    HAND_MIN_SPACING,
+    HAND_PEEK_DEPTH,
     HERO_DEPTH,
     HERO_RADIUS,
     HERO_SIZE,
@@ -31,9 +36,6 @@ import {
     OPPONENT_GRAVEYARD_Y,
     OPPONENT_HAND_Y,
     OPPONENT_HERO_Y,
-    PEEK_TRIGGER_X_MAX,
-    PEEK_TRIGGER_X_MIN,
-    PEEK_TRIGGER_Y,
     PILE_LABEL_STYLE,
     PILE_STYLES,
     PILE_X,
@@ -42,7 +44,6 @@ import {
     PLAYER_GRAVEYARD_Y,
     PLAYER_HAND_PEEK_Y,
     PLAYER_HAND_POKE_Y,
-    PLAYER_HERO_PEEK_Y,
     PLAYER_HERO_Y,
     type PileZone,
     SMALL_STYLE,
@@ -52,6 +53,9 @@ import {
 import { CardView } from './CardView';
 import { HelpBoxController } from './HelpBoxController';
 import { PileViewController } from './PileViewController';
+
+/** A hand card's idle "slot" — its arced position/rotation/scale/depth when nothing is happening to it. See handCardSlot. */
+type HandSlot = { x: number; y: number; rotation: number; scale: number; depth: number };
 
 /**
  * Renders TurnStateMachine's GameState and forwards input into it. This scene owns no
@@ -90,9 +94,10 @@ export class CardGame extends Scene
 
     private renderedObjects: Phaser.GameObjects.GameObject[] = [];
     private cardInstanceByContainer = new Map<Phaser.GameObjects.Container, string>();
-    // x only — a draggable hand card's y is always the current playerHandY(), so dragend re-reads
-    // that live instead of risking a second, staler copy of it drifting out of sync.
-    private originalPositions = new Map<Phaser.GameObjects.Container, number>();
+    // Every non-face-down player hand card's idle arced slot (see handCardSlot) — both the
+    // peek-out tween and a cancelled drag restore a card to exactly this, so there's one source
+    // of truth for "where does this card live when nothing is happening to it."
+    private handSlots = new Map<Phaser.GameObjects.Container, HandSlot>();
     private instanceContainers = new Map<string, Phaser.GameObjects.Container>();
     private heroContainers = new Map<PlayerId, Phaser.GameObjects.Container>();
 
@@ -105,17 +110,11 @@ export class CardGame extends Scene
     private opponentHealthText!: Phaser.GameObjects.Text;
     private opponentManaText!: Phaser.GameObjects.Text;
 
-    // Whether the player's hand is currently peeked (raised, fully visible) vs. its default poked
-    // state — see the big comment above PLAYER_HAND_POKE_Y in cardLayout.ts. Persists across
-    // renderNow() rebuilds (a mid-peek board rebuild, e.g. a card drawn, repaints the hand/hero in
-    // the right state instead of snapping back to poked).
-    private handPeekActive = false;
-
-    // The hand card currently being dragged, if any — excluded from setHandPeek's batched tween
-    // (see there) so a peek toggle firing mid-drag (dragging through/past PEEK_TRIGGER_Y is the
-    // common case, since the board sits above it) can't fight the drag handler's own per-pointermove
-    // setPosition() on the same container. Without this the card visibly detached from the cursor,
-    // stuttering between the tween's eased position and the drag's direct one every frame.
+    // The hand card currently being dragged, if any — excluded from per-card peek handling (see
+    // renderHand's pointerover/pointerout wiring) so a peek firing mid-drag can't fight the drag
+    // handler's own per-pointermove setPosition() on the same container. Without this the card
+    // visibly detached from the cursor, stuttering between the tween's eased position and the
+    // drag's direct one every frame.
     private draggedContainer: Phaser.GameObjects.Container | null = null;
 
     // --- animation orchestration --------------------------------------------------
@@ -274,9 +273,12 @@ export class CardGame extends Scene
         }
 
         // The container we just found is whatever the last renderHand() built — for the
-        // opponent that's always the face-down version. Swap in a face-up one for the reveal
-        // so the player can actually see what was played, instead of spotlighting a card back.
-        if (playerId === 'opponent')
+        // opponent that's always the face-down version (swap in a face-up one so the player can
+        // actually see what was played), and for the player it's whatever hand-only decoration
+        // (the playable glow outline, an idle arc rotation dragend didn't get a chance to clear —
+        // see wireDragEvents' isAnimating guard) that container happened to carry. Rebuilding
+        // fresh for both sides is simplest: a plain 'full' card has neither, and it's about to fly
+        // off to the spotlight anyway, so nothing about the hand container is worth keeping.
         {
             const player = this.machine.state.players[playerId];
             const instance = player.board.find((c) => c.instanceId === instanceId)
@@ -328,13 +330,16 @@ export class CardGame extends Scene
 
     /**
      * Flies a temporary card preview from the drawing player's deck pile to the drawn card's
-     * computed hand slot, then promotes it into instanceContainers/renderedObjects as that card's
-     * resting container instead of discarding it — a full renderNow() stays deferred for the
-     * *entire* burst of opening-hand draws (they all queue back-to-back into one animating
+     * computed arced hand slot, then promotes it into instanceContainers/renderedObjects as that
+     * card's resting container instead of discarding it — a full renderNow() stays deferred for
+     * the *entire* burst of opening-hand draws (they all queue back-to-back into one animating
      * session, see the class doc comment), so a discarded preview left nothing on screen between
-     * draws. Sibling cards already resting in this hand are re-tweened to their updated slot first,
-     * since a growing hand recenters the whole row (rowLayout's spacing/startX both shift with
-     * count) — without that they'd sit at a stale pre-draw position until the eventual renderNow().
+     * draws. Sibling cards already resting in this hand are re-tweened to their updated slot
+     * first, since a growing hand recenters/rescales the whole row (handRowLayout's
+     * spacing/startX/scale all shift with count) — without that they'd sit at a stale pre-draw
+     * position until the eventual renderNow(). The newly-landed card itself is left
+     * non-interactive (no peek/drag wiring) same as before — it only becomes interactive once
+     * the next real renderNow() rebuilds it properly.
      */
     private async playDrawAnimation (playerId: PlayerId, instanceId: string): Promise<void>
     {
@@ -343,27 +348,29 @@ export class CardGame extends Scene
         if (index === -1) return;
 
         const faceDown = playerId === 'opponent';
-        const { spacing, startX } = this.rowLayout(player.hand.length, 15);
-        const destY = playerId === 'opponent' ? OPPONENT_HAND_Y : this.playerHandY();
-        const destX = startX + index * spacing;
+        const liftSign: 1 | -1 = faceDown ? -1 : 1;
+        const edgeY = playerId === 'opponent' ? OPPONENT_HAND_Y : PLAYER_HAND_POKE_Y;
+        const layout = this.handRowLayout(player.hand.length);
 
         player.hand.forEach((sibling, siblingIndex) =>
         {
             if (sibling.instanceId === instanceId) return;
             const container = this.instanceContainers.get(sibling.instanceId);
             if (!container) return;
-            this.tweens.add({ targets: container, x: startX + siblingIndex * spacing, y: destY, duration: 250, ease: 'Cubic.easeOut' });
+            const slot = this.handCardSlot(siblingIndex, player.hand.length, layout, edgeY, liftSign);
+            this.tweens.add({ targets: container, x: slot.x, y: slot.y, rotation: slot.rotation, scale: slot.scale, duration: 250, ease: 'Cubic.easeOut' });
         });
 
+        const destSlot = this.handCardSlot(index, player.hand.length, layout, edgeY, liftSign);
         const origin = this.deckPilePosition(playerId);
         const flying = this.cardView.createCardContainer(player.hand[index], faceDown ? 'faceDown' : 'full');
         flying.setPosition(origin.x, origin.y);
         flying.setDepth(3000);
         flying.setScale(0.6);
 
-        await this.tweenPromise({ targets: flying, x: destX, y: destY, scale: 1, duration: 400, ease: 'Cubic.easeOut' });
+        await this.tweenPromise({ targets: flying, x: destSlot.x, y: destSlot.y, rotation: destSlot.rotation, scale: destSlot.scale, duration: 400, ease: 'Cubic.easeOut' });
 
-        flying.setDepth(index);
+        flying.setDepth(destSlot.depth);
         this.renderedObjects.push(flying);
         this.instanceContainers.set(instanceId, flying);
     }
@@ -403,11 +410,9 @@ export class CardGame extends Scene
     create ()
     {
         // scene.restart() (the Play Again button) reuses this same class instance, so field
-        // initializers do NOT re-run — reset handPeekActive explicitly, and construct fresh
-        // cardView/helpBoxController/pileView so their internal state (including which pile-view
-        // overlay was open) doesn't leak from a finished game into the next one.
-        this.handPeekActive = false;
-
+        // initializers do NOT re-run — construct fresh cardView/helpBoxController/pileView so
+        // their internal state (including which pile-view overlay was open) doesn't leak from a
+        // finished game into the next one.
         this.cardView = new CardView(this);
         this.helpBoxController = new HelpBoxController(this, () => this.draggedContainer);
         this.pileView = new PileViewController(this, this.cardView, this.helpBoxController);
@@ -429,7 +434,6 @@ export class CardGame extends Scene
         this.createEndTurnButton();
         this.createCancelButton();
         this.wireDragEvents();
-        this.wirePlayerHandPeekEvents();
         this.input.keyboard?.on('keydown-ESC', () => this.pileView.close());
 
         EventBus.on('state:phase-change', this.phaseChangeHandler);
@@ -464,6 +468,12 @@ export class CardGame extends Scene
         this.input.on('dragstart', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject) =>
         {
             const container = gameObject as Phaser.GameObjects.Container;
+            // Kill any in-flight peek tween so it can't fight this handler's own per-pointermove
+            // setPosition() below, and snap upright — a rotated card being dragged around the
+            // battlefield would look broken, and "animate upright" is peek's own language for a
+            // picked-up card anyway.
+            this.tweens.killTweensOf(container);
+            container.setRotation(0);
             container.setDepth(1000);
             this.draggedContainer = container;
 
@@ -492,63 +502,16 @@ export class CardGame extends Scene
             if (this.draggedContainer === container) this.draggedContainer = null;
             if (!container.active) return; // already destroyed by a re-render triggered from the drop above
 
-            const originalX = this.originalPositions.get(container);
-            if (originalX !== undefined) container.setPosition(originalX, this.playerHandY());
+            // A successful drop synchronously plays the card and queues its animation (isAnimating
+            // flips true within the same 'drop' → 'dragend' dispatch) — skip the idle-slot restore
+            // in that case, or it would snap the container's rotation back to its old hand angle
+            // right out from under playCardPlayedAnimation, which never re-touches rotation itself
+            // (only x/y/scale), leaving the card visibly tilted through its whole spotlight/fly.
+            if (this.isAnimating) return;
+
+            const slot = this.handSlots.get(container);
+            if (slot) { container.setPosition(slot.x, slot.y); container.setRotation(slot.rotation); container.setDepth(slot.depth); }
         });
-    }
-
-    /** Current Y for the player's hero — PLAYER_HERO_PEEK_Y once peeked, PLAYER_HERO_Y (idle/poked) otherwise. */
-    private playerHeroY (): number
-    {
-        return this.handPeekActive ? PLAYER_HERO_PEEK_Y : PLAYER_HERO_Y;
-    }
-
-    /** Current Y for the player's hand row — mirrors playerHeroY() for PLAYER_HAND_PEEK_Y/POKE_Y. */
-    private playerHandY (): number
-    {
-        return this.handPeekActive ? PLAYER_HAND_PEEK_Y : PLAYER_HAND_POKE_Y;
-    }
-
-    /**
-     * The player's hand toggles poked/peeked purely off cursor position within PEEK_TRIGGER_*
-     * (see its comment in cardLayout.ts) — deliberately not a Zone with pointerover/pointerout,
-     * since the player's hero sits at a *higher* depth directly over part of that band (see
-     * HERO_DEPTH) and Phaser's default topOnly input would let the hero swallow hover events in
-     * the overlap instead of passing them through. Polling pointermove sidesteps that entirely.
-     * The opponent's hand has no equivalent wiring at all — that's the "nothing happens" twist —
-     * so it only ever renders in its poked state.
-     */
-    private wirePlayerHandPeekEvents (): void
-    {
-        this.input.on('pointermove', (pointer: Phaser.Input.Pointer) =>
-        {
-            const withinTrigger =
-                pointer.x >= PEEK_TRIGGER_X_MIN && pointer.x <= PEEK_TRIGGER_X_MAX && pointer.y >= PEEK_TRIGGER_Y;
-            this.setHandPeek(withinTrigger);
-        });
-    }
-
-    /**
-     * Flips handPeekActive and tweens the player's already-rendered hand containers and hero
-     * container to their new poked/peeked target position in one batched tween per group. Only
-     * used for the live hover transition — a renderNow() that happens mid-peek (e.g. a card drawn)
-     * instead reads playerHeroY()/playerHandY() directly in renderHero/renderHand and paints the
-     * right position immediately, no tween, the same way a mid-animation board rebuild always
-     * paints the current true state rather than an old one.
-     */
-    private setHandPeek (active: boolean): void
-    {
-        if (this.handPeekActive === active) return;
-        this.handPeekActive = active;
-
-        const hero = this.heroContainers.get('player');
-        if (hero) this.tweens.add({ targets: hero, y: this.playerHeroY(), duration: 220, ease: 'Cubic.easeOut' });
-
-        const handY = this.playerHandY();
-        const containers = this.machine.state.players.player.hand
-            .map((instance) => this.instanceContainers.get(instance.instanceId))
-            .filter((container): container is Phaser.GameObjects.Container => !!container && container !== this.draggedContainer);
-        if (containers.length > 0) this.tweens.add({ targets: containers, y: handY, duration: 220, ease: 'Cubic.easeOut' });
     }
 
     private createEndTurnButton (): void
@@ -601,7 +564,7 @@ export class CardGame extends Scene
         this.updateChrome(state);
 
         this.renderHero('opponent', OPPONENT_HERO_Y);
-        this.renderHero('player', this.playerHeroY());
+        this.renderHero('player', PLAYER_HERO_Y);
 
         this.renderPile(state.players.opponent, 'graveyard', OPPONENT_GRAVEYARD_Y);
         this.renderPile(state.players.opponent, 'deck', OPPONENT_DECK_Y);
@@ -609,7 +572,7 @@ export class CardGame extends Scene
         this.renderPile(state.players.player, 'graveyard', PLAYER_GRAVEYARD_Y);
 
         this.renderHand(state.players.opponent, OPPONENT_HAND_Y, true);
-        this.renderHand(state.players.player, this.playerHandY(), false);
+        this.renderHand(state.players.player, PLAYER_HAND_POKE_Y, false);
 
         this.renderBoard('opponent', state.players.opponent, OPPONENT_BOARD_Y);
         this.renderBoard('player', state.players.player, PLAYER_BOARD_Y);
@@ -639,7 +602,7 @@ export class CardGame extends Scene
         for (const obj of this.renderedObjects) obj.destroy();
         this.renderedObjects = [];
         this.cardInstanceByContainer.clear();
-        this.originalPositions.clear();
+        this.handSlots.clear();
         this.instanceContainers.clear();
         this.heroContainers.clear();
     }
@@ -661,6 +624,44 @@ export class CardGame extends Scene
         const spacing = Math.min(CARD_W + maxGap, BOARD_ZONE_W / count);
         const startX = CENTER_X - ((count - 1) * spacing) / 2;
         return { spacing, startX };
+    }
+
+    /**
+     * Hand-specific row layout — kept separate from `rowLayout` (which still serves the board's
+     * cost-badge-less 'simplified' cards untouched) because a hand needs an anti-crowding floor:
+     * once even-spread spacing would drop below HAND_MIN_SPACING, further shrinking it starts
+     * covering a card's cost badge (see that constant's doc comment in cardLayout.ts) — no
+     * z-order fix avoids that, so instead the whole row scales down uniformly around CENTER_X,
+     * preserving the spacing:CARD_W ratio (and therefore corner clearance) at any hand size.
+     */
+    private handRowLayout (count: number): { spacing: number; startX: number; scale: number }
+    {
+        const uncapped = Math.min(CARD_W + 15, BOARD_ZONE_W / count);
+        const spacing = Math.max(uncapped, HAND_MIN_SPACING);
+        const footprint = (count - 1) * spacing + CARD_W;
+        const scale = Math.min(1, BOARD_ZONE_W / footprint);
+        return { spacing: spacing * scale, startX: CENTER_X - ((count - 1) * spacing * scale) / 2, scale };
+    }
+
+    /**
+     * A hand card's idle "slot" — its arced position/rotation for index `index` of `count`,
+     * given `layout` (from handRowLayout) and the row's flush poke edge Y. `liftSign` is `+1`
+     * for the player (bottom edge, lift rises off it) and `-1` for the opponent (top edge, lift
+     * drops past it) — see HAND_ARC_* in cardLayout.ts for the fan math itself. Shared by
+     * renderHand (idle layout), playDrawAnimation (sibling re-tween / fly-in destination), and
+     * indirectly by peek/dragend restore via the handSlots map renderHand populates from this.
+     */
+    private handCardSlot (index: number, count: number, layout: { spacing: number; startX: number; scale: number }, edgeY: number, liftSign: 1 | -1): HandSlot
+    {
+        const x = layout.startX + index * layout.spacing;
+        const mid = (count - 1) / 2;
+        const rawDeg = (index - mid) * HAND_ARC_ANGLE_STEP_DEG;
+        const deg = Math.max(-HAND_ARC_MAX_ANGLE_DEG, Math.min(HAND_ARC_MAX_ANGLE_DEG, rawDeg));
+        const theta = (deg * Math.PI) / 180;
+        const lift = HAND_ARC_LIFT * Math.cos(theta) * layout.scale;
+        const y = edgeY - liftSign * lift;
+        const rotation = liftSign === 1 ? theta : -theta;
+        return { x, y, rotation, scale: layout.scale, depth: index };
     }
 
     private renderHero (id: PlayerId, y: number): void
@@ -762,16 +763,21 @@ export class CardGame extends Scene
         const cards = playerState.hand;
         if (cards.length === 0) return;
 
-        const { spacing, startX } = this.rowLayout(cards.length, 15);
+        const layout = this.handRowLayout(cards.length);
+        // +1 (player, bottom edge): lift rises off the poke edge. -1 (opponent, top edge): lift
+        // drops past it — mirrored fan, see handCardSlot/HAND_ARC_* in cardLayout.ts.
+        const liftSign: 1 | -1 = faceDown ? -1 : 1;
         const state = this.machine.state;
         const isMyTurn = !faceDown && playerState.id === 'player' && state.activePlayer === 'player';
 
         cards.forEach((instance, index) =>
         {
             const container = this.cardView.createCardContainer(instance, faceDown ? 'faceDown' : 'full');
-            const x = startX + index * spacing;
-            container.setPosition(x, y);
-            container.setDepth(index);
+            const slot = this.handCardSlot(index, cards.length, layout, y, liftSign);
+            container.setPosition(slot.x, slot.y);
+            container.setRotation(slot.rotation);
+            container.setScale(slot.scale);
+            container.setDepth(slot.depth);
             this.renderedObjects.push(container);
             this.instanceContainers.set(instance.instanceId, container);
 
@@ -785,23 +791,37 @@ export class CardGame extends Scene
             );
             this.helpBoxController.attachKeywordHover(container, instance);
 
+            // Every hand card (not just currently-playable ones) gets an idle slot and can peek —
+            // it's a read-only "let me see this clearly" affordance, independent of playability,
+            // same spirit as the keyword tooltip above having no turn/phase gating either.
+            this.handSlots.set(container, slot);
+            container.on('pointerover', () =>
+            {
+                if (container === this.draggedContainer) return;
+                this.tweens.killTweensOf(container);
+                this.tweens.add({ targets: container, y: PLAYER_HAND_PEEK_Y, rotation: 0, duration: 150, ease: 'Cubic.easeOut' });
+                container.setDepth(HAND_PEEK_DEPTH);
+            });
+            container.on('pointerout', () =>
+            {
+                if (container === this.draggedContainer) return;
+                this.tweens.killTweensOf(container);
+                const idleSlot = this.handSlots.get(container)!;
+                this.tweens.add({ targets: container, y: idleSlot.y, rotation: idleSlot.rotation, duration: 150, ease: 'Cubic.easeOut' });
+                container.setDepth(idleSlot.depth);
+            });
+
             if (!isMyTurn || state.phase !== TurnPhase.MainIdle) return;
 
             const definition = CARD_DEFINITIONS[instance.definitionId];
-            if (!definition) return;
+            if (!definition || playerState.mana < definition.cost) return;
 
-            if (playerState.mana < definition.cost)
-            {
-                // Unaffordable: dim it and leave it non-interactive rather than letting the player
-                // drag/click it and have TurnStateMachine silently reject the play (indistinguishable
-                // from a broken drag) — see the mana check in TurnStateMachine.playCard/executePlayCard.
-                container.setAlpha(0.5);
-                return;
-            }
+            // Playable: outline instead of the old dim-when-unaffordable treatment — every card
+            // stays at full opacity regardless, this just marks the ones actionable right now.
+            this.addOutline(container, CARD_W, CARD_H, 0x38d97b);
 
             if (definition.type === 'minion')
             {
-                this.originalPositions.set(container, x);
                 this.cardInstanceByContainer.set(container, instance.instanceId);
                 this.input.setDraggable(container);
             }
