@@ -821,7 +821,13 @@ export class CardGame extends Scene
             {
                 if (container === this.draggedContainer) return;
                 this.tweens.killTweensOf(container);
-                this.tweens.add({ targets: container, y: PLAYER_HAND_PEEK_Y, rotation: 0, duration: 150, ease: 'Cubic.easeOut' });
+                this.tweens.add({
+                    targets: container, y: PLAYER_HAND_PEEK_Y, rotation: 0, duration: 150, ease: 'Cubic.easeOut',
+                    // Keeps the keyword tooltip (anchored to this card's bounds at hover-start,
+                    // before this tween moves it) tracking the card as it rises, instead of staying
+                    // pinned to the card's pre-peek position near the bottom of the screen.
+                    onUpdate: () => this.helpBoxController.refreshPosition(container),
+                });
                 container.setDepth(HAND_PEEK_DEPTH);
             };
             const peekOut = () =>
@@ -897,7 +903,7 @@ export class CardGame extends Scene
                 new Geom.Rectangle(0, 0, CARD_W, CARD_H),
                 Geom.Rectangle.Contains
             );
-            this.helpBoxController.attachKeywordHover(container, instance, true);
+            this.helpBoxController.attachKeywordHover(container, instance);
 
             // See the matching comment in renderHero — only the player whose pending action this is
             // (always state.activePlayer) may resolve its target.

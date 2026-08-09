@@ -6,11 +6,14 @@ import type { CardInstance } from '../../types/Card';
 import { ATKHP_BOX_RADIUS, ATKHP_H_FULL, ATKHP_W_FULL, COST_TEXT_STYLE, GAME_HEIGHT, GAME_WIDTH, MANA_BADGE_COLOR, PILE_VIEW_DEPTH, TOOLTIP_BG_RADIUS, TOOLTIP_COST_CLEARANCE } from './cardLayout';
 
 /**
- * The cursor-following keyword/rule-text tooltip shown on hover for hand and board cards — see
- * showHelpBox for the 'extended' variant board minions get. Owns its own Phaser objects
- * (helpBox/helpBoxBg/helpBoxLines) entirely; the only outside dependency is knowing whether the
- * card currently under the pointer is the one mid-drag (see attachKeywordHover), for which the
- * caller supplies a callback rather than this class reaching into CardGame's drag state directly.
+ * The card-anchored keyword/rule-text/mana-cost tooltip shown on hover for hand, board, and pile
+ * cards — always the same content (keywords, rule text, mana cost) regardless of which
+ * CardDisplayMode the hovered card itself is rendered in, see showHelpBox. Anchored to the
+ * hovered card's own bounds (top edge, right side by default) rather than following the cursor —
+ * see positionHelpBox. Owns its own Phaser objects (helpBox/helpBoxBg/helpBoxLines) entirely; the
+ * only outside dependency is knowing whether the card currently under the pointer is the one
+ * mid-drag (see attachKeywordHover), for which the caller supplies a callback rather than this
+ * class reaching into CardGame's drag state directly.
  */
 export class HelpBoxController
 {
@@ -19,8 +22,10 @@ export class HelpBoxController
     private helpBoxBg: Phaser.GameObjects.Graphics;
     private boxWidth = 0;
     private boxHeight = 0;
-    /** Rebuilt fresh on every showHelpBox call — see its own comment for why this can't be one static Text. Widened to GameObject to also hold the extended tooltip's mana-cost box+text. */
+    /** Rebuilt fresh on every showHelpBox call — see its own comment for why this can't be one static Text. Widened to GameObject to also hold the tooltip's mana-cost box+text. */
     private helpBoxLines: Phaser.GameObjects.GameObject[] = [];
+    /** The card the tooltip is currently anchored to, or null while hidden — see refreshPosition. */
+    private currentContainer: Phaser.GameObjects.Container | null = null;
 
     constructor (private scene: Scene, private getDraggedContainer: () => Phaser.GameObjects.Container | null)
     {
@@ -30,11 +35,6 @@ export class HelpBoxController
         // so the tooltip has to clear the overlay it is being read on top of.
         this.helpBox.setDepth(PILE_VIEW_DEPTH + 100);
         this.helpBox.setVisible(false);
-
-        this.scene.input.on('pointermove', (pointer: Phaser.Input.Pointer) =>
-        {
-            if (this.helpBox.visible) this.positionHelpBox(pointer.x, pointer.y);
-        });
     }
 
     /** Matches the 'full' card layout's description box: black @ 90% opacity, rounded corners, no border. */
@@ -47,16 +47,16 @@ export class HelpBoxController
         this.helpBoxBg.fillRoundedRect(0, 0, width, height, TOOLTIP_BG_RADIUS);
     }
 
-    /** Wires the cursor-following keyword help box to a card container. 'extended' (simplified/board cards only) also shows the card's rule text and an overflowing cost badge — see showHelpBox — and drops the "no keywords means no-op" restriction in favor of "no keywords AND no text". */
-    attachKeywordHover (container: Phaser.GameObjects.Container, instance: CardInstance, extended: boolean = false): void
+    /** Wires the card-anchored keyword/text/cost help box to a card container. A vanilla card with neither keywords nor rule text (just a cost) gets no tooltip at all — nothing to say beyond what's already printed on the card. */
+    attachKeywordHover (container: Phaser.GameObjects.Container, instance: CardInstance): void
     {
         const definition = CARD_DEFINITIONS[instance.definitionId];
-        const hasText = extended && !!definition && definition.text !== '';
-        if (instance.keywords.size === 0 && !hasText) return;
+        if (!definition) return;
+        if (instance.keywords.size === 0 && definition.text === '') return;
 
         // Skip while this card is the one being dragged — see wireDragEvents' dragstart, which
         // hides an already-showing tooltip for it; this stops one from reappearing mid-drag too.
-        container.on('pointerover', () => { if (container !== this.getDraggedContainer()) this.showHelpBox(instance, extended); });
+        container.on('pointerover', () => { if (container !== this.getDraggedContainer()) this.showHelpBox(instance, container); });
         container.on('pointerout', () => this.hideHelpBox());
     }
 
@@ -64,23 +64,25 @@ export class HelpBoxController
      * A plain Phaser Text can't mix styles within one string, so a colored/bold keyword label
      * next to its plain-styled description needs two Text objects per keyword instead of one
      * joined multi-line string — rebuilt every hover since the keyword set differs per card.
-     * 'extended' (simplified/board cards only) additionally prepends the card's rule text above
-     * the keyword rows and draws a cost badge overflowing the tooltip's top-right corner, with
-     * the same presentation as the on-card badge — see CardView.createCardContainer's 'full' mode.
+     * Always prepends the card's rule text above the keyword rows and draws a cost badge
+     * overflowing the tooltip's top-right corner, with the same presentation as the on-card badge
+     * — see CardView.createCardContainer's 'full' mode — regardless of which CardDisplayMode the
+     * hovered card itself is rendered in, so hand/board/pile cards all show identical tooltip content.
      */
-    showHelpBox (instance: CardInstance, extended: boolean = false): void
+    showHelpBox (instance: CardInstance, container: Phaser.GameObjects.Container): void
     {
+        const definition = CARD_DEFINITIONS[instance.definitionId];
+        if (!definition) return;
+
         this.helpBoxLines.forEach((line) => line.destroy());
         this.helpBoxLines = [];
 
         const margin = 10;
         const maxWidth = 290;
-        const definition = extended ? CARD_DEFINITIONS[instance.definitionId] : undefined;
-        const showsCostBadge = extended && !!definition;
-        let cursorY = margin + (showsCostBadge ? TOOLTIP_COST_CLEARANCE : 0);
+        let cursorY = margin + TOOLTIP_COST_CLEARANCE;
         let maxRight = 0;
 
-        if (definition && definition.text !== '')
+        if (definition.text !== '')
         {
             const text = this.scene.add.text(margin, cursorY, definition.text, {
                 fontFamily: 'Arial', fontSize: '15px', color: '#ffffff',
@@ -122,37 +124,60 @@ export class HelpBoxController
 
         this.redrawBg(maxRight + margin, cursorY + margin - 4);
 
-        if (showsCostBadge && definition)
-        {
-            const boxLeft = this.boxWidth - ATKHP_W_FULL / 2;
-            const boxTop = -ATKHP_H_FULL / 2;
-            const badge = this.scene.add.graphics();
-            badge.fillStyle(MANA_BADGE_COLOR, 1);
-            badge.fillRoundedRect(boxLeft, boxTop, ATKHP_W_FULL, ATKHP_H_FULL, ATKHP_BOX_RADIUS);
-            const badgeText = this.scene.add.text(this.boxWidth, 0, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(0.5);
-            this.helpBox.add([badge, badgeText]);
-            this.helpBoxLines.push(badge, badgeText);
-        }
+        const boxLeft = this.boxWidth - ATKHP_W_FULL / 2;
+        const boxTop = -ATKHP_H_FULL / 2;
+        const badge = this.scene.add.graphics();
+        badge.fillStyle(MANA_BADGE_COLOR, 1);
+        badge.fillRoundedRect(boxLeft, boxTop, ATKHP_W_FULL, ATKHP_H_FULL, ATKHP_BOX_RADIUS);
+        const badgeText = this.scene.add.text(this.boxWidth, 0, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(0.5);
+        this.helpBox.add([badge, badgeText]);
+        this.helpBoxLines.push(badge, badgeText);
 
         this.helpBox.setVisible(true);
-
-        const pointer = this.scene.input.activePointer;
-        this.positionHelpBox(pointer.x, pointer.y);
+        this.currentContainer = container;
+        this.positionHelpBox(container);
     }
 
     hideHelpBox (): void
     {
         this.helpBox.setVisible(false);
+        this.currentContainer = null;
     }
 
-    private positionHelpBox (x: number, y: number): void
+    /**
+     * Re-anchors the tooltip to `container`'s *current* bounds, but only if it's still the card
+     * the tooltip is showing for — a no-op otherwise (including while hidden). Needed because
+     * showHelpBox positions once at hover-start using whatever bounds the card has right then, but
+     * a hand card's "peek" rise (see renderHand's peekIn tween in CardGame) moves it afterward on
+     * its own tween, independent of any pointer event. Call this from that tween's onUpdate so the
+     * tooltip tracks the card instead of staying pinned to its pre-peek (lower, near the screen's
+     * bottom edge) position for the whole 150ms rise.
+     */
+    refreshPosition (container: Phaser.GameObjects.Container): void
     {
-        const offset = 20;
+        if (this.currentContainer !== container) return;
+        this.positionHelpBox(container);
+    }
+
+    /**
+     * Anchored to the hovered card's own on-screen bounds (via getBounds(), so hand-fan rotation
+     * and pile-view scaling are both already accounted for) rather than the cursor. Top edge always
+     * lines up with the card's top border; horizontally prefers the card's right side, falling back
+     * to the left when the tooltip wouldn't fit on the right. If it would still overflow the bottom
+     * of the screen, it's nudged upward just enough to keep its full height on-screen — never above
+     * the card's own top edge, since that's the tooltip's other fixed alignment.
+     */
+    private positionHelpBox (container: Phaser.GameObjects.Container): void
+    {
+        const bounds = container.getBounds();
         const width = this.boxWidth;
         const height = this.boxHeight;
+        const gap = 8;
 
-        const px = x + offset + width > GAME_WIDTH ? x - offset - width : x + offset;
-        const py = y + offset + height > GAME_HEIGHT ? y - offset - height : y + offset;
+        const fitsRight = bounds.right + gap + width <= GAME_WIDTH;
+        const px = fitsRight ? bounds.right + gap : bounds.left - gap - width;
+
+        const py = Math.min(bounds.top, GAME_HEIGHT - height);
 
         this.helpBox.setPosition(px, py);
     }
