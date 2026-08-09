@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (29) ---
+    // --- Common rarity (28) ---
     "stone-guardian": {
         id: "stone-guardian",
         name: "Stone Guardian",
@@ -337,17 +337,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         keywords: ["windfury"],
         rarity: "common",
     },
-    "sapping-leech": {
-        id: "sapping-leech",
-        name: "Sapping Leech",
-        cost: 4,
-        type: "minion",
-        text: "",
-        attack: 2,
-        health: 4,
-        keywords: ["lifesteal"],
-        rarity: "common",
-    },
     "frost-behemoth": {
         id: "frost-behemoth",
         name: "Frost Behemoth",
@@ -455,6 +444,34 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "rare",
         artVerticalAlign: "bottom",
     },
+    "sapping-leech": {
+        id: "sapping-leech",
+        name: "Sapping Leech",
+        cost: 4,
+        type: "minion",
+        text: "Vigil: Restore 1 Health to your hero and deal 1 damage to the enemy hero.",
+        attack: 1,
+        health: 4,
+        effects: [
+            {
+                trigger: "startOfTurn",
+                action: {
+                    kind: "damage",
+                    amount: 1,
+                    target: "enemyHero",
+                },
+            },
+            {
+                trigger: "startOfTurn",
+                action: {
+                    kind: "heal",
+                    amount: 1,
+                    target: "friendlyHero",
+                },
+            },
+        ],
+        rarity: "rare",
+    },
     "grave-warden": {
         id: "grave-warden",
         name: "Grave Warden",
@@ -549,17 +566,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 },
             },
         ],
-        rarity: "rare",
-    },
-    "ironclad-vanguard": {
-        id: "ironclad-vanguard",
-        name: "Ironclad Vanguard",
-        cost: 5,
-        type: "minion",
-        text: "",
-        attack: 4,
-        health: 5,
-        keywords: ["taunt","divineShield"],
         rarity: "rare",
     },
     "emberheart-shaman": {
@@ -748,7 +754,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "rare",
     },
 
-    // --- Exotic rarity (8) ---
+    // --- Exotic rarity (9) ---
     "blood-moon-ritual": {
         id: "blood-moon-ritual",
         name: "Blood Moon Ritual",
@@ -775,6 +781,17 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "exotic",
         artVerticalAlign: "top",
     },
+    "ironclad-vanguard": {
+        id: "ironclad-vanguard",
+        name: "Ironclad Vanguard",
+        cost: 5,
+        type: "minion",
+        text: "",
+        attack: 4,
+        health: 5,
+        keywords: ["taunt","divineShield"],
+        rarity: "exotic",
+    },
     "charging-direwolf": {
         id: "charging-direwolf",
         name: "Charging Direwolf",
@@ -800,7 +817,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 trigger: "onPlay",
                 action: {
                     kind: "summon",
-                    definitionId: "ember-whelp",
+                    definitionId: "ember-fledgling",
                     count: 1,
                 },
             },
@@ -808,7 +825,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 trigger: "onDeath",
                 action: {
                     kind: "summon",
-                    definitionId: "ember-whelp",
+                    definitionId: "ember-fledgling",
                     count: 1,
                 },
             },
