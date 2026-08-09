@@ -35,8 +35,10 @@ into `main` as part of finishing a task.
 
 ## Architecture
 
-Next.js (`output: 'export'`, see `next.config.mjs`) renders a single page
-(`src/pages/index.tsx`) that dynamically imports `src/App.tsx` with `ssr: false`
+Next.js (`output: 'export'` in production only — see `next.config.mjs`'s
+phase-conditional config and the matching Gotchas entry below) renders a
+single page (`src/pages/index.tsx`) that dynamically imports `src/App.tsx`
+with `ssr: false`
 — Phaser requires a browser `window`/canvas, so the whole game tree is
 client-only. `App.tsx` mounts `PhaserGame`, which drives a `Phaser.Game`
 through `Boot → Preloader → CardGame`; `CardGame` is the only gameplay scene
@@ -57,11 +59,9 @@ dependency) → `src/game/scenes/CardGame.ts` (renders state, forwards input)
 real `CardView` code, type-checked form, saves straight to `cards.ts` via a
 dev-only API route (`src/pages/api/card-creator/save.ts`) while `npm run dev`
 is running. This is a `pages/api` route in a project whose `next.config.mjs`
-sets `output: 'export'` — that's deliberate, not an oversight: Next.js doesn't
-hard-error on that combination, it just drops the route from the static
-export with a build-time warning (`next build` prints "Statically exporting
-... disables API routes and middleware" — expected, not a regression to
-chase). See SPEC.md's "Card Creator" section for how it's wired up.
+sets `output: 'export'` — that's deliberate, not an oversight: see the Gotchas
+entry below for why the config is phase-conditional to make this actually
+work. See SPEC.md's "Card Creator" section for how it's wired up.
 
 ## Game design decisions
 
@@ -109,3 +109,4 @@ Non-obvious pitfalls hit while building this out — check here before re-debugg
 - **Silent state-machine rejection reads as "broken UI", not "disabled".** `TurnStateMachine` methods (`playCard`, `declareAttack`, ...) silently no-op on invalid actions (e.g. insufficient mana) — no event, no error. Any UI that lets the player *attempt* an action the state machine will reject (dragging a card, clicking a target) must independently gate on the same condition (e.g. dim + skip wiring interactivity for unaffordable cards in `renderHand`) — otherwise a rejected action is indistinguishable from a genuinely broken drag/click. Apply this same gating pattern to any new player-facing action.
 - **No `window.Phaser` runtime global.** Next.js bundles Phaser's ESM/CJS build (via webpack), not the standalone `<script>`-tag UMD build — only the latter sets `window.Phaser`. `tsc` won't catch a bare `Phaser.X` runtime reference either, since Phaser's ambient `.d.ts` declares it as a *type-only* global namespace. Always import runtime values by name (`import { Geom } from 'phaser'`) instead. (`src/App.tsx` in the original Phaser Studio template had this exact bug in its demo "Add Sprite" button — `Phaser.Math.Between` with no import — which is one reason that whole demo was removed rather than fixed.)
 - **Don't drive the game loop off `update()`.** A turn-based card game only reacts to player actions, not frame ticks — hence `TurnStateMachine` as a plain, Phaser-independent class, with `CardGame` only rendering `state` and forwarding input into it (see Architecture above). Resist the urge to poll state or animate turn logic inside a Scene's `update()`.
+- **`output: 'export'` blocks API routes in `next dev`, not just `next build` — and the two fail differently.** Confirmed by actually running both, twice, after getting it wrong both times first: (1) assumed `next build` would hard-error with a `pages/api` route present and `output: 'export'` set — it doesn't, it just prints a warning ("Statically exporting ... disables API routes and middleware") and silently drops the route from `dist/`; (2) having "fixed" that, assumed `next dev` would therefore also just work since it runs a real Node server regardless of `output` — it doesn't either: `next dev` logs `⨯ API Routes cannot be used with "output: export"` at startup and then genuinely 404s every request to that route, even though the module compiles. The fix (`next.config.mjs`) is to export a **function**, not a plain object — Next.js calls it with a `phase` argument (`PHASE_DEVELOPMENT_SERVER` from `next/constants.js`, note the explicit `.js` extension: Node's native ESM loader resolves `next.config.mjs` itself before Next's own resolver is available, and `next/constants` alone 404s under strict ESM resolution) — and only include `output: 'export'` when the phase *isn't* dev. This is what makes the Card Creator's save route (`src/pages/api/card-creator/save.ts`) work under `npm run dev` while `npm run build` still produces a fully static `dist/`. Lesson: when a framework's behavior differs between two commands that both "read the same config," verify each command separately — don't extrapolate from one to the other, twice in a row, like this took.

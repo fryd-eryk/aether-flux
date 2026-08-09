@@ -102,23 +102,33 @@ form (`CardForm.tsx` + `EffectsEditor.tsx` for the `effects[]` discriminated uni
   `src/game/data/cards.ts`. Gated on `process.env.NODE_ENV === 'development'` (403
   otherwise) since it only ever makes sense against a local checkout with `npm run dev`
   running — there's no scenario where writing to the repo's own source tree from a
-  deployed server would be meaningful. **This coexists with `next.config.mjs`'s
-  `output: 'export'` on purpose** — confirmed by actually running `npm run build` with
-  a `pages/api` route present: Next.js does *not* hard-error on that combination (an
-  earlier version of this doc claimed it did — that was wrong, an untested assumption
-  made during planning). It prints a build-time warning ("Statically exporting ...
-  disables API routes and middleware") and silently omits the route from `dist/`, which
-  is exactly what's wanted — the route is meaningless in a static export anyway, and
-  `npm run dev` runs a real Node server regardless of `output`. Earlier this used the
-  browser's File System Access API instead (`showOpenFilePicker` + `createWritable()`)
-  to sidestep a *believed* API-route restriction that turned out not to exist; that
-  approach worked but was Chrome/Edge-only and needed a one-time native-picker
-  permission per session, so it was dropped once the real constraint was found to be
-  narrower than assumed. `serializeCardDefinitions.ts` regenerates the whole file from
-  the in-memory `CARD_DEFINITIONS` map on every save (rarity-grouped section comments,
-  cost-ascending sort within each group, bare-vs-quoted key style, fixed property
-  order) — matching `cards.ts`'s existing conventions above, not byte-for-byte, but
-  valid and readable.
+  deployed server would be meaningful.
+  - **Making this coexist with `next.config.mjs`'s `output: 'export'` took two
+    corrections, both verified empirically rather than assumed — see the matching
+    entry in CLAUDE.md's Gotchas.** First pass assumed `next build` would hard-error
+    with a `pages/api` route present and `output: 'export'` set; it doesn't — it just
+    warns and drops the route from `dist/`. Second pass then assumed that meant
+    `next dev` would work fine too, since it runs a real server regardless of
+    `output`; it doesn't — `next dev` actively 404s every API route when `output:
+    'export'` is configured, logging `⨯ API Routes cannot be used with "output:
+    export"` at startup. The actual fix: `next.config.mjs` exports a **function**
+    keyed on `phase` (`PHASE_DEVELOPMENT_SERVER` from `next/constants.js` — the
+    explicit `.js` extension matters, see the Gotcha), omitting `output: 'export'`
+    only during the dev phase. `npm run dev` then runs as a normal Next.js server
+    (API routes fully functional) while `npm run build` still emits `output:
+    'export'`'s static `dist/`, which — same as before this whole detour — simply
+    excludes the route with a harmless build warning, since it's meaningless in a
+    static export anyway.
+  - Earlier this used the browser's File System Access API instead
+    (`showOpenFilePicker` + `createWritable()`) to sidestep a *believed* API-route
+    restriction that turned out to just need the phase-conditional config above; that
+    approach worked but was Chrome/Edge-only and needed a one-time native-picker
+    permission per session, so it was dropped once the real fix was found.
+  - `serializeCardDefinitions.ts` regenerates the whole file from the in-memory
+    `CARD_DEFINITIONS` map on every save (rarity-grouped section comments,
+    cost-ascending sort within each group, bare-vs-quoted key style, fixed property
+    order) — matching `cards.ts`'s existing conventions above, not byte-for-byte, but
+    valid and readable.
 - **Data ownership**: the in-memory card map is loaded once from the existing
   `import { CARD_DEFINITIONS } from '@/game/data/cards'` (already bundled into the
   client either way) and deep-copied into React state; the API route is a write-only

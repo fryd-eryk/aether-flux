@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (32) ---
+    // --- Common rarity (31) ---
     "goblin-skirmisher": {
         id: "goblin-skirmisher",
         name: "Goblin Skirmisher",
@@ -264,17 +264,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         keywords: ["taunt"],
         rarity: "common",
     },
-    "ashfall-raptor": {
-        id: "ashfall-raptor",
-        name: "Ashfall Raptor",
-        cost: 3,
-        type: "minion",
-        text: "",
-        attack: 3,
-        health: 2,
-        keywords: ["charge"],
-        rarity: "common",
-    },
     "minor-heal": {
         id: "minor-heal",
         name: "Minor Heal",
@@ -293,42 +282,10 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "common",
     },
-    "twin-fang-viper": {
-        id: "twin-fang-viper",
-        name: "Twin Fang Viper",
-        cost: 4,
-        type: "minion",
-        text: "",
-        attack: 4,
-        health: 4,
-        rarity: "common",
-    },
-    "cathedral-guard": {
-        id: "cathedral-guard",
-        name: "Cathedral Guard",
-        cost: 4,
-        type: "minion",
-        text: "",
-        attack: 2,
-        health: 5,
-        keywords: ["taunt"],
-        rarity: "common",
-    },
-    "gale-hawk": {
-        id: "gale-hawk",
-        name: "Gale Hawk",
-        cost: 4,
-        type: "minion",
-        text: "",
-        attack: 1,
-        health: 3,
-        keywords: ["windfury"],
-        rarity: "common",
-    },
     "anthem-of-the-vanguard": {
         id: "anthem-of-the-vanguard",
         name: "Anthem of the Vanguard",
-        cost: 4,
+        cost: 3,
         type: "spell",
         text: "Give your minions +1/+1.",
         effects: [
@@ -342,6 +299,38 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 },
             },
         ],
+        rarity: "common",
+    },
+    "ashfall-raven": {
+        id: "ashfall-raven",
+        name: "Ashfall Raven",
+        cost: 3,
+        type: "minion",
+        text: "",
+        attack: 3,
+        health: 2,
+        keywords: ["charge"],
+        rarity: "common",
+    },
+    "twin-fang-viper": {
+        id: "twin-fang-viper",
+        name: "Twin Fang Viper",
+        cost: 4,
+        type: "minion",
+        text: "",
+        attack: 4,
+        health: 4,
+        rarity: "common",
+    },
+    "gale-hawk": {
+        id: "gale-hawk",
+        name: "Gale Hawk",
+        cost: 4,
+        type: "minion",
+        text: "",
+        attack: 1,
+        health: 3,
+        keywords: ["windfury"],
         rarity: "common",
     },
     "sapping-leech": {
@@ -533,6 +522,34 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
     },
+    doomcaller: {
+        id: "doomcaller",
+        name: "Doomcaller",
+        cost: 4,
+        type: "minion",
+        text: "Anthem: Deal 3 damage to the enemy hero. Deathcry: Deal 3 damage to you.",
+        attack: 5,
+        health: 4,
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 3,
+                    target: "enemyHero",
+                },
+            },
+            {
+                trigger: "onDeath",
+                action: {
+                    kind: "damage",
+                    amount: 3,
+                    target: "friendlyHero",
+                },
+            },
+        ],
+        rarity: "rare",
+    },
     "squall-falconer": {
         id: "squall-falconer",
         name: "Squall Falconer",
@@ -672,26 +689,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
     },
-    doomcaller: {
-        id: "doomcaller",
-        name: "Doomcaller",
-        cost: 6,
-        type: "minion",
-        text: "Deathcry: Deal 4 damage to the enemy hero.",
-        attack: 5,
-        health: 5,
-        effects: [
-            {
-                trigger: "onDeath",
-                action: {
-                    kind: "damage",
-                    amount: 4,
-                    target: "enemyHero",
-                },
-            },
-        ],
-        rarity: "rare",
-    },
     "gravebind-priest": {
         id: "gravebind-priest",
         name: "Gravebind Priest",
@@ -772,7 +769,32 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "rare",
     },
 
-    // --- Exotic rarity (8) ---
+    // --- Exotic rarity (9) ---
+    "blood-moon-ritual": {
+        id: "blood-moon-ritual",
+        name: "Blood Moon Ritual",
+        cost: 3,
+        type: "spell",
+        text: "Deal 2 damage to all friendly minions and draw 3 cards.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 2,
+                    target: "allFriendlyMinions",
+                },
+            },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "draw",
+                    count: 3,
+                },
+            },
+        ],
+        rarity: "exotic",
+    },
     "charging-direwolf": {
         id: "charging-direwolf",
         name: "Charging Direwolf",
