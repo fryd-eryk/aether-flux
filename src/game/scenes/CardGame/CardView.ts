@@ -61,7 +61,7 @@ export class CardView
     createCardContainer (instance: CardInstance, mode: CardDisplayMode, definitionOverride?: CardDefinition): Phaser.GameObjects.Container
     {
         const container = this.scene.add.container(0, 0);
-        const bg = this.scene.add.rectangle(0, 0, CARD_W, CARD_H, mode === 'faceDown' ? 0x24304a : 0x2f3b52).setStrokeStyle(2, 0x8fa8d6);
+        const bg = this.scene.add.rectangle(0, 0, CARD_W, CARD_H, 0x000000).setStrokeStyle(2, 0x000000);
         container.add(bg);
 
         if (mode === 'faceDown')
@@ -79,8 +79,10 @@ export class CardView
         const definition = definitionOverride ?? CARD_DEFINITIONS[instance.definitionId];
 
         // Full-bleed art is the lowest z-order layer in both modes — everything else (header/footer,
-        // text, badges) paints on top of it.
-        container.add(this.createArtVisual(definition.id, CARD_W, CARD_H, 0));
+        // text, badges) paints on top of it. artVerticalAlign only applies in 'full' mode — see its
+        // doc comment on CardDefinition and artBoxFor's below.
+        const artBox = mode === 'full' ? this.artBoxFor(definition.artVerticalAlign) : { height: CARD_H, centerY: 0 };
+        container.add(this.createArtVisual(definition.id, CARD_W, artBox.height, artBox.centerY));
 
         if (mode === 'simplified')
         {
@@ -269,6 +271,31 @@ export class CardView
         const box = this.scene.add.rectangle(CARD_W / 2, CARD_H / 2, ATKHP_W, ATKHP_H, 0xb0413e).setStrokeStyle(2, 0x1a1a1a);
         const text = this.scene.add.text(CARD_W / 2, CARD_H / 2, `${instance.currentAttack ?? 0}/${instance.currentHealth ?? 0}`, STAT_FUSED_STYLE).setOrigin(0.5);
         return [box, text];
+    }
+
+    /**
+     * `artVerticalAlign`'s art box — shrinks the art's *display size* in the nudged
+     * direction rather than translating a still-CARD_H-tall image, so it can never
+     * overflow past the card's own edge (a pure translate did: the header/footer
+     * PNGs are anchored exactly at the card's top/bottom edge — `origin (0.5, 0)` at
+     * `y = -CARD_H/2` / `origin (0.5, 1)` at `y = CARD_H/2` — neither extends past
+     * it, so nothing was ever there to hide the overflow). 'top' keeps the art's
+     * bottom edge at CARD_H/2 (unchanged) and pulls its top edge down to
+     * `-CARD_H/2 + HEADER_CONTENT_H_FULL` — exactly the header PNG's opaque flat
+     * bar's bottom edge, not the full tapering image (see that constant's comment
+     * in cardLayout.ts) — by shrinking height to `CARD_H - HEADER_CONTENT_H_FULL`
+     * and recentering. 'bottom' mirrors this against the footer's flat bar. Zero
+     * overflow, but coverFit necessarily crops a bit more of the source art to fit
+     * the smaller box — an expected side effect, not a bug.
+     */
+    private artBoxFor (align: CardDefinition['artVerticalAlign']): { height: number; centerY: number }
+    {
+        switch (align)
+        {
+            case 'top': return { height: CARD_H - HEADER_CONTENT_H_FULL, centerY: HEADER_CONTENT_H_FULL / 2 };
+            case 'bottom': return { height: CARD_H - FOOTER_BAR_H, centerY: -FOOTER_BAR_H / 2 };
+            default: return { height: CARD_H, centerY: 0 };
+        }
     }
 
     /** Card art — the actual image if its texture loaded, otherwise a black box with small gray "MISSING ASSET" text (most cards have no art asset yet; see Preloader.preload). Sized/positioned by the caller so it can cover just the inset art zone ('full' mode) or the whole card ('simplified' mode). */

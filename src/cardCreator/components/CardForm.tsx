@@ -37,6 +37,15 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
         }
     }
 
+    function setArtVerticalAlign(value: string) {
+        if (value === '') {
+            const { artVerticalAlign: _artVerticalAlign, ...rest } = draft;
+            onChange(rest);
+        } else {
+            onChange({ ...draft, artVerticalAlign: value as 'top' | 'bottom' });
+        }
+    }
+
     function toggleKeyword(keyword: Keyword, enabled: boolean) {
         const current = new Set(draft.keywords ?? []);
         if (enabled) current.add(keyword);
@@ -95,6 +104,18 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                                     {rarity}
                                 </option>
                             ))}
+                        </select>
+                    </div>
+                    <div className={styles.field}>
+                        <label className={styles.fieldLabel}>Art vertical align</label>
+                        <select
+                            className={styles.selectInput}
+                            value={draft.artVerticalAlign ?? ''}
+                            onChange={(e) => setArtVerticalAlign(e.target.value)}
+                        >
+                            <option value="">Center</option>
+                            <option value="top">Top</option>
+                            <option value="bottom">Bottom</option>
                         </select>
                     </div>
                 </div>

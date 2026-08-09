@@ -228,10 +228,21 @@ export function getPileCards(playerState: PlayerState, zone: PileZone): CardInst
  * CSS `background-size: cover; background-position: center` for a Phaser Image — fills exactly
  * width x height with no stretching, cropping whichever axis overflows and keeping the crop
  * centered. Crops the *source* texture to the target aspect ratio first (in texture pixels, via
- * setCrop) and only then stretches that already-matching-aspect-ratio rectangle to fit via
- * setDisplaySize — since the crop's aspect ratio already equals the target's, that final stretch
- * is uniform and introduces no distortion. Shared by CardView's card art and CardGame's deck-pile
- * card-back image — the only two places that render a texture into a fixed box.
+ * setCrop), then scales uniformly so that cropped region ends up exactly width x height.
+ *
+ * Deliberately does NOT finish with `image.setDisplaySize(width, height)` despite that being the
+ * obvious-looking call — per Phaser's own Crop component docs, "cropping ... does not change its
+ * size, dimensions" (Components/Crop.js), meaning setDisplaySize scales relative to the image's
+ * full *uncropped* frame, not the crop rectangle. Calling it directly here silently distorts
+ * (non-uniform scaleX/scaleY) any time a real crop happens — invisible for years because every
+ * caller happened to pass a target aspect ratio matching the source exactly (card art's fixed 2:3
+ * matching CARD_W:CARD_H, the card-back texture), so cropW/cropH always coincidentally equaled the
+ * full frame and no real crop ever occurred. First real crop (CardView's artVerticalAlign, which
+ * intentionally requests a shorter-than-2:3 box) exposed it. Scaling by width/cropW instead (equal
+ * to height/cropH by construction, since the crop's aspect always matches the target's) is uniform
+ * regardless of whether a crop actually happened, and is a no-op change for every existing
+ * no-crop-needed caller. Shared by CardView's card art and CardGame's deck-pile card-back image —
+ * the only two places that render a texture into a fixed box.
  */
 export function coverFit(image: Phaser.GameObjects.Image, width: number, height: number): void
 {
@@ -239,18 +250,23 @@ export function coverFit(image: Phaser.GameObjects.Image, width: number, height:
     const sourceH = image.height;
     const targetAspect = width / height;
 
+    let cropW: number;
+    let cropH: number;
+
     if (sourceW / sourceH > targetAspect)
     {
-        const cropW = sourceH * targetAspect;
-        image.setCrop((sourceW - cropW) / 2, 0, cropW, sourceH);
+        cropW = sourceH * targetAspect;
+        cropH = sourceH;
+        image.setCrop((sourceW - cropW) / 2, 0, cropW, cropH);
     }
     else
     {
-        const cropH = sourceW / targetAspect;
-        image.setCrop(0, (sourceH - cropH) / 2, sourceW, cropH);
+        cropW = sourceW;
+        cropH = sourceW / targetAspect;
+        image.setCrop(0, (sourceH - cropH) / 2, cropW, cropH);
     }
 
-    image.setDisplaySize(width, height);
+    image.setScale(width / cropW);
 }
 
 /**

@@ -86,6 +86,7 @@ function serializeCardDefinition(def: CardDefinition, level: number): string {
         lines.push(`${indent(level)}effects: [\n${effectsSrc},\n${indent(level)}],`);
     }
     if (def.rarity) lines.push(`${indent(level)}rarity: ${JSON.stringify(def.rarity)},`);
+    if (def.artVerticalAlign) lines.push(`${indent(level)}artVerticalAlign: ${JSON.stringify(def.artVerticalAlign)},`);
 
     return lines.join('\n');
 }

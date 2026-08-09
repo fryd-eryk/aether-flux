@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (31) ---
+    // --- Common rarity (30) ---
     "goblin-skirmisher": {
         id: "goblin-skirmisher",
         name: "Goblin Skirmisher",
@@ -65,6 +65,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         health: 1,
         keywords: ["charge"],
         rarity: "common",
+        artVerticalAlign: "bottom",
     },
     "pocket-sand": {
         id: "pocket-sand",
@@ -173,6 +174,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "common",
+        artVerticalAlign: "bottom",
     },
     "frostbite-bolt": {
         id: "frostbite-bolt",
@@ -212,6 +214,26 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "common",
+    },
+    firelance: {
+        id: "firelance",
+        name: "Firelance",
+        cost: 2,
+        type: "spell",
+        text: "Deal 3 damage to a minion.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 3,
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                },
+            },
+        ],
+        rarity: "common",
+        artVerticalAlign: "top",
     },
     "wind-raptor": {
         id: "wind-raptor",
@@ -300,6 +322,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "common",
+        artVerticalAlign: "bottom",
     },
     "ashfall-raven": {
         id: "ashfall-raven",
@@ -355,24 +378,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         keywords: ["lifesteal"],
         rarity: "common",
     },
-    firebolt: {
-        id: "firebolt",
-        name: "Firebolt",
-        cost: 5,
-        type: "spell",
-        text: "Deal 6 damage.",
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 6,
-                    target: "chosen",
-                },
-            },
-        ],
-        rarity: "common",
-    },
     "emberclad-berserker": {
         id: "emberclad-berserker",
         name: "Emberclad Berserker",
@@ -382,6 +387,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 5,
         health: 4,
         rarity: "common",
+        artVerticalAlign: "top",
     },
     "bastion-sentinel": {
         id: "bastion-sentinel",
@@ -393,6 +399,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         health: 7,
         keywords: ["taunt"],
         rarity: "common",
+        artVerticalAlign: "bottom",
     },
     "wandering-cleric": {
         id: "wandering-cleric",
@@ -409,25 +416,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     kind: "heal",
                     amount: 3,
                     target: "friendlyHero",
-                },
-            },
-        ],
-        rarity: "common",
-    },
-    firelance: {
-        id: "firelance",
-        name: "Firelance",
-        cost: 5,
-        type: "spell",
-        text: "Deal 4 damage to a minion.",
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 4,
-                    target: "chosen",
-                    chosenRestriction: "minion",
                 },
             },
         ],
@@ -458,9 +446,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     "warding-acolyte": {
         id: "warding-acolyte",
         name: "Warding Acolyte",
-        cost: 2,
+        cost: 3,
         type: "minion",
-        text: "Vigil: Restore 2 Health to your hero.",
+        text: "Vigil: Restore 1 Health to your hero.",
         attack: 1,
         health: 4,
         keywords: ["divineShield"],
@@ -469,7 +457,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 trigger: "startOfTurn",
                 action: {
                     kind: "heal",
-                    amount: 2,
+                    amount: 1,
                     target: "friendlyHero",
                 },
             },
@@ -602,6 +590,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "rare",
+        artVerticalAlign: "bottom",
     },
     "chain-lightning": {
         id: "chain-lightning",
@@ -620,6 +609,25 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "rare",
+    },
+    firebead: {
+        id: "firebead",
+        name: "Firebead",
+        cost: 5,
+        type: "spell",
+        text: "Deal 5 damage.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 5,
+                    target: "chosen",
+                },
+            },
+        ],
+        rarity: "rare",
+        artVerticalAlign: "bottom",
     },
     "duskbound-reaver": {
         id: "duskbound-reaver",
@@ -647,7 +655,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         cost: 6,
         type: "minion",
         text: "Anthem: Give your minions +1/+1.",
-        attack: 4,
+        attack: 3,
         health: 4,
         keywords: ["windfury"],
         effects: [
@@ -747,33 +755,12 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
     },
-    "sky-titan": {
-        id: "sky-titan",
-        name: "Sky Titan",
-        cost: 8,
-        type: "minion",
-        text: "Curfew: Deal 1 damage to the enemy hero.",
-        attack: 4,
-        health: 7,
-        keywords: ["windfury"],
-        effects: [
-            {
-                trigger: "endOfTurn",
-                action: {
-                    kind: "damage",
-                    amount: 1,
-                    target: "enemyHero",
-                },
-            },
-        ],
-        rarity: "rare",
-    },
 
-    // --- Exotic rarity (9) ---
+    // --- Exotic rarity (8) ---
     "blood-moon-ritual": {
         id: "blood-moon-ritual",
         name: "Blood Moon Ritual",
-        cost: 3,
+        cost: 2,
         type: "spell",
         text: "Deal 2 damage to all friendly minions and draw 3 cards.",
         effects: [
@@ -794,6 +781,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "exotic",
+        artVerticalAlign: "top",
     },
     "charging-direwolf": {
         id: "charging-direwolf",
@@ -801,7 +789,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         cost: 7,
         type: "minion",
         text: "",
-        attack: 5,
+        attack: 4,
         health: 4,
         keywords: ["charge","windfury"],
         rarity: "exotic",
@@ -834,6 +822,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "exotic",
+        artVerticalAlign: "bottom",
     },
     "genesis-wellspring": {
         id: "genesis-wellspring",
@@ -860,6 +849,28 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
     },
+    "sky-titan": {
+        id: "sky-titan",
+        name: "Sky Titan",
+        cost: 8,
+        type: "minion",
+        text: "Curfew: Deal 1 damage to the enemy hero.",
+        attack: 4,
+        health: 7,
+        keywords: ["windfury"],
+        effects: [
+            {
+                trigger: "endOfTurn",
+                action: {
+                    kind: "damage",
+                    amount: 1,
+                    target: "enemyHero",
+                },
+            },
+        ],
+        rarity: "exotic",
+        artVerticalAlign: "top",
+    },
     "faery-colossus": {
         id: "faery-colossus",
         name: "Faery Colossus",
@@ -876,27 +887,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     kind: "heal",
                     amount: 2,
                     target: "friendlyHero",
-                },
-            },
-        ],
-        rarity: "exotic",
-    },
-    "worldbreaker-the-ashen-king": {
-        id: "worldbreaker-the-ashen-king",
-        name: "Worldbreaker, the Ashen King",
-        cost: 8,
-        type: "minion",
-        text: "Deathcry: Deal 8 damage to the enemy hero.",
-        attack: 8,
-        health: 8,
-        keywords: ["taunt","divineShield"],
-        effects: [
-            {
-                trigger: "onDeath",
-                action: {
-                    kind: "damage",
-                    amount: 8,
-                    target: "enemyHero",
                 },
             },
         ],
@@ -927,27 +917,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "exotic",
-    },
-    "martheus-the-last-bastion": {
-        id: "martheus-the-last-bastion",
-        name: "Martheus, The Last Bastion",
-        cost: 8,
-        type: "minion",
-        text: "Vigil: Restore 4 Health to your hero.",
-        attack: 5,
-        health: 10,
-        keywords: ["taunt","divineShield"],
-        effects: [
-            {
-                trigger: "startOfTurn",
-                action: {
-                    kind: "heal",
-                    amount: 4,
-                    target: "friendlyHero",
-                },
-            },
-        ],
-        rarity: "exotic",
+        artVerticalAlign: "top",
     },
     "eternal-phoenix-sovereign": {
         id: "eternal-phoenix-sovereign",
@@ -970,16 +940,63 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "exotic",
+        artVerticalAlign: "bottom",
+    },
+
+    // --- Legendary rarity (2) ---
+    "martheus-the-last-bastion": {
+        id: "martheus-the-last-bastion",
+        name: "Martheus, The Last Bastion",
+        cost: 8,
+        type: "minion",
+        text: "Vigil: Restore 4 Health to your hero.",
+        attack: 5,
+        health: 9,
+        keywords: ["divineShield"],
+        effects: [
+            {
+                trigger: "startOfTurn",
+                action: {
+                    kind: "heal",
+                    amount: 4,
+                    target: "friendlyHero",
+                },
+            },
+        ],
+        rarity: "legendary",
+        artVerticalAlign: "bottom",
+    },
+    "thos-reaper-of-worlds": {
+        id: "thos-reaper-of-worlds",
+        name: "Thos, Reaper of Worlds",
+        cost: 8,
+        type: "minion",
+        text: "Deathcry: Deal 8 damage to the enemy hero.",
+        attack: 8,
+        health: 8,
+        keywords: ["taunt","divineShield"],
+        effects: [
+            {
+                trigger: "onDeath",
+                action: {
+                    kind: "damage",
+                    amount: 8,
+                    target: "enemyHero",
+                },
+            },
+        ],
+        rarity: "legendary",
     },
 
     // --- Tokens (not collectible — no `rarity`, so deckGenerator.ts never draws them) ---
-    "ember-whelp": {
-        id: "ember-whelp",
-        name: "Ember Whelp",
+    "ember-fledgling": {
+        id: "ember-fledgling",
+        name: "Ember Fledgling",
         cost: 1,
         type: "minion",
         text: "",
         attack: 1,
         health: 2,
+        artVerticalAlign: "top",
     },
 };

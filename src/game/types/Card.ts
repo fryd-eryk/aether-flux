@@ -50,6 +50,8 @@ export interface CardDefinition {
     keywords?: Keyword[];
     /** Absent for tokens (e.g. summon-effect targets) — deckGenerator.ts only draws from definitions that have a rarity, so omitting this is what keeps a token out of generated decks. */
     rarity?: CardRarity;
+    /** 'full' mode only — nudges art to butt against the header/footer's opaque flat bar instead of centering under their tapered/transparent edges. Absent = centered (current behavior). No effect in 'simplified' mode, which has no header/footer bar to align against. */
+    artVerticalAlign?: 'top' | 'bottom';
 }
 
 /** Runtime state for one physical copy of a card as it moves through zones. */
