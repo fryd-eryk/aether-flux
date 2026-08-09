@@ -1,18 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (30) ---
-    "goblin-skirmisher": {
-        id: "goblin-skirmisher",
-        name: "Goblin Skirmisher",
-        cost: 1,
-        type: "minion",
-        text: "",
-        attack: 1,
-        health: 1,
-        keywords: ["divineShield"],
-        rarity: "common",
-    },
+    // --- Common rarity (29) ---
     "stone-guardian": {
         id: "stone-guardian",
         name: "Stone Guardian",
@@ -84,6 +73,17 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 },
             },
         ],
+        rarity: "common",
+    },
+    "rite-follower": {
+        id: "rite-follower",
+        name: "Rite Follower",
+        cost: 1,
+        type: "minion",
+        text: "",
+        attack: 1,
+        health: 1,
+        keywords: ["divineShield"],
         rarity: "common",
     },
     "apprentice-tinkerer": {
@@ -175,25 +175,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "common",
         artVerticalAlign: "bottom",
-    },
-    "frostbite-bolt": {
-        id: "frostbite-bolt",
-        name: "Frostbite Bolt",
-        cost: 2,
-        type: "spell",
-        text: "Deal 3 damage to a minion.",
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 3,
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
-            },
-        ],
-        rarity: "common",
     },
     "kindling-imp": {
         id: "kindling-imp",
@@ -375,8 +356,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "",
         attack: 3,
         health: 5,
-        keywords: ["lifesteal"],
+        keywords: ["charge"],
         rarity: "common",
+        artVerticalAlign: "bottom",
     },
     "emberclad-berserker": {
         id: "emberclad-berserker",
@@ -423,9 +405,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     },
 
     // --- Rare rarity (16) ---
-    "frenzied-cultist": {
-        id: "frenzied-cultist",
-        name: "Frenzied Cultist",
+    "mind-lost-cultist": {
+        id: "mind-lost-cultist",
+        name: "Mind-lost Cultist",
         cost: 2,
         type: "minion",
         text: "Deathcry: Deal 2 damage to the enemy hero.",
@@ -442,6 +424,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "rare",
+        artVerticalAlign: "bottom",
     },
     "warding-acolyte": {
         id: "warding-acolyte",
@@ -478,7 +461,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         cost: 4,
         type: "minion",
         text: "Deathcry: Draw a card.",
-        attack: 3,
+        attack: 2,
         health: 2,
         keywords: ["taunt"],
         effects: [
@@ -491,6 +474,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "rare",
+        artVerticalAlign: "bottom",
     },
     "boneshard-finger": {
         id: "boneshard-finger",
