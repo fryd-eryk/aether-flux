@@ -45,11 +45,7 @@ export const BOARD_ZONE_W = 1600;
 // state — it never peeks (a deliberate "nothing happens" twist, see renderHand in index.ts). The
 // player's hand additionally supports peeking ONE card at a time on hover: that card alone
 // straightens (rotation 0) and rises to PLAYER_HAND_PEEK_Y, fully clear of the screen's bottom
-// edge; every other card stays in its idle arced slot. PLAYER_HAND_PEEK_Y backs off by
-// HAND_PEEK_BOTTOM_CLEARANCE, since a hand card's own bottom edge isn't its true visual extent —
-// the fused atk/hp box (see ATKHP_H in createStatBadge) is centered on and overflows past the
-// card's bottom-right corner, so without that clearance it would render clipped by the screen's
-// bottom edge once peeked.
+// edge; every other card stays in its idle arced slot. 
 //
 // Freeing the opponent's hand from its own row lets OPPONENT_BOARD_Y move up (it no longer needs
 // to clear a full hand row below the opponent's hero), which in turn opens up a deliberately
@@ -62,11 +58,8 @@ export const PLAYER_BOARD_Y = 657;
 export const PLAYER_HAND_POKE_Y = GAME_HEIGHT; // poked flush against the bottom edge
 export const PLAYER_HERO_Y = 1043; // fixed — the hero never moves, see above
 
-// See the HAND_PEEK_BOTTOM_CLEARANCE comment above — pulls the peeked card up just enough that
-// the atk/hp box's overflow past its bottom edge still lands on-screen. The extra 20px is plain
-// breathing room, tuned by eye, so a peeked card doesn't sit flush against the screen's edge.
-export const HAND_PEEK_BOTTOM_CLEARANCE = ATKHP_H / 2;
-export const PLAYER_HAND_PEEK_Y = GAME_HEIGHT - CARD_H / 2 - HAND_PEEK_BOTTOM_CLEARANCE - 20;
+// tuned by eye, so a peeked card doesn't sit flush against the screen's edge.
+export const PLAYER_HAND_PEEK_Y = GAME_HEIGHT - CARD_H / 2 - 10;
 
 // Hero containers must out-rank hand containers' default fan depth (0..handSize-1 — see
 // renderHand) so each hero visually sits in front of its own poked hand rather than being
@@ -80,25 +73,40 @@ export const HAND_PEEK_DEPTH = 400;
 
 // Hand fan/arc (handCardSlot in index.ts, used for both hands' idle layout). A card `n` slots
 // from the hand's center rotates by `n * HAND_ARC_ANGLE_STEP_DEG`, clamped at
-// HAND_ARC_MAX_ANGLE_DEG so a very large hand's outermost cards don't over-rotate, and sits
-// `HAND_ARC_LIFT * cos(rotation)` closer to (player) or further past (opponent) the flush poke
-// edge than the center card — the cosine falloff mimics a true circular fan, where more-rotated
-// outer cards sit nearer the fan's rim (i.e. more hidden), matching a real fanned hand.
+// HAND_ARC_MAX_ANGLE_DEG so a very large hand's outermost cards don't over-rotate.
+//
+// HAND_ARC_LIFT is the rise of the card's *visible* edge (top for the player, bottom for the
+// opponent — whichever one is actually poking into view) above the flush poke edge, at the
+// center of the hand, tapering by cos(rotation) toward the outer cards — the cosine falloff
+// mimics a true circular fan, where more-rotated outer cards sit nearer the fan's rim (i.e.
+// closer to the flush edge, more hidden). It deliberately does NOT describe the card's own
+// center: rotating a card by theta shifts its visible edge by CARD_H/2 * cos(theta) relative to
+// its center (rotation-matrix arithmetic — a local point (0, ±CARD_H/2) rotates to
+// (±CARD_H/2*sin(theta), ∓CARD_H/2*cos(theta))), so handCardSlot solves for the center position
+// that puts the *edge* exactly HAND_ARC_LIFT*cos(theta) above the flush edge, not the center
+// itself. Skipping that correction (an earlier version of this code did) makes the edge's actual
+// arc amplitude come out as (HAND_ARC_LIFT + CARD_H/2)*cos(theta) instead of the intended
+// HAND_ARC_LIFT*cos(theta) — over 3x too pronounced at CARD_H=225 — instead of the smooth,
+// harmonious curve the top/bottom edges are supposed to trace.
 export const HAND_ARC_ANGLE_STEP_DEG = 4;
 export const HAND_ARC_MAX_ANGLE_DEG = 18;
 export const HAND_ARC_LIFT = 46;
 
-// Anti-crowding floor for the hand row (handRowLayout in index.ts, kept separate from the plain
-// rowLayout board/hand share — this floor is a 'full'-mode cost-badge concern that doesn't apply
-// to renderBoard's cost-badge-less 'simplified' cards). 'full' mode's cost number sits
+// The hand row's spacing, always — not just a fallback floor for large hands (handRowLayout in
+// index.ts scales the whole row down once even this can't fit within BOARD_ZONE_W, rather than
+// shrinking spacing further). Deliberately tighter than CARD_W so idle cards read as a natural
+// overlapping fan rather than a flat row with gaps between them, while staying the *widest*
+// spacing that still overlaps zero pixels of a neighbor's cost badge — kept separate from the
+// plain rowLayout board/hand share, since this is a 'full'-mode cost-badge concern that doesn't
+// apply to renderBoard's cost-badge-less 'simplified' cards. 'full' mode's cost number sits
 // right-anchored 3px from the card's right edge (COST_TEXT_STYLE at CARD_W/2-3) and is a single
-// digit (~11px wide at that font — every card cost in cards.ts is single-digit). Per-card depth
-// is ascending left-to-right, so a rightward neighbor always paints over the card to its left;
-// once that neighbor's left edge intrudes past the digit's own left edge — i.e. spacing drops
-// below CARD_W - 3 - 11 — the digit itself starts getting covered. Below this floor, the hand
-// scales down as a whole instead of shrinking spacing further (z-order alone can't avoid the
-// coverage — see handRowLayout's doc comment).
-export const HAND_MIN_SPACING = CARD_W - 3 - 11;
+// digit (~11px wide at that font — every card cost in cards.ts is single-digit), so its own left
+// edge sits CARD_W - 3 - 11 in from the card's right edge. Per-card depth is ascending
+// left-to-right, so a rightward neighbor always paints over the card to its left — z-order alone
+// can't avoid that (see handRowLayout's doc comment) — so CARD_W - 3 is the tightest spacing at
+// which the neighbor's own left edge lands exactly on the digit's right edge without crossing
+// into it, i.e. the badge stays fully visible right up to the edge of safe.
+export const HAND_MIN_SPACING = CARD_W - 3;
 
 // Deck/graveyard piles share the end-turn/cancel buttons' column, offset further right so hand
 // cards (which can extend close to x=1760 at max hand size) never overlap them.
@@ -106,7 +114,10 @@ export const PILE_X = 1860;
 export const OPPONENT_DECK_Y = 300;
 export const PLAYER_DECK_Y = 750;
 export const DECK_PILE_W = 80;
-export const DECK_PILE_H = 100;
+// Matches CARD_W:CARD_H's 2:3 ratio exactly (see that constant's comment) so coverFit's cover-fit
+// of the deck pile's card-back image never needs to crop — an earlier 80x100 (4:5) box cropped the
+// top/bottom off the card-back art since its real aspect ratio didn't match the box it was fit into.
+export const DECK_PILE_H = DECK_PILE_W * (CARD_H / CARD_W);
 
 // Each player's graveyard sits one row from its own deck, on that player's side of the column:
 // the player's below its deck, the opponent's above its deck. PILE_ROW_GAP has to clear a pile's
@@ -148,9 +159,15 @@ export function withStroke(style: Phaser.Types.GameObjects.Text.TextStyle, thick
 }
 
 export const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '12px', color: '#ffffff', align: 'left' });
-export const RULE_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '10px', color: '#e8ecf5', fontStyle: 'italic', align: 'left' }, 2);
+// Extra pixels Phaser adds between wrapped lines of the 'full' mode description box's rule text
+// (definition.text) — edit this to tighten/loosen its line-height. Independent of DESC_BOX_LINE_GAP
+// (the gap between the keyword line and the start of the rule text, a different measurement).
+export const RULE_TEXT_LINE_SPACING = -3;
+export const RULE_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '10px', color: '#e8ecf5', fontStyle: 'italic', align: 'left', lineSpacing: RULE_TEXT_LINE_SPACING }, 2);
 export const SMALL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff' };
-export const PILE_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '12px', color: '#9aa7bd' };
+// Hero circle's HP readout — bold + stroked (unlike statStyle's HUD text) since it sits directly
+// over the circle's solid fill rather than the plain background the HUD corner text sits on.
+export const HERO_HP_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial Black', fontSize: '26px', color: '#ffffff' });
 export const COST_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial Black', fontSize: '14px', color: '#ffffff' });
 // Repurposed as the bottom type banner's label (was small centered gray text) — white on a
 // solid green bar now, see createCardContainer's 'full' mode.
@@ -186,6 +203,26 @@ export const PILL_INSET_Y = 8; // 'simplified' mode's bottom-left keyword/trigge
 export const TOOLTIP_COST_CLEARANCE = 4;
 export const TOOLTIP_BG_RADIUS = 6; // hover tooltip's rounded-corner background — matches DESC_BOX_RADIUS's "small, tuned by eye" scale, kept separate since the tooltip isn't drawn at card scale
 export const MANA_BADGE_COLOR = 0x2f6fed; // blue fill for the tooltip's mana-cost box
+
+export const OUTLINE_COLOR_TARGETABLE = 0xffd23f; // valid-target highlight (hero + board minions, AwaitingTarget) + the active player's hero-circle fill
+export const OUTLINE_COLOR_READY = 0x38d97b; // "can act now" — board attack-ready minions AND hand playable cards
+export const OUTLINE_COLOR_HOVER = 0x4fc3f7; // deck/graveyard pile hover
+
+// Shimmer sweep tuning (addShimmeringOutline in index.ts) — the border is repainted every tick as
+// a light→bright→light gradient along the bottom-left→top-right diagonal, with a bright band that
+// sweeps that diagonal twice in quick succession, then pauses, then repeats.
+export const SHIMMER_BRIGHTEN_AMOUNT = 0.7; // color lerp at the sweep's peak — 0 = unchanged border color, 1 = white
+export const SHIMMER_BAND_WIDTH = 40; // falloff radius (px, along the diagonal) of the bright band around its peak
+export const SHIMMER_SWEEP_MS = 650; // duration of a single bottom-left → top-right sweep
+export const SHIMMER_PAUSE_MS = 2000; // pause after the 2 sweeps before the cycle repeats
+
+/** Blends `color` toward white by `amount` (0-1) — derives the shimmer's brighter tint from
+ * whatever border color it's sweeping across, so a new color variant needs no separate lookup. */
+export function lightenColor(color: number, amount: number): number {
+    const r = (color >> 16) & 0xff, g = (color >> 8) & 0xff, b = color & 0xff;
+    const mix = (c: number) => Math.round(c + (255 - c) * amount);
+    return (mix(r) << 16) | (mix(g) << 8) | mix(b);
+}
 
 // 'full' mode layout (v2 — src/refs/card-layout-ref-v2.jpg): the header/footer bars are pre-authored
 // PNGs (art-legibility swirl and the "rounded corners descending down the card's sides" shape are
@@ -239,15 +276,15 @@ export type PileZone = 'deck' | 'graveyard';
  */
 export type CardDisplayMode = 'full' | 'simplified' | 'faceDown';
 
-export function statStyle(color: string, stroke = false): Phaser.Types.GameObjects.Text.TextStyle {
-    const base: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial Black', fontSize: '20px', color };
+export function statStyle(color: string, stroke = false, fontSize = '20px'): Phaser.Types.GameObjects.Text.TextStyle {
+    const base: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial Black', fontSize, color };
     return stroke ? withStroke(base) : base;
 }
 
-/** Per-zone pile chrome. The deck keeps the card-back blue it has always used; the graveyard takes a desaturated maroon so the two read apart at a glance in the same column. */
-export const PILE_STYLES: Record<PileZone, { fill: number; stroke: number; label: string; title: string }> = {
-    deck: { fill: 0x24304a, stroke: 0x8fa8d6, label: 'DECK', title: 'Deck' },
-    graveyard: { fill: 0x33262c, stroke: 0xc08a94, label: 'GRAVE', title: 'Graveyard' },
+/** Per-zone pile chrome. The deck keeps the card-back blue it has always used; the graveyard takes a desaturated maroon so the two read apart at a glance in the same column. `title` is the pile-inspect overlay's heading (PileViewController) — the board's own pile visual carries no text label. */
+export const PILE_STYLES: Record<PileZone, { fill: number; stroke: number; title: string }> = {
+    deck: { fill: 0x24304a, stroke: 0x8fa8d6, title: 'Deck' },
+    graveyard: { fill: 0x33262c, stroke: 0xc08a94, title: 'Graveyard' },
 };
 
 /** The cards currently sitting in a player's deck or graveyard — shared by the board's pile visual (renderPile) and the pile-inspect overlay (PileViewController), so both read the same zone the same way. */

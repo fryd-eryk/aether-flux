@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (33) ---
+    // --- Common rarity (27) ---
     "stone-guardian": {
         id: "stone-guardian",
         name: "Stone Guardian",
@@ -33,16 +33,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 0,
         health: 3,
         keywords: ["taunt"],
-        rarity: "common",
-    },
-    "bramble-adder": {
-        id: "bramble-adder",
-        name: "Bramble Adder",
-        cost: 1,
-        type: "minion",
-        text: "",
-        attack: 2,
-        health: 1,
         rarity: "common",
     },
     "ember-sprite": {
@@ -87,23 +77,14 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         keywords: ["divineShield"],
         rarity: "common",
     },
-    "apprentice-tinkerer": {
-        id: "apprentice-tinkerer",
-        name: "Apprentice Tinkerer",
-        cost: 2,
+    "bramble-python": {
+        id: "bramble-python",
+        name: "Bramble Python",
+        cost: 1,
         type: "minion",
-        text: "Anthem: Draw a card.",
-        attack: 1,
+        text: "",
+        attack: 2,
         health: 1,
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "draw",
-                    count: 1,
-                },
-            },
-        ],
         rarity: "common",
     },
     "radiant-light": {
@@ -122,27 +103,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 },
             },
         ],
-        rarity: "common",
-    },
-    "hollow-recruit": {
-        id: "hollow-recruit",
-        name: "Hollow Recruit",
-        cost: 2,
-        type: "minion",
-        text: "",
-        attack: 2,
-        health: 2,
-        rarity: "common",
-    },
-    "quarry-digger": {
-        id: "quarry-digger",
-        name: "Quarry Digger",
-        cost: 2,
-        type: "minion",
-        text: "",
-        attack: 1,
-        health: 4,
-        keywords: ["taunt"],
         rarity: "common",
     },
     "sunfeather-falcon": {
@@ -176,46 +136,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "common",
         artVerticalAlign: "bottom",
-    },
-    "kindling-imp": {
-        id: "kindling-imp",
-        name: "Kindling Imp",
-        cost: 2,
-        type: "minion",
-        text: "Deathcry: Deal 1 damage to the enemy hero.",
-        attack: 2,
-        health: 1,
-        effects: [
-            {
-                trigger: "onDeath",
-                action: {
-                    kind: "damage",
-                    amount: 1,
-                    target: "enemyHero",
-                },
-            },
-        ],
-        rarity: "common",
-    },
-    firelance: {
-        id: "firelance",
-        name: "Firelance",
-        cost: 2,
-        type: "spell",
-        text: "Deal 3 damage to a minion.",
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 3,
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
-            },
-        ],
-        rarity: "common",
-        artVerticalAlign: "top",
     },
     "shrouded-wraith": {
         id: "shrouded-wraith",
@@ -265,25 +185,42 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "common",
     },
-    "wind-raptor": {
-        id: "wind-raptor",
-        name: "Wind Raptor",
-        cost: 3,
+    "clockwork-tinkerer": {
+        id: "clockwork-tinkerer",
+        name: "Clockwork Tinkerer",
+        cost: 2,
         type: "minion",
-        text: "",
-        attack: 2,
-        health: 2,
-        keywords: ["windfury"],
+        text: "Anthem: Draw a card.",
+        attack: 1,
+        health: 1,
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "draw",
+                    count: 1,
+                },
+            },
+        ],
         rarity: "common",
     },
-    "stalwart-footman": {
-        id: "stalwart-footman",
-        name: "Stalwart Footman",
-        cost: 3,
-        type: "minion",
-        text: "",
-        attack: 3,
-        health: 3,
+    "dark-energy-spear": {
+        id: "dark-energy-spear",
+        name: "Dark Energy Spear",
+        cost: 2,
+        type: "spell",
+        text: "Deal 3 damage to a minion.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 3,
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                },
+            },
+        ],
         rarity: "common",
     },
     "bog-witch": {
@@ -321,14 +258,14 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Anthem of the Vanguard",
         cost: 3,
         type: "spell",
-        text: "Give your minions +1/+1.",
+        text: "Give your minions +1/+2.",
         effects: [
             {
                 trigger: "onPlay",
                 action: {
                     kind: "buff",
                     attack: 1,
-                    health: 1,
+                    health: 2,
                     target: "allFriendlyMinions",
                 },
             },
@@ -347,25 +284,14 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         keywords: ["charge"],
         rarity: "common",
     },
-    "venomfang-adder": {
-        id: "venomfang-adder",
-        name: "Venomfang Adder",
-        cost: 3,
-        type: "minion",
-        text: "",
-        attack: 2,
-        health: 3,
-        keywords: ["venom"],
-        rarity: "common",
-    },
-    "ashfang-berserker": {
-        id: "ashfang-berserker",
-        name: "Ashfang Berserker",
+    "ashfang-assassin": {
+        id: "ashfang-assassin",
+        name: "Ashfang Assassin",
         cost: 3,
         type: "minion",
         text: "Strike: Deal 1 damage to the enemy hero.",
         attack: 3,
-        health: 3,
+        health: 1,
         effects: [
             {
                 trigger: "onAttack",
@@ -378,10 +304,31 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "common",
     },
+    "infectious-imp": {
+        id: "infectious-imp",
+        name: "Infectious Imp",
+        cost: 3,
+        type: "minion",
+        text: "Deathcry: Deal 1 damage to the enemy hero.",
+        attack: 1,
+        health: 1,
+        keywords: ["venom"],
+        effects: [
+            {
+                trigger: "onDeath",
+                action: {
+                    kind: "damage",
+                    amount: 1,
+                    target: "enemyHero",
+                },
+            },
+        ],
+        rarity: "common",
+    },
     "emberback-boar": {
         id: "emberback-boar",
         name: "Emberback Boar",
-        cost: 3,
+        cost: 4,
         type: "minion",
         text: "Wound: Deal 1 damage to the enemy hero.",
         attack: 2,
@@ -396,16 +343,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 },
             },
         ],
-        rarity: "common",
-    },
-    "twin-fang-viper": {
-        id: "twin-fang-viper",
-        name: "Twin Fang Viper",
-        cost: 4,
-        type: "minion",
-        text: "",
-        attack: 4,
-        health: 4,
         rarity: "common",
     },
     "gale-hawk": {
@@ -575,32 +512,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "rare",
         artVerticalAlign: "bottom",
     },
-    "boneshard-finger": {
-        id: "boneshard-finger",
-        name: "Boneshard Finger",
-        cost: 4,
-        type: "spell",
-        text: "Deal 3 damage to a minion. Draw a card.",
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 3,
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "draw",
-                    count: 1,
-                },
-            },
-        ],
-        rarity: "rare",
-    },
     "vampiric-doomcaller": {
         id: "vampiric-doomcaller",
         name: "Vampiric Doomcaller",
@@ -629,13 +540,40 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
     },
+    "lichs-forgotten-hand": {
+        id: "lichs-forgotten-hand",
+        name: "Lich's Forgotten Hand",
+        cost: 4,
+        type: "spell",
+        text: "Deal 3 damage to a minion. Draw a card.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 3,
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                },
+            },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "draw",
+                    count: 1,
+                },
+            },
+        ],
+        rarity: "rare",
+        artVerticalAlign: "bottom",
+    },
     "squall-falconer": {
         id: "squall-falconer",
         name: "Squall Falconer",
         cost: 5,
         type: "minion",
         text: "Anthem: Give your minions +1/+0.",
-        attack: 2,
+        attack: 3,
         health: 3,
         keywords: ["windfury"],
         effects: [
@@ -846,7 +784,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "top",
     },
 
-    // --- Exotic rarity (9) ---
+    // --- Exotic rarity (10) ---
     "blood-moon-ritual": {
         id: "blood-moon-ritual",
         name: "Blood Moon Ritual",
@@ -872,6 +810,17 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
         artVerticalAlign: "top",
+    },
+    "twin-tail-scorpion": {
+        id: "twin-tail-scorpion",
+        name: "Twin Tail Scorpion",
+        cost: 4,
+        type: "minion",
+        text: "",
+        attack: 1,
+        health: 3,
+        keywords: ["windfury","venom"],
+        rarity: "exotic",
     },
     "ironclad-vanguard": {
         id: "ironclad-vanguard",
@@ -1113,6 +1062,20 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "legendary",
+        artVerticalAlign: "bottom",
+    },
+
+    // --- Mythical rarity (1) ---
+    "selia-new-dawn-foretold": {
+        id: "selia-new-dawn-foretold",
+        name: "Selia, New Dawn Foretold",
+        cost: 9,
+        type: "minion",
+        text: "",
+        attack: 5,
+        health: 7,
+        keywords: ["charge","divineShield","windfury","lifesteal"],
+        rarity: "mythical",
         artVerticalAlign: "bottom",
     },
 

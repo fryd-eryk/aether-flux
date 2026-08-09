@@ -29,14 +29,18 @@ import {
     HAND_MIN_SPACING,
     HAND_PEEK_DEPTH,
     HERO_DEPTH,
+    HERO_HP_STYLE,
     HERO_RADIUS,
     HERO_SIZE,
+    lightenColor,
     OPPONENT_BOARD_Y,
     OPPONENT_DECK_Y,
     OPPONENT_GRAVEYARD_Y,
     OPPONENT_HAND_Y,
     OPPONENT_HERO_Y,
-    PILE_LABEL_STYLE,
+    OUTLINE_COLOR_HOVER,
+    OUTLINE_COLOR_READY,
+    OUTLINE_COLOR_TARGETABLE,
     PILE_STYLES,
     PILE_X,
     PLAYER_BOARD_Y,
@@ -46,6 +50,10 @@ import {
     PLAYER_HAND_POKE_Y,
     PLAYER_HERO_Y,
     type PileZone,
+    SHIMMER_BAND_WIDTH,
+    SHIMMER_BRIGHTEN_AMOUNT,
+    SHIMMER_PAUSE_MS,
+    SHIMMER_SWEEP_MS,
     SMALL_STYLE,
     SPOTLIGHT_X,
     statStyle,
@@ -105,9 +113,7 @@ export class CardGame extends Scene
     private turnBannerText!: Phaser.GameObjects.Text;
     private endTurnButton!: Phaser.GameObjects.Container;
     private cancelButton!: Phaser.GameObjects.Container;
-    private playerHealthText!: Phaser.GameObjects.Text;
     private playerManaText!: Phaser.GameObjects.Text;
-    private opponentHealthText!: Phaser.GameObjects.Text;
     private opponentManaText!: Phaser.GameObjects.Text;
 
     // The hand card currently being dragged, if any — excluded from per-card peek handling (see
@@ -421,11 +427,9 @@ export class CardGame extends Scene
 
         this.turnBannerText = this.add.text(38, 6, '', SMALL_STYLE).setDepth(200);
 
-        this.opponentHealthText = this.add.text(38, 30, '', statStyle('#ff5c5c')).setDepth(200);
-        this.opponentManaText = this.add.text(38, 54, '', statStyle('#5c9cff')).setDepth(200);
+        this.opponentManaText = this.add.text(38, 30, '', statStyle('#5c9cff', true, '32px')).setDepth(200);
 
-        this.playerHealthText = this.add.text(38, 1023, '', statStyle('#ff5c5c')).setDepth(200);
-        this.playerManaText = this.add.text(38, 1049, '', statStyle('#5c9cff')).setDepth(200);
+        this.playerManaText = this.add.text(38, 1023, '', statStyle('#5c9cff', true, '32px')).setDepth(200);
 
         const boardZoneH = CARD_H + 30;
         this.playerBoardZone = this.add.zone(CENTER_X, PLAYER_BOARD_Y, BOARD_ZONE_W, boardZoneH).setRectangleDropZone(BOARD_ZONE_W, boardZoneH);
@@ -546,10 +550,7 @@ export class CardGame extends Scene
     {
         this.turnBannerText.setText(this.describePhase(state));
 
-        this.opponentHealthText.setText(`❤ ${state.players.opponent.health}/${state.players.opponent.maxHealth}`);
         this.opponentManaText.setText(`♦ ${state.players.opponent.mana}/${state.players.opponent.maxMana}`);
-
-        this.playerHealthText.setText(`❤ ${state.players.player.health}/${state.players.player.maxHealth}`);
         this.playerManaText.setText(`♦ ${state.players.player.mana}/${state.players.player.maxMana}`);
 
         this.updateEndTurnButton(state);
@@ -636,11 +637,9 @@ export class CardGame extends Scene
      */
     private handRowLayout (count: number): { spacing: number; startX: number; scale: number }
     {
-        const uncapped = Math.min(CARD_W + 15, BOARD_ZONE_W / count);
-        const spacing = Math.max(uncapped, HAND_MIN_SPACING);
-        const footprint = (count - 1) * spacing + CARD_W;
+        const footprint = (count - 1) * HAND_MIN_SPACING + CARD_W;
         const scale = Math.min(1, BOARD_ZONE_W / footprint);
-        return { spacing: spacing * scale, startX: CENTER_X - ((count - 1) * spacing * scale) / 2, scale };
+        return { spacing: HAND_MIN_SPACING * scale, startX: CENTER_X - ((count - 1) * HAND_MIN_SPACING * scale) / 2, scale };
     }
 
     /**
@@ -658,8 +657,13 @@ export class CardGame extends Scene
         const rawDeg = (index - mid) * HAND_ARC_ANGLE_STEP_DEG;
         const deg = Math.max(-HAND_ARC_MAX_ANGLE_DEG, Math.min(HAND_ARC_MAX_ANGLE_DEG, rawDeg));
         const theta = (deg * Math.PI) / 180;
-        const lift = HAND_ARC_LIFT * Math.cos(theta) * layout.scale;
-        const y = edgeY - liftSign * lift;
+        const cos = Math.cos(theta) * layout.scale;
+        // Solve for the CENTER position that puts the card's *visible* edge (top for the player,
+        // bottom for the opponent) exactly HAND_ARC_LIFT*cos(theta) above the flush poke edge —
+        // see HAND_ARC_LIFT's doc comment in cardLayout.ts for the rotation arithmetic this
+        // undoes. Center and visible-edge Y deliberately diverge (the center can end up well
+        // past the flush edge, off-screen) so the edge itself traces the intended harmonious arc.
+        const y = edgeY + liftSign * cos * (CARD_H / 2 - HAND_ARC_LIFT);
         const rotation = liftSign === 1 ? theta : -theta;
         return { x, y, rotation, scale: layout.scale, depth: index };
     }
@@ -670,9 +674,21 @@ export class CardGame extends Scene
         const container = this.add.container(CENTER_X, y);
         container.setDepth(HERO_DEPTH);
 
-        const circle = this.add.circle(0, 0, HERO_RADIUS, id === 'player' ? 0x2f6fed : 0xb0413e).setStrokeStyle(2, 0xffffff);
-        const label = this.add.text(0, 0, id === 'player' ? 'You' : 'Opponent', SMALL_STYLE).setOrigin(0.5);
-        container.add([circle, label]);
+        // Active player's turn is shown by the circle's own fill shimmering yellow instead of its
+        // usual flat color, rather than a border glow — a stroke-only circle layered on top keeps
+        // the same white ring the flat-fill case also has.
+        const isActivePlayer = state.activePlayer === id;
+        if (isActivePlayer)
+        {
+            this.addShimmeringFill(container, HERO_RADIUS, OUTLINE_COLOR_TARGETABLE);
+            container.add(this.add.circle(0, 0, HERO_RADIUS, 0x000000, 0).setStrokeStyle(2, 0xffffff));
+        }
+        else
+        {
+            container.add(this.add.circle(0, 0, HERO_RADIUS, id === 'player' ? 0x2f6fed : 0xb0413e).setStrokeStyle(2, 0xffffff));
+        }
+        const healthLabel = this.add.text(0, 0, `${state.players[id].health}`, HERO_HP_STYLE).setOrigin(0.5);
+        container.add(healthLabel);
         container.setSize(HERO_SIZE, HERO_SIZE);
         // Container hit-testing shifts the local point by +displayOriginX/Y (= width/2, height/2 for a
         // Container) before testing it against the hit area, so a hit area centered on the visuals at
@@ -691,7 +707,7 @@ export class CardGame extends Scene
             state.pendingTarget?.validTargetIds.includes(id);
         if (isValidTarget)
         {
-            this.addOutline(container, HERO_SIZE, HERO_SIZE, 0xffd23f);
+            this.addShimmeringOutline(container, HERO_SIZE, HERO_SIZE, OUTLINE_COLOR_TARGETABLE);
             container.on('pointerup', this.guarded(() => this.machine.selectTarget(id)));
         }
 
@@ -699,17 +715,15 @@ export class CardGame extends Scene
     }
 
     /**
-     * Small stacked pile with a zone label above and a card-count label below, for either
-     * off-board zone. Doubles as the origin point draw animations fly from (see deckPilePosition)
-     * and as the click target that opens the pile-inspect overlay.
+     * Small stacked pile with a card-count readout centered over it, for either off-board zone.
+     * Doubles as the origin point draw animations fly from (see deckPilePosition) and as the click
+     * target that opens the pile-inspect overlay.
      */
     private renderPile (playerState: PlayerState, zone: PileZone, y: number): void
     {
         const style = PILE_STYLES[zone];
         const cards = getPileCards(playerState, zone);
         const container = this.add.container(PILE_X, y);
-
-        container.add(this.add.text(0, -DECK_PILE_H / 2 - 22, style.label, PILE_LABEL_STYLE).setOrigin(0.5, 0));
 
         // An empty pile still draws one faded card outline rather than nothing, so the zone keeps
         // its slot in the column and stays clickable (an empty graveyard is the normal opening state).
@@ -734,23 +748,30 @@ export class CardGame extends Scene
             container.add(card);
         }
 
-        container.add(this.add.text(0, DECK_PILE_H / 2 + 6, `${cards.length}`, statStyle('#ffffff')).setOrigin(0.5, 0));
+        // Centered on top of the stack rather than below it, now that there's no zone label above
+        // competing for the spot.
+        container.add(this.add.text(0, 0, `${cards.length}`, statStyle('#ffffff', true, '22px')).setOrigin(0.5));
 
-        const highlight = this.add.rectangle(-4, -4, DECK_PILE_W + 16, DECK_PILE_H + 16).setStrokeStyle(3, 0xffd23f).setVisible(false);
-        container.add(highlight);
-
-        // Hit region is deliberately generous enough to cover the stack's offset corner and the
-        // count label under it. Top-left-based per the Container hit-area rule (see renderHero).
+        // Hit region is deliberately generous enough to cover the stack's offset corner. Top-left-
+        // based per the Container hit-area rule (see renderHero).
         const hitW = DECK_PILE_W + 16;
-        const hitH = DECK_PILE_H + 40;
+        const hitH = DECK_PILE_H + 16;
         container.setSize(hitW, hitH);
         container.setInteractive({
             hitArea: new Geom.Rectangle(0, 0, hitW, hitH),
             hitAreaCallback: Geom.Rectangle.Contains,
             useHandCursor: true,
         });
-        container.on('pointerover', () => highlight.setVisible(true));
-        container.on('pointerout', () => highlight.setVisible(false));
+        let hoverShimmer: { destroy: () => void } | null = null;
+        container.on('pointerover', () =>
+        {
+            hoverShimmer = this.addShimmeringOutline(container, DECK_PILE_W + 16, DECK_PILE_H + 16, OUTLINE_COLOR_HOVER);
+        });
+        container.on('pointerout', () =>
+        {
+            hoverShimmer?.destroy();
+            hoverShimmer = null;
+        });
         // Deliberately not guarded(): opening a read-only pile view mutates no game state, so
         // there is no reason to swallow the click just because an animation is in flight.
         container.on('pointerup', () => this.pileView.open(playerState.id, zone, this.machine.state));
@@ -795,21 +816,44 @@ export class CardGame extends Scene
             // it's a read-only "let me see this clearly" affordance, independent of playability,
             // same spirit as the keyword tooltip above having no turn/phase gating either.
             this.handSlots.set(container, slot);
-            container.on('pointerover', () =>
+
+            const peekIn = () =>
             {
                 if (container === this.draggedContainer) return;
                 this.tweens.killTweensOf(container);
                 this.tweens.add({ targets: container, y: PLAYER_HAND_PEEK_Y, rotation: 0, duration: 150, ease: 'Cubic.easeOut' });
                 container.setDepth(HAND_PEEK_DEPTH);
-            });
-            container.on('pointerout', () =>
+            };
+            const peekOut = () =>
             {
                 if (container === this.draggedContainer) return;
                 this.tweens.killTweensOf(container);
                 const idleSlot = this.handSlots.get(container)!;
                 this.tweens.add({ targets: container, y: idleSlot.y, rotation: idleSlot.rotation, duration: 150, ease: 'Cubic.easeOut' });
                 container.setDepth(idleSlot.depth);
-            });
+            };
+            container.on('pointerover', peekIn);
+            container.on('pointerout', peekOut);
+
+            // The card's own hit area (above) is exact-sized, for precise drag/click/tooltip
+            // targeting once cards overlap in the idle fan. Peeking-in is a much lower-stakes,
+            // read-only affordance, so it gets a separate, invisible zone 10% bigger than the
+            // card to make it easier to trigger without needing to land the cursor precisely on
+            // a sliver of an overlapped card. This zone is built once, at the card's *idle* slot,
+            // and deliberately does not track the card's later peek animation — once peeked, the
+            // card's own (now-risen) hit area is precise and easy to target on its own, so only
+            // the idle-state trigger needs the extra margin. Depth -1 keeps it beneath every hand
+            // card's own container (0..handSize-1 at rest, higher still once peeked/dragged) so a
+            // neighbor's real, on-top content always wins in the sliver where two idle cards'
+            // margins overlap, rather than this invisible zone stealing its clicks/hover.
+            const peekZone = this.add.zone(slot.x, slot.y, CARD_W * 1.1, CARD_H * 1.1);
+            peekZone.setRotation(slot.rotation);
+            peekZone.setScale(slot.scale);
+            peekZone.setDepth(-1);
+            peekZone.setInteractive();
+            peekZone.on('pointerover', peekIn);
+            peekZone.on('pointerout', peekOut);
+            this.renderedObjects.push(peekZone);
 
             if (!isMyTurn || state.phase !== TurnPhase.MainIdle) return;
 
@@ -818,7 +862,7 @@ export class CardGame extends Scene
 
             // Playable: outline instead of the old dim-when-unaffordable treatment — every card
             // stays at full opacity regardless, this just marks the ones actionable right now.
-            this.addOutline(container, CARD_W, CARD_H, 0x38d97b);
+            this.addShimmeringOutline(container, CARD_W, CARD_H, OUTLINE_COLOR_READY);
 
             if (definition.type === 'minion')
             {
@@ -869,12 +913,12 @@ export class CardGame extends Scene
 
             if (isValidTarget)
             {
-                this.addOutline(container, CARD_W, CARD_H, 0xffd23f);
+                this.addShimmeringOutline(container, CARD_W, CARD_H, OUTLINE_COLOR_TARGETABLE);
                 container.on('pointerup', this.guarded(() => this.machine.selectTarget(instance.instanceId)));
             }
             else if (canAttack)
             {
-                this.addOutline(container, CARD_W, CARD_H, 0x38d97b);
+                this.addShimmeringOutline(container, CARD_W, CARD_H, OUTLINE_COLOR_READY);
                 container.on('pointerup', this.guarded(() => this.machine.declareAttack(instance.instanceId)));
             }
             else if (ownerId === 'player' && ((instance.summoningSick && !hasKeyword(instance, 'charge')) || instance.frozen))
@@ -915,9 +959,164 @@ export class CardGame extends Scene
         this.renderedObjects.push(overlay, label, button);
     }
 
-    private addOutline (container: Phaser.GameObjects.Container, width: number, height: number, color: number): void
+    /**
+     * Draws a colored border whose own material sweeps light→bright→light along the bottom-left→
+     * top-right diagonal, twice in quick succession, then pauses, then repeats. Replaces the old
+     * static outline for every highlight in this file — any future color variant is just a new call
+     * with a different hex, via OUTLINE_COLOR_* in cardLayout.ts.
+     *
+     * The border is a Graphics frame (4 filled strips, not a Rectangle+strokeStyle) so each strip
+     * can be painted with fillGradientStyle's per-corner colors — a WebGL-only Phaser feature this
+     * project already relies on elsewhere (see CardView.ts's createHeaderGradient) since the AUTO
+     * renderer type resolves to WebGL in real browsers. Every vertex's color is a pure function of
+     * its (x, y) position (see `colorAt`), so shared corners between adjacent strips always compute
+     * identically — no visible seam at the frame's 4 corners.
+     *
+     * The tween targets the frame GameObject directly via a plain custom `shimmerCycle` property
+     * (0-1 progress through one full sweep-sweep-pause cycle) rather than a detached proxy object:
+     * this file has no existing pattern for manually killing tweens on renderNow()'s teardown (see
+     * clearRendered()), so every tween here — including this one — relies on Phaser's own
+     * auto-cleanup, which only fires for a tween's direct GameObject target. A proxy target would
+     * have no such lifecycle and leak one runaway repeat(-1) tween per historical outline for the
+     * rest of the session. Driving the whole sweep-sweep-pause cycle off one repeating tween (rather
+     * than chaining sweeps with time.delayedCall) keeps that same guarantee — a delayedCall timer
+     * isn't a tween and isn't covered by the destroy cascade, so it would need its own manual
+     * teardown wiring that nothing else in this file has.
+     *
+     * Returns a handle to tear the outline down early (stopping the tween and destroying the
+     * frame) — every static-render call site here ignores it, relying on the auto-cleanup above,
+     * but a transient hover highlight (see renderPile) needs to remove its shimmer on pointerout
+     * without waiting for the next renderNow() teardown.
+     */
+    private addShimmeringOutline (container: Phaser.GameObjects.Container, width: number, height: number, color: number): { destroy: () => void }
     {
-        const outline = this.add.rectangle(0, 0, width + 10, height + 10).setStrokeStyle(4, color);
-        container.addAt(outline, 0);
+        const w = width + 10, h = height + 10;
+        const halfW = w / 2, halfH = h / 2;
+        const strokeWidth = 4;
+
+        // Diagonal axis (bottom-left → top-right) the shimmer sweeps along: project any frame vertex
+        // onto a single 0..diagLen scalar, then measure the sweep's current peak against it.
+        const diagLen = Math.hypot(w, h);
+        const dirX = w / diagLen, dirY = -h / diagLen;
+        const originX = -halfW, originY = halfH; // bottom-left corner == s(0)
+        const project = (x: number, y: number) => (x - originX) * dirX + (y - originY) * dirY;
+
+        const colorAt = (x: number, y: number, peakS: number | null): number =>
+        {
+            if (peakS === null) return color;
+            const brightness = Math.max(0, 1 - Math.abs(project(x, y) - peakS) / SHIMMER_BAND_WIDTH);
+            return lightenColor(color, brightness * SHIMMER_BRIGHTEN_AMOUNT);
+        };
+
+        const frame = this.add.graphics() as Phaser.GameObjects.Graphics & { shimmerCycle: number };
+        frame.shimmerCycle = 0;
+        container.addAt(frame, 0);
+
+        const strips: [number, number, number, number][] = [
+            [-halfW, -halfH, w, strokeWidth], // top
+            [-halfW, halfH - strokeWidth, w, strokeWidth], // bottom
+            [-halfW, -halfH, strokeWidth, h], // left
+            [halfW - strokeWidth, -halfH, strokeWidth, h], // right
+        ];
+        const drawFrame = (peakS: number | null) =>
+        {
+            frame.clear();
+            for (const [x, y, sw, sh] of strips)
+            {
+                frame.fillGradientStyle(
+                    colorAt(x, y, peakS), colorAt(x + sw, y, peakS),
+                    colorAt(x, y + sh, peakS), colorAt(x + sw, y + sh, peakS), 1
+                );
+                frame.fillRect(x, y, sw, sh);
+            }
+        };
+
+        // One repeating tween drives the whole cycle: two quick sweeps (each SHIMMER_SWEEP_MS) back
+        // to back, then a flat-color pause (SHIMMER_PAUSE_MS) before it loops.
+        const redraw = () => drawFrame(this.shimmerPeakAt(frame.shimmerCycle, diagLen));
+
+        drawFrame(null);
+        const cycleMs = SHIMMER_SWEEP_MS * 2 + SHIMMER_PAUSE_MS;
+        const tween = this.tweens.add({ targets: frame, shimmerCycle: 1, duration: cycleMs, repeat: -1, ease: 'Linear', onUpdate: redraw });
+        // Random phase so multiple simultaneous shimmers (e.g. several attackable minions at once)
+        // don't all sweep in lockstep. seek() takes ms (not the old 0-1 fraction) and doesn't fire
+        // onUpdate while fast-forwarding, so redraw() once more manually right after — otherwise the
+        // frame sits at its cycle-start appearance for up to a frame, and this spawn path recurs
+        // constantly (renderNow() reruns on every state change, and every ~600ms during the
+        // opponent's turn), so it's worth the extra line rather than a once-off cosmetic nit.
+        tween.seek(Math.random() * cycleMs);
+        redraw();
+
+        return { destroy: () => { tween.stop(); frame.destroy(); } };
+    }
+
+    /**
+     * Where the shimmer's bright band currently sits along a diagonal of length `diagLen`, given
+     * `cycleT` (0-1 progress through addShimmeringOutline/addShimmeringFill's shared sweep-sweep-
+     * pause cycle) — shared so both methods' redraw loops stay in step with the same timing.
+     */
+    private shimmerPeakAt (cycleT: number, diagLen: number): number | null
+    {
+        const sweepFrac = SHIMMER_SWEEP_MS / (SHIMMER_SWEEP_MS * 2 + SHIMMER_PAUSE_MS);
+        if (cycleT < sweepFrac) return -SHIMMER_BAND_WIDTH + (diagLen + SHIMMER_BAND_WIDTH * 2) * (cycleT / sweepFrac);
+        if (cycleT < sweepFrac * 2) return -SHIMMER_BAND_WIDTH + (diagLen + SHIMMER_BAND_WIDTH * 2) * ((cycleT - sweepFrac) / sweepFrac);
+        return null;
+    }
+
+    /**
+     * Same shimmer sweep as addShimmeringOutline, but filling a solid disc rather than tracing a
+     * border — used for the active player's hero circle, whose own fill shimmers instead of
+     * getting an outline glow. Phaser's gradient fill only interpolates cleanly across a single
+     * quad (see addShimmeringOutline's per-strip fillRect calls); a circle has no such quad, so
+     * this instead triangulates the disc into pie slices from its center and fills each slice with
+     * a single flat color sampled at its midpoint — enough slices reads as a smooth sweep at this
+     * circle's size, in the same spirit as the border's own 4-strip approximation of a continuous
+     * gradient.
+     */
+    private addShimmeringFill (container: Phaser.GameObjects.Container, radius: number, color: number): { destroy: () => void }
+    {
+        const sliceCount = 40;
+
+        // Diagonal axis (bottom-left → top-right) of the disc's bounding square — same convention
+        // as addShimmeringOutline's `project`.
+        const diagLen = radius * 2 * Math.SQRT2;
+        const dirX = Math.SQRT1_2, dirY = -Math.SQRT1_2;
+        const originX = -radius, originY = radius;
+        const project = (x: number, y: number) => (x - originX) * dirX + (y - originY) * dirY;
+
+        const colorAt = (x: number, y: number, peakS: number | null): number =>
+        {
+            if (peakS === null) return color;
+            const brightness = Math.max(0, 1 - Math.abs(project(x, y) - peakS) / SHIMMER_BAND_WIDTH);
+            return lightenColor(color, brightness * SHIMMER_BRIGHTEN_AMOUNT);
+        };
+
+        const disc = this.add.graphics() as Phaser.GameObjects.Graphics & { shimmerCycle: number };
+        disc.shimmerCycle = 0;
+        container.addAt(disc, 0);
+
+        const drawDisc = (peakS: number | null) =>
+        {
+            disc.clear();
+            for (let i = 0; i < sliceCount; i++)
+            {
+                const a0 = (i / sliceCount) * Math.PI * 2;
+                const a1 = ((i + 1) / sliceCount) * Math.PI * 2;
+                const x1 = Math.cos(a0) * radius, y1 = Math.sin(a0) * radius;
+                const x2 = Math.cos(a1) * radius, y2 = Math.sin(a1) * radius;
+                disc.fillStyle(colorAt((x1 + x2) / 2, (y1 + y2) / 2, peakS), 1);
+                disc.fillTriangle(0, 0, x1, y1, x2, y2);
+            }
+        };
+
+        const redraw = () => drawDisc(this.shimmerPeakAt(disc.shimmerCycle, diagLen));
+
+        drawDisc(null);
+        const cycleMs = SHIMMER_SWEEP_MS * 2 + SHIMMER_PAUSE_MS;
+        const tween = this.tweens.add({ targets: disc, shimmerCycle: 1, duration: cycleMs, repeat: -1, ease: 'Linear', onUpdate: redraw });
+        tween.seek(Math.random() * cycleMs);
+        redraw();
+
+        return { destroy: () => { tween.stop(); disc.destroy(); } };
     }
 }

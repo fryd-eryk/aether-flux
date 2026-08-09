@@ -13,7 +13,9 @@ export type TargetSelector =
     | 'friendlyHero'
     | 'chosen'
     | 'allEnemyMinions'
-    | 'allFriendlyMinions';
+    | 'allFriendlyMinions'
+    | 'allMinions'
+    | 'allHeroes';
 
 /**
  * Narrows what a `target: 'chosen'` action may be pointed at — e.g. "Deal 2 damage to a

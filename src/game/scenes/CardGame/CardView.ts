@@ -165,8 +165,12 @@ export class CardView {
         const hasText = definition.text !== "";
         if (!hasKeywords && !hasText) return [];
 
+        // Built up front (at a provisional y=0 baseline for the keywords — see createKeywordLabels)
+        // purely to measure how tall each piece of content actually is, since neither the keyword
+        // block's row count nor the rule text's wrapped line count is a fixed constant.
+        const keywords = hasKeywords ? this.createKeywordLabels(instance) : { objects: [], lineCount: 0 };
         let ruleText: Phaser.GameObjects.Text | null = null;
-        let contentHeight = hasKeywords ? DESC_BOX_KEYWORD_LINE_H : 0;
+        let contentHeight = keywords.lineCount * DESC_BOX_KEYWORD_LINE_H;
 
         if (hasText) {
             ruleText = this.scene.add
@@ -187,8 +191,9 @@ export class CardView {
         let cursorY = boxTop + DESC_BOX_PAD_Y;
 
         if (hasKeywords) {
-            objects.push(...this.createKeywordLabels(instance, cursorY));
-            cursorY += DESC_BOX_KEYWORD_LINE_H + DESC_BOX_LINE_GAP;
+            keywords.objects.forEach((obj) => { obj.y += cursorY; });
+            objects.push(...keywords.objects);
+            cursorY += keywords.lineCount * DESC_BOX_KEYWORD_LINE_H + DESC_BOX_LINE_GAP;
         }
 
         if (ruleText) {
@@ -324,35 +329,49 @@ export class CardView {
 
     /**
      * Full keyword names for a minion's active keywords — bold, colored per KEYWORD_METADATA,
-     * flowed left-to-right on one shared, left-aligned line ("Taunt, Divine Shield") rather than
-     * one row each, so the rule text below only has to start a new line once. Iterates
-     * instance.keywords (runtime, mutable) rather than the card's static definition.keywords — a
-     * consumed keyword like divineShield must stop rendering once popped, and the definition
-     * never changes to reflect that.
+     * flowed left-to-right ("Taunt, Divine Shield") rather than one row each, wrapping onto
+     * additional rows (DESC_BOX_KEYWORD_LINE_H apart) whenever the next label would overflow the
+     * same CARD_W-16 width the rule text below wraps to — a separator always stays glued to the
+     * label before it (wrap is only ever checked before a *label*, never before its separator), so
+     * a wrapped row can end in a trailing comma but never start with one. Built at a provisional
+     * y=0 baseline (row 0, row 1, ... each DESC_BOX_KEYWORD_LINE_H below the last) rather than the
+     * final on-card position, since createDescriptionBox doesn't know the box's top edge — which
+     * depends on how many rows this took — until after calling this; it shifts the returned objects
+     * down as a group once that's known. Iterates instance.keywords (runtime, mutable) rather than
+     * the card's static definition.keywords — a consumed keyword like divineShield must stop
+     * rendering once popped, and the definition never changes to reflect that.
      */
-    private createKeywordLabels(instance: CardInstance, startY: number): Phaser.GameObjects.GameObject[] {
+    private createKeywordLabels(instance: CardInstance): { objects: Phaser.GameObjects.Text[]; lineCount: number } {
         const keywords = [...instance.keywords];
-        if (keywords.length === 0) return [];
+        if (keywords.length === 0) return { objects: [], lineCount: 0 };
 
         const startX = -CARD_W / 2 + 8;
-        const objects: Phaser.GameObjects.GameObject[] = [];
+        const maxX = CARD_W / 2 - 8;
+        const objects: Phaser.GameObjects.Text[] = [];
         let cursorX = startX;
+        let row = 0;
 
         keywords.forEach((keyword, index) => {
             const meta = KEYWORD_METADATA[keyword];
             const hex = `#${meta.color.toString(16).padStart(6, "0")}`;
-            const label = this.scene.add.text(cursorX, startY, meta.label, { ...KEYWORD_LABEL_BASE_STYLE, color: hex }).setOrigin(0, 0);
+            const label = this.scene.add.text(0, 0, meta.label, { ...KEYWORD_LABEL_BASE_STYLE, color: hex }).setOrigin(0, 0);
+
+            if (cursorX + label.width > maxX && cursorX > startX) {
+                row += 1;
+                cursorX = startX;
+            }
+            label.setPosition(cursorX, row * DESC_BOX_KEYWORD_LINE_H);
             objects.push(label);
             cursorX += label.width;
 
             if (index < keywords.length - 1) {
-                const separator = this.scene.add.text(cursorX, startY, ",", KEYWORD_SEPARATOR_STYLE).setOrigin(0, 0);
+                const separator = this.scene.add.text(cursorX, row * DESC_BOX_KEYWORD_LINE_H, ",", KEYWORD_SEPARATOR_STYLE).setOrigin(0, 0);
                 objects.push(separator);
                 cursorX += separator.width;
             }
         });
 
-        return objects;
+        return { objects, lineCount: row + 1 };
     }
 
     /**

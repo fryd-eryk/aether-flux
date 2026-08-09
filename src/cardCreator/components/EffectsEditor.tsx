@@ -12,7 +12,7 @@ import styles from '@/styles/CardCreator.module.css';
 
 const TRIGGERS = Object.keys(TRIGGER_METADATA) as EffectTrigger[];
 const ACTION_KINDS: EffectAction['kind'][] = ['damage', 'heal', 'draw', 'buff', 'summon', 'freeze', 'silence'];
-const TARGETS: TargetSelector[] = ['self', 'enemyHero', 'friendlyHero', 'chosen', 'allEnemyMinions', 'allFriendlyMinions'];
+const TARGETS: TargetSelector[] = ['self', 'enemyHero', 'friendlyHero', 'chosen', 'allEnemyMinions', 'allFriendlyMinions', 'allMinions', 'allHeroes'];
 const RESTRICTIONS: ChosenTargetRestriction[] = ['minion', 'hero'];
 
 function defaultActionFor(kind: EffectAction['kind']): EffectAction {

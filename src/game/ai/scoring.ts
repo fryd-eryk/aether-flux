@@ -66,11 +66,18 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
     switch (action.kind) {
         case 'damage':
             if (action.target === 'chosen') return 0;
+            // allMinions/allHeroes hit both sides — net the boards against each other (and halve a
+            // mutual face hit) rather than a flat per-target count, so the AI disfavors nuking a
+            // board/face split that actually favors the enemy. See CLAUDE.md's Apocalypse precedent.
+            if (action.target === 'allMinions') return action.amount * (enemy.board.length - ai.board.length);
+            if (action.target === 'allHeroes') return action.amount * 0.5;
             return action.amount * (action.target === 'allEnemyMinions' ? Math.max(1, enemy.board.length) : 1);
         case 'heal':
             if (action.target === 'chosen') return 0;
+            if (action.target === 'allMinions') return action.amount * 0.5 * (ai.board.length - enemy.board.length);
             return action.amount * (action.target === 'allFriendlyMinions' ? Math.max(1, ai.board.length) : 1) * 0.5;
         case 'buff':
+            if (action.target === 'allMinions') return ((action.attack ?? 0) + (action.health ?? 0)) * (ai.board.length - enemy.board.length);
             return ((action.attack ?? 0) + (action.health ?? 0)) * (action.target === 'allFriendlyMinions' ? Math.max(1, ai.board.length) : 1);
         case 'draw':
             return action.count * 4;
@@ -78,9 +85,11 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
             return action.count * 4;
         case 'freeze':
             if (action.target === 'chosen') return 0;
+            if (action.target === 'allMinions') return 3 * (enemy.board.length - ai.board.length);
             return 3 * (action.target === 'allEnemyMinions' ? Math.max(1, enemy.board.length) : 1);
         case 'silence':
             if (action.target === 'chosen') return 0;
+            if (action.target === 'allMinions') return 4 * (enemy.board.length - ai.board.length);
             return 4 * (action.target === 'allEnemyMinions' ? Math.max(1, enemy.board.length) : 1);
     }
 }

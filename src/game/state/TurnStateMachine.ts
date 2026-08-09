@@ -331,6 +331,10 @@ export class TurnStateMachine {
                 return this.gameState.players[ownerId].board.map((c) => c.instanceId);
             case 'allEnemyMinions':
                 return this.gameState.players[opponentId].board.map((c) => c.instanceId);
+            case 'allMinions':
+                return [...this.gameState.players[ownerId].board, ...this.gameState.players[opponentId].board].map((c) => c.instanceId);
+            case 'allHeroes':
+                return [ownerId, opponentId];
             default:
                 return [];
         }
