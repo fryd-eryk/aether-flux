@@ -54,9 +54,14 @@ dependency) → `src/game/scenes/CardGame.ts` (renders state, forwards input)
 
 **Card authoring**: prefer the visual editor at `/card-creator`
 (`src/cardCreator/`) over hand-editing `cards.ts` — live 1:1 preview via the
-real `CardView` code, type-checked form, saves straight to `cards.ts` via the
-browser's File System Access API (Chrome/Edge only). See SPEC.md's "Card
-Creator" section for how it's wired up.
+real `CardView` code, type-checked form, saves straight to `cards.ts` via a
+dev-only API route (`src/pages/api/card-creator/save.ts`) while `npm run dev`
+is running. This is a `pages/api` route in a project whose `next.config.mjs`
+sets `output: 'export'` — that's deliberate, not an oversight: Next.js doesn't
+hard-error on that combination, it just drops the route from the static
+export with a build-time warning (`next build` prints "Statically exporting
+... disables API routes and middleware" — expected, not a regression to
+chase). See SPEC.md's "Card Creator" section for how it's wired up.
 
 ## Game design decisions
 

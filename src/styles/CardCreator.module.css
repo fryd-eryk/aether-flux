@@ -148,11 +148,6 @@
     gap: 6px;
 }
 
-.fileStatus {
-    font-size: 11px;
-    color: #9aa7bd;
-}
-
 .actionButton {
     padding: 7px 8px;
     background: #24304a;
@@ -331,10 +326,4 @@
     composes: newButton;
     width: auto;
     padding: 7px 14px;
-}
-
-.unsupportedNotice {
-    font-size: 11px;
-    color: #e6b34f;
-    line-height: 1.4;
 }

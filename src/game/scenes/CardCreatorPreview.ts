@@ -11,6 +11,18 @@ export interface CardCreatorPreviewUpdate {
     mode: Exclude<CardDisplayMode, 'faceDown'>;
 }
 
+// How many internal render pixels the preview uses per CardView "logical" pixel (its
+// fixed CARD_W/CARD_H=150x225 coordinate space). Phaser's Scale.FIT stretches the game
+// canvas's actual backing pixel buffer via CSS to fill whatever size the pane ends up
+// being — rendering at the card's native 150x225 and relying on that CSS stretch alone
+// blurs everything (on-card Text is separately kept crisp regardless of this by
+// cardLayout.ts's CARD_TEXT_RESOLUTION, baked into every on-card TextStyle — see its
+// comment for why; this constant only has to cover images/graphics, which have plenty
+// of native resolution already and just need the canvas itself not to be too small).
+// Rendering RENDER_SCALE-times bigger internally (see cardCreatorMain.ts) means the
+// eventual CSS stretch is usually a *downscale* instead, which browsers do cleanly.
+export const RENDER_SCALE = 3;
+
 /**
  * A standalone Scene (own Game instance, see cardCreatorMain.ts) that renders exactly
  * one card via the real CardView, driven by React form data instead of a running
@@ -69,6 +81,7 @@ export class CardCreatorPreview extends Scene
 
         const fakeInstance = buildPreviewInstance(definition);
         this.container = this.cardView.createCardContainer(fakeInstance, mode, definition);
+        this.container.setScale(RENDER_SCALE);
         this.container.setPosition(this.cameras.main.centerX, this.cameras.main.centerY);
     }
 }

@@ -161,7 +161,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         type: "minion",
         text: "Anthem: Restore 2 Health to your hero.",
         attack: 1,
-        health: 2,
+        health: 1,
         effects: [
             {
                 trigger: "onPlay",
@@ -838,13 +838,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
     },
-    "barrow-colossus": {
-        id: "barrow-colossus",
-        name: "Barrow Colossus",
+    "faery-colossus": {
+        id: "faery-colossus",
+        name: "Faery Colossus",
         cost: 8,
         type: "minion",
         text: "Vigil: Restore 2 Health to your hero.",
-        attack: 6,
+        attack: 4,
         health: 6,
         keywords: ["lifesteal"],
         effects: [

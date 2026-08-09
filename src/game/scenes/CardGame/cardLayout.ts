@@ -104,10 +104,24 @@ export const PILE_VIEW_BOTTOM = 1020;
 // Where a played card is held for a beat before flying to its resting place.
 export const SPOTLIGHT_X = 260;
 
+// Phaser Text objects rasterize to their own internal canvas at this multiple of their
+// font size, independent of any later container/camera scale (confirmed against
+// node_modules/phaser/src/gameobjects/text/Text.js — resolution defaults to 1 and is
+// NOT derived from any Game Config setting in this Phaser version, despite what the
+// hosted API docs imply). At `resolution: 1`, a 10-19px on-card font is a genuinely
+// tiny source bitmap, so any card rendered bigger than its native CARD_W/CARD_H — a
+// board/hand card on a browser window wider than the game's 1920x1080 base resolution
+// (Scale.FIT stretches the canvas via CSS in that case), or the Card Creator's
+// preview, which deliberately renders bigger — blurs exactly like an upscaled raster
+// image. Every on-card Text uses this; off-card UI chrome (health/mana readouts, pile
+// labels, tooltip body text — SMALL_STYLE/PILE_LABEL_STYLE/statStyle) doesn't need it,
+// since none of those get scaled up beyond the game's own base resolution.
+const CARD_TEXT_RESOLUTION = 3;
+
 /** Adds a black outline to a text style, for legibility over full-bleed art — every on-card text element uses this; off-card UI chrome (health/mana readouts, pile labels, tooltip body text) does not. */
 export function withStroke(style: Phaser.Types.GameObjects.Text.TextStyle, thickness = 3): Phaser.Types.GameObjects.Text.TextStyle
 {
-    return { ...style, stroke: '#000000', strokeThickness: thickness };
+    return { ...style, stroke: '#000000', strokeThickness: thickness, resolution: CARD_TEXT_RESOLUTION };
 }
 
 export const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '14px', color: '#ffffff', align: 'left' });
@@ -122,13 +136,13 @@ export const KEYWORD_LABEL_BASE_STYLE: Phaser.Types.GameObjects.Text.TextStyle =
 // The ", " joining multiple keyword labels on their shared line — plain (unbolded, uncolored) so
 // the colored keyword names stay the visual focus.
 export const KEYWORD_SEPARATOR_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '11px', color: '#e8ecf5' }, 2);
-export const MISSING_ASSET_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '10px', color: '#888888', align: 'center' };
+export const MISSING_ASSET_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '10px', color: '#888888', align: 'center', resolution: CARD_TEXT_RESOLUTION };
 export const PILL_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '9px', color: '#ffffff', fontStyle: 'bold' }, 2);
 export const STAT_FUSED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial Black', fontSize: '15px', color: '#ffffff' });
 // 'full' mode's inset atk/hp box (createStatBadgeInset) sits on an opaque white background, so the
 // art-legibility stroke trick the rest of on-card text relies on would just look muddy here — plain
 // dark text instead.
-export const STAT_FUSED_LIGHT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial Black', fontSize: '12px', color: '#1a1a2e' };
+export const STAT_FUSED_LIGHT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial Black', fontSize: '12px', color: '#1a1a2e', resolution: CARD_TEXT_RESOLUTION };
 
 // New card layout constants (createCardContainer) — starting points tuned by eye against
 // src/refs/card-layout-ref-v1.png (superseded for 'full' mode by v2, see below), not pixel-perfect gospel.
