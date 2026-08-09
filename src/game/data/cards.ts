@@ -519,13 +519,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
     },
-    doomcaller: {
-        id: "doomcaller",
-        name: "Doomcaller",
+    "vampiric-doomcaller": {
+        id: "vampiric-doomcaller",
+        name: "Vampiric Doomcaller",
         cost: 4,
         type: "minion",
-        text: "Anthem: Deal 3 damage to the enemy hero. Deathcry: Deal 3 damage to you.",
-        attack: 5,
+        text: "Anthem: Deal 3 damage to the enemy hero. Deathcry: Deal 3 damage to your hero.",
+        attack: 4,
         health: 4,
         effects: [
             {
@@ -716,24 +716,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
     },
-    "tempest-call": {
-        id: "tempest-call",
-        name: "Tempest Call",
-        cost: 6,
-        type: "spell",
-        text: "Deal 5 damage to all enemy minions.",
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 5,
-                    target: "allEnemyMinions",
-                },
-            },
-        ],
-        rarity: "rare",
-    },
     "warlords-rally": {
         id: "warlords-rally",
         name: "Warlord's Rally",
@@ -752,6 +734,33 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "rare",
+    },
+    "city-wide-riots": {
+        id: "city-wide-riots",
+        name: "City-wide Riots",
+        cost: 6,
+        type: "spell",
+        text: "Deal 6 damage to all minions.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 6,
+                    target: "allEnemyMinions",
+                },
+            },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 6,
+                    target: "allFriendlyMinions",
+                },
+            },
+        ],
+        rarity: "rare",
+        artVerticalAlign: "top",
     },
 
     // --- Exotic rarity (9) ---
@@ -858,6 +867,25 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
     },
+    "world-ending-rift": {
+        id: "world-ending-rift",
+        name: "World-ending Rift",
+        cost: 7,
+        type: "spell",
+        text: "Deal 6 damage to all enemy minions.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 6,
+                    target: "allEnemyMinions",
+                },
+            },
+        ],
+        rarity: "exotic",
+        artVerticalAlign: "bottom",
+    },
     "sky-titan": {
         id: "sky-titan",
         name: "Sky Titan",
@@ -901,33 +929,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
     },
-    apocalypse: {
-        id: "apocalypse",
-        name: "Apocalypse",
-        cost: 8,
-        type: "spell",
-        text: "Deal 10 damage to all minions.",
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 10,
-                    target: "allEnemyMinions",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 10,
-                    target: "allFriendlyMinions",
-                },
-            },
-        ],
-        rarity: "exotic",
-        artVerticalAlign: "top",
-    },
     "eternal-phoenix-sovereign": {
         id: "eternal-phoenix-sovereign",
         name: "Eternal Phoenix Sovereign",
@@ -952,7 +953,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Legendary rarity (2) ---
+    // --- Legendary rarity (3) ---
     "martheus-the-last-bastion": {
         id: "martheus-the-last-bastion",
         name: "Martheus, The Last Bastion",
@@ -995,6 +996,41 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "legendary",
+    },
+    "doom-fissure": {
+        id: "doom-fissure",
+        name: "Doom Fissure",
+        cost: 9,
+        type: "spell",
+        text: "Deal 5 damage to all minions. Summon a Vampiric Doomcaller.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 5,
+                    target: "allEnemyMinions",
+                },
+            },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 5,
+                    target: "allFriendlyMinions",
+                },
+            },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "summon",
+                    definitionId: "vampiric-doomcaller",
+                    count: 1,
+                },
+            },
+        ],
+        rarity: "legendary",
+        artVerticalAlign: "bottom",
     },
 
     // --- Tokens (not collectible — no `rarity`, so deckGenerator.ts never draws them) ---
