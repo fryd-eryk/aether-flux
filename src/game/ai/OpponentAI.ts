@@ -42,10 +42,12 @@ export function decideOpponentAction(state: GameState): AIAction | null {
         }
     }
 
-    // Mirrors TurnStateMachine.computeValidTargets: if the enemy has any Taunt minions, attacks
-    // must target one of those — face and non-Taunt minions aren't legal targets at all.
-    const tauntUp = enemy.board.some((c) => hasKeyword(c, 'taunt'));
+    // Mirrors TurnStateMachine.computeValidTargets: if the enemy has any (non-Veiled) Taunt
+    // minions, attacks must target one of those — face and non-Taunt minions aren't legal targets
+    // at all. tauntUp is derived from tauntRestrictedTargets's own result (which already folds out
+    // Veiled minions) rather than the raw board, so this can never disagree with the state machine.
     const legalDefenders = tauntRestrictedTargets(enemy.board);
+    const tauntUp = legalDefenders.some((c) => hasKeyword(c, 'taunt'));
 
     for (const attacker of ai.board) {
         if (!canDeclareAttack(attacker)) continue; // mirrors TurnStateMachine.declareAttack's own guard

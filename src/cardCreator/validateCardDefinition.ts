@@ -38,6 +38,12 @@ function validateAction(action: EffectAction, prefix: string, errors: FieldError
             if (!action.definitionId) errors[`${prefix}.definitionId`] = 'Pick a card to summon.';
             if (!(action.count >= 1)) errors[`${prefix}.count`] = 'Count must be at least 1.';
             break;
+        case 'freeze':
+        case 'silence':
+            if (action.target !== 'chosen' && action.chosenRestriction) {
+                errors[`${prefix}.chosenRestriction`] = 'Only meaningful when target is "chosen".';
+            }
+            break;
     }
 }
 

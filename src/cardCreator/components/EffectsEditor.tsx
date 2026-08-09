@@ -11,7 +11,7 @@ import type { FieldErrors } from '../validateCardDefinition';
 import styles from '@/styles/CardCreator.module.css';
 
 const TRIGGERS = Object.keys(TRIGGER_METADATA) as EffectTrigger[];
-const ACTION_KINDS: EffectAction['kind'][] = ['damage', 'heal', 'draw', 'buff', 'summon'];
+const ACTION_KINDS: EffectAction['kind'][] = ['damage', 'heal', 'draw', 'buff', 'summon', 'freeze', 'silence'];
 const TARGETS: TargetSelector[] = ['self', 'enemyHero', 'friendlyHero', 'chosen', 'allEnemyMinions', 'allFriendlyMinions'];
 const RESTRICTIONS: ChosenTargetRestriction[] = ['minion', 'hero'];
 
@@ -26,6 +26,9 @@ function defaultActionFor(kind: EffectAction['kind']): EffectAction {
             return { kind, attack: 1, health: 1, target: 'allFriendlyMinions' };
         case 'summon':
             return { kind, definitionId: '', count: 1 };
+        case 'freeze':
+        case 'silence':
+            return { kind, target: 'chosen', chosenRestriction: 'minion' };
     }
 }
 
@@ -319,6 +322,57 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                         />
                                         {errors[`${prefix}.count`] && <span className={styles.fieldError}>{errors[`${prefix}.count`]}</span>}
                                     </div>
+                                </>
+                            )}
+
+                            {(action.kind === 'freeze' || action.kind === 'silence') && (
+                                <>
+                                    <div className={styles.field}>
+                                        <label className={styles.fieldLabel}>Target</label>
+                                        <select
+                                            className={styles.selectInput}
+                                            value={action.target}
+                                            onChange={(e) => {
+                                                const target = e.target.value as TargetSelector;
+                                                const chosenRestriction = target === 'chosen' ? action.chosenRestriction : undefined;
+                                                updateEffect(index, { ...effect, action: { ...action, target, chosenRestriction } });
+                                            }}
+                                        >
+                                            {TARGETS.map((target) => (
+                                                <option key={target} value={target}>
+                                                    {target}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {isChosen && (
+                                        <div className={styles.field}>
+                                            <label className={styles.fieldLabel}>Chosen restriction</label>
+                                            <select
+                                                className={styles.selectInput}
+                                                value={action.chosenRestriction ?? ''}
+                                                onChange={(e) =>
+                                                    updateEffect(index, {
+                                                        ...effect,
+                                                        action: {
+                                                            ...action,
+                                                            chosenRestriction: e.target.value === '' ? undefined : (e.target.value as ChosenTargetRestriction),
+                                                        },
+                                                    })
+                                                }
+                                            >
+                                                <option value="">— any (minion or hero) —</option>
+                                                {RESTRICTIONS.map((restriction) => (
+                                                    <option key={restriction} value={restriction}>
+                                                        {restriction}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {errors[`${prefix}.chosenRestriction`] && (
+                                                <span className={styles.fieldError}>{errors[`${prefix}.chosenRestriction`]}</span>
+                                            )}
+                                        </div>
+                                    )}
                                 </>
                             )}
                         </div>

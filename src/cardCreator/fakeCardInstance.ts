@@ -18,5 +18,7 @@ export function buildPreviewInstance(definition: CardDefinition): CardInstance {
         summoningSick: false,
         attacksThisTurn: 0,
         keywords: new Set(definition.keywords ?? []),
+        frozen: false,
+        silenced: false,
     };
 }

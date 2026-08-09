@@ -49,13 +49,72 @@ card art, the card-back texture, etc. `CardGame` is the only gameplay scene.
 
 Static minion keywords (`CardDefinition.keywords?: Keyword[]`, `Card.ts`) are a separate mechanism from the trigger+action `effects` system above — keywords are always-on rules modifiers, not one-shot triggered actions. `src/game/state/keywordRules.ts` holds the pure enforcement logic (`hasKeyword`, `canDeclareAttack`, `getMaxAttacks`, `tauntRestrictedTargets`), shared by `TurnStateMachine`, `ai/scoring.ts`/`ai/OpponentAI.ts`, and `CardGame`'s rendering so "can this minion attack / be attacked" logic exists in exactly one place — do not re-derive it locally in a new call site. `CardInstance.keywords` is a runtime `Set<Keyword>` (seeded from the definition, then mutated as consumable keywords like Divine Shield are used up) — code must read `instance.keywords`, not `definition.keywords`, to see a minion's *current* keyword state. `src/game/data/keywordMetadata.ts` holds display-only badge data (`CardGame` renders it under the card name, and colors+bolds each keyword's label — but not its description — in hover tooltips, matching the on-card badge color), kept separate from the pure rules module. `src/game/data/triggerMetadata.ts` mirrors that shape for `EffectTrigger`s (`TRIGGER_METADATA`, label+color only — no rules logic, since triggers aren't a rules concept the way keywords are), plus a `distinctTriggers(effects)` helper; both maps feed `CardGame`'s `createStatusPills` for the `'simplified'` display mode's bottom-left pills.
 
-Implemented so far (Phase 1 of a larger roadmap — see the design conversation this was planned in for the deferred 10): **Taunt** (enemy attacks must target a Taunt minion first — enforced in `TurnStateMachine.computeValidTargets`), **Charge** (ignores summoning sickness — the minion's `summoningSick` flag stays `true` internally even so; only attack-eligibility bypasses it, which is why `CardGame`'s dim-on-summoning-sick check has an explicit Charge exemption), **Divine Shield** (absorbs one full instance of damage, combat *or* spell — enforced once in `TurnStateMachine.dealDamage`, which is why that method returns the damage actually applied rather than `void`), **Windfury** (`CardInstance.attacksThisTurn: number` vs. a max from `getMaxAttacks`, not a boolean — replaced the old `hasAttackedThisTurn` field entirely), **Lifesteal** (heals the dealing minion's controller by whatever `dealDamage` actually applied, so a Divine-Shield-absorbed hit correctly heals for 0).
+Implemented so far (Phases 1–2a of a larger roadmap — see the design conversation this was planned in for the deferred 10): **Taunt** (enemy attacks must target a Taunt minion first — enforced in `TurnStateMachine.computeValidTargets`), **Charge** (ignores summoning sickness — the minion's `summoningSick` flag stays `true` internally even so; only attack-eligibility bypasses it, which is why `CardGame`'s dim-on-summoning-sick check has an explicit Charge exemption), **Divine Shield** (absorbs one full instance of damage, combat *or* spell — enforced once in `TurnStateMachine.dealDamage`, which is why that method returns the damage actually applied rather than `void`), **Windfury** (`CardInstance.attacksThisTurn: number` vs. a max from `getMaxAttacks`, not a boolean — replaced the old `hasAttackedThisTurn` field entirely), **Lifesteal** (heals the dealing minion's controller by whatever `dealDamage` actually applied, so a Divine-Shield-absorbed hit correctly heals for 0), **Veiled** (can't be attacked or targeted by spells until it attacks, then loses Veiled the instant it does — folded into `keywordRules.tauntRestrictedTargets`/`isTargetable` rather than a parallel filter, so a hypothetical Veiled+Taunt minion can't "wall" attacks it can't itself receive), **Venom** (any combat damage this minion deals destroys the target minion outright, regardless of amount — checked in `executeAttack` against `dealDamage`'s returned damage-dealt amount, so a Divine-Shield-absorbed hit correctly doesn't trigger it, mirroring how Lifesteal reads that same value).
+
+Two triggers joined the original Anthem/Deathcry/Vigil/Curfew set in Phase 2a: **Strike** (`onAttack`) fires unconditionally the instant an attack is declared, before either side's `dealDamage` call, so it's unaffected by whether the hit lands or either side survives it; **Wound** (`onDamaged`) fires from inside `dealDamage` itself — a single choke point covering combat *and* spell damage alike — whenever a minion takes damage and survives it, independent of any follow-up like Venom retroactively killing the same minion afterward. Two effect-action kinds joined damage/heal/draw/buff/summon: **freeze** (target can't attack on its next turn — a `CardInstance.frozen` flag read by `canDeclareAttack`, cleared in `endTurn`'s existing per-active-player-board loop, so a minion frozen on turn N stays blocked through the whole of its controller's next turn) and **silence** (strips *everything the target's own card text grants* — clears its `keywords` Set and permanently suppresses all of that instance's own trigger effects going forward, Deathcry included, via a persistent `CardInstance.silenced` flag guarded once at the top of `triggerEffects`; does not undo already-applied stat buffs or clear `frozen`, since neither is "the card's own printed text"). Silencing a minion also swaps its board status pills for a single "Silenced" pill (`CardView.createStatusPills`) rather than letting them go blank, since blank would look identical to a plain vanilla minion.
+
+### Keyword & trigger roadmap (Phase 2b+ proposal — not yet implemented)
+
+A design proposal, not yet coded, for growing the rules vocabulary further
+toward combo-style interactions and, eventually, decks buildable around a
+coherent strategy. Deliberately uses original vocabulary rather than reusing
+genre-standard (Hearthstone) terms, even where a mechanic's underlying rule
+is similar. Phased so each slice stays small enough to individually satisfy
+the "Every new rule must be checked against the opponent AI" rule above — a
+future implementation pass should tackle one phase at a time, updating
+`ai/scoring.ts`/`OpponentAI.ts` and play-testing against the AI before
+considering that phase done, exactly as required of every keyword above.
+
+**Phase 2b — Momentum, the combo primitive.** The foundational piece for
+"build a deck around a strategy," since it lets an effect scale off what else
+happened this turn rather than being static.
+
+- New `PlayerState.cardsPlayedThisTurn: number`, reset to 0 in `startTurn`,
+  incremented once per card (spell or minion) in `executePlayCard`.
+- New optional `CardEffect.condition?: { type: 'momentum' }` — gates whether
+  `triggerEffects` applies that specific effect: fires only if
+  `cardsPlayedThisTurn` was already > 0 *before* the current card's own
+  increment, i.e. "you've already played something else this turn."
+- Card-text flavor word: **"Momentum:"** prefix describing the bonus clause,
+  e.g. "Momentum: draw a card instead."
+- AI: needs a `scoring.ts` adjustment so the AI values a Momentum-gated
+  effect according to whether it will actually be live given the AI's own
+  play sequencing that turn, not scored as if always active.
+
+**Phase 2c — board-wide triggers + an aura keyword.** The biggest structural
+lift, flagged as later work because it introduces a genuinely new dispatch
+shape — "fires because of *someone else's* event" rather than "fires for the
+instance the event happened to."
+
+- Trigger **onSpellCast** (flavor **"Channel:"**) — whenever the controller
+  casts *any* spell, every board minion with a Channel effect fires. Needs a
+  board-wide scan added after a spell resolves in `executePlayCard`, not just
+  the one `triggerEffects` call for the played card itself.
+- Trigger **onMinionDeath**, any-friendly-minion scope (flavor **"Mourn:"**)
+  — distinct from the existing self-only `onDeath`. Needs a scan of the rest
+  of the board inside `sweepDeaths` per minion that dies.
+- Keyword **Resonance X** — an aura: while this minion is alive, the
+  controller's damage-dealing *spells* deal X more damage. Needs
+  `applyEffectAction`'s damage case to know whether the source card was a
+  spell (not a combat hit or another minion's effect) and to sum `Resonance`
+  across the controller's live board at resolution time — the first
+  aura-style (recomputed-on-the-fly) keyword in the codebase, versus today's
+  all-instantaneous ones.
+
+**Phase 3 — deckbuilding identity, down the line.** Not scoped in detail,
+just flagged as the eventual payoff of Phase 2's condition system: a
+`CardDefinition.tribe?: string` tagging field (using this game's own flavor
+vocabulary — e.g. its existing elemental/apocalyptic card themes — rather
+than borrowing Hearthstone's Beast/Dragon/Murloc taxonomy), plus a
+tribe-count style `EffectCondition` and/or tribe-scoped `TargetSelector`,
+letting future cards read "for each `<tribe>` you control" and giving
+`deckGenerator.ts` a hook for archetype-aware deckbuilding later.
 
 ## Card design conventions
 
 Conventions to follow when authoring or editing entries in `src/game/data/cards.ts`:
 
-- **Trigger flavor text maps 1:1 to `EffectTrigger`**: card `text` uses a fixed flavor word per trigger so players can read a card's timing at a glance — `Anthem:` = `onPlay`, `Deathcry:` = `onDeath`, `Vigil:` = `startOfTurn`, `Curfew:` = `endOfTurn`. Keep new cards' text consistent with this vocabulary rather than inventing new flavor words per trigger.
+- **Trigger flavor text maps 1:1 to `EffectTrigger`**: card `text` uses a fixed flavor word per trigger so players can read a card's timing at a glance — `Anthem:` = `onPlay`, `Deathcry:` = `onDeath`, `Vigil:` = `startOfTurn`, `Curfew:` = `endOfTurn`, `Strike:` = `onAttack`, `Wound:` = `onDamaged`. Keep new cards' text consistent with this vocabulary rather than inventing new flavor words per trigger.
 - **`chosenRestriction` must match the card's own text.** Any effect using `target: 'chosen'` defaults to "any minion or hero" in `TurnStateMachine.computeValidTargets` — a card whose text says "a minion" (e.g. "Deal 3 damage to a minion") must set `chosenRestriction: 'minion'`, or it will silently accept the enemy hero as a legal target despite what it says. This was a real bug (Pocket Sand, Frostbite Bolt, Firelance, Boneshard Finger, Emberheart Shaman all lacked it originally) — when adding a new "to a minion"/"to a hero" effect, set the matching restriction and mirror it in `ai/scoring.ts` (`scoreDamageSpell`, `computePotentialFaceDamage`) so the AI respects the same limitation instead of soft-locking in `AwaitingTarget`.
 - **Every new rule must be checked against the opponent AI, not just the player-facing path — no exceptions, including cards authored via the Card Creator.** `ai/scoring.ts`/`OpponentAI.ts` are hand-authored heuristics with no automatic awareness of `TurnStateMachine`/`keywordRules.ts` changes — a new keyword, effect kind, or targeting rule can render and enforce perfectly for the player while the AI either ignores it, misplays it, or soft-locks on it, and nothing will error to surface that. This is a standing rule, not a one-off reminder: after adding or editing any card rule, actually watch the AI play a card that exercises it (or trace the new case through `scoring.ts` by hand) before calling the change done. The Card Creator (see below) only ever writes to `cards.ts` — it has no path to `ai/scoring.ts`, so anything authored through it is exactly as exposed to this gap as a hand-edited card.
 - **Rarity is a power-level bucket, not flavor.** `CardRarity` (`common | rare | exotic | legendary | mythical`, ascending) drives `deckGenerator.ts`'s proportional random deck-building (16 common / 12 rare / 2 exotic per 30-card deck currently) — a card's rarity should reflect its intended power level and how often it should show up, not just feel. Moving a card between rarity tiers (as opposed to only tuning its stats) is a legitimate, deliberate balance lever.

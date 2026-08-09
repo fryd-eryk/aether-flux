@@ -7,10 +7,8 @@ import { distinctTriggers, TRIGGER_METADATA } from "../../data/triggerMetadata";
 import type { CardDefinition, CardInstance } from "../../types/Card";
 import {
     ATKHP_BOX_RADIUS,
-    ATKHP_H,
     ATKHP_H_FULL,
     ATKHP_INSET,
-    ATKHP_W,
     ATKHP_W_FULL,
     CARD_BACK_KEY,
     CARD_H,
@@ -44,7 +42,7 @@ import {
     RARITY_DOT_R,
     RULE_TEXT_STYLE,
     STAT_FUSED_LIGHT_STYLE,
-    STAT_FUSED_STYLE,
+    STAT_FUSED_LIGHT_WOUNDED_STYLE,
     TYPE_LABEL_STYLE,
 } from "./cardLayout";
 
@@ -83,9 +81,9 @@ export class CardView {
         if (mode === "simplified") {
             container.add(this.createHeaderGradient());
 
-            // Name top-left — no cost badge to dodge, so the title can run almost the full card width.
-            const nameText = this.scene.add.text(-CARD_W / 2 + 8, -CARD_H / 2 + 8, definition.name, NAME_STYLE).setOrigin(0, 0);
-            this.fitCardName(nameText, CARD_W - 16);
+            // Name centered, full card width — no cost badge to dodge.
+            const nameText = this.scene.add.text(0, -CARD_H / 2 + 2, definition.name, NAME_STYLE).setOrigin(0.5, 0);
+            this.fitCardName(nameText, CARD_W);
             container.add(nameText);
 
             // No cost badge, no description box/footer bar — battlefield row stays art-first.
@@ -119,8 +117,8 @@ export class CardView {
     /** Top gradient band behind the title, in both non-face-down modes. WebGL-only Phaser feature; this project's AUTO renderer type is effectively always WebGL in real browsers. */
     private createHeaderGradient(): Phaser.GameObjects.Graphics {
         const gfx = this.scene.add.graphics();
-        gfx.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0.85, 0.85, 0.1, 0.1);
-        gfx.fillRect(-CARD_W / 2, -CARD_H / 2, CARD_W, HEADER_H);
+        gfx.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0.9, 0.9, 0, 0);
+        gfx.fillRect(-CARD_W / 2, -CARD_H / 2, CARD_W, HEADER_H * 2);
         return gfx;
     }
 
@@ -229,29 +227,55 @@ export class CardView {
         return objects;
     }
 
-    /** 'full' mode's atk/hp box — an opaque white rounded rect inset from the card's bottom-right corner (not overflowing it, unlike 'simplified' mode's createStatBadge). Minion-only. */
-    private createStatBadgeInset(instance: CardInstance, definition: CardDefinition, footerCenterY: number): Phaser.GameObjects.GameObject[] {
+    /**
+     * The atk/hp stat box shared by both modes — an opaque white rounded rect (ATKHP_W_FULL x
+     * ATKHP_H_FULL) at the given top-left position, with "atk/hp" rendered as three separate Text
+     * objects (attack, "/", health) rather than one string so the health digits alone can switch to
+     * STAT_FUSED_LIGHT_WOUNDED_STYLE's red when the minion is wounded (currentHealth !== maxHealth)
+     * — Phaser Text has no inline multi-color rich-text support, so this is the same
+     * multiple-objects-with-a-running-cursor technique createKeywordLabels uses. Callers position
+     * this differently: createStatBadgeInset ('full' mode) keeps it fully inset from the corner,
+     * createStatBadge ('simplified' mode) centers it exactly on the corner so it still overflows
+     * both edges, just by less than it used to now that the box itself is smaller. Minion-only.
+     */
+    private createStatBox(instance: CardInstance, definition: CardDefinition, boxLeft: number, boxTop: number): Phaser.GameObjects.GameObject[] {
         if (definition.type !== "minion") return [];
 
-        const boxLeft = CARD_W / 2 - ATKHP_INSET - ATKHP_W_FULL;
-        const boxTop = footerCenterY - ATKHP_H_FULL / 2;
+        const boxCenterY = boxTop + ATKHP_H_FULL / 2;
+        const currentAttack = instance.currentAttack ?? 0;
+        const currentHealth = instance.currentHealth ?? 0;
+        const wounded = currentHealth !== (instance.maxHealth ?? currentHealth);
 
         const box = this.scene.add.graphics();
         box.fillStyle(0xffffff, 1);
         box.fillRoundedRect(boxLeft, boxTop, ATKHP_W_FULL, ATKHP_H_FULL, ATKHP_BOX_RADIUS);
 
-        const text = this.scene.add.text(boxLeft + ATKHP_W_FULL / 2, footerCenterY, `${instance.currentAttack ?? 0}/${instance.currentHealth ?? 0}`, STAT_FUSED_LIGHT_STYLE).setOrigin(0.5);
+        const atkText = this.scene.add.text(0, boxCenterY, `${currentAttack}`, STAT_FUSED_LIGHT_STYLE).setOrigin(0, 0.5);
+        const slashText = this.scene.add.text(0, boxCenterY, "/", STAT_FUSED_LIGHT_STYLE).setOrigin(0, 0.5);
+        const hpText = this.scene.add.text(0, boxCenterY, `${currentHealth}`, wounded ? STAT_FUSED_LIGHT_WOUNDED_STYLE : STAT_FUSED_LIGHT_STYLE).setOrigin(0, 0.5);
 
-        return [box, text];
+        let cursorX = boxLeft + ATKHP_W_FULL / 2 - (atkText.width + slashText.width + hpText.width) / 2;
+        atkText.setX(cursorX);
+        cursorX += atkText.width;
+        slashText.setX(cursorX);
+        cursorX += slashText.width;
+        hpText.setX(cursorX);
+
+        return [box, atkText, slashText, hpText];
     }
 
-    /** Fused "atk/hp" box, minion-only — a single small dark-red box replacing the old separate attack/health circles, centered exactly on the card's bottom-right corner so it deliberately overflows both edges. 'simplified' mode only — 'full' mode uses the inset createStatBadgeInset instead. */
-    private createStatBadge(instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[] {
-        if (definition.type !== "minion") return [];
+    /** 'full' mode's atk/hp box — inset from the card's bottom-right corner (not overflowing it, unlike 'simplified' mode's createStatBadge). */
+    private createStatBadgeInset(instance: CardInstance, definition: CardDefinition, footerCenterY: number): Phaser.GameObjects.GameObject[] {
+        const boxLeft = CARD_W / 2 - ATKHP_INSET - ATKHP_W_FULL;
+        const boxTop = footerCenterY - ATKHP_H_FULL / 2;
+        return this.createStatBox(instance, definition, boxLeft, boxTop);
+    }
 
-        const box = this.scene.add.rectangle(CARD_W / 2, CARD_H / 2, ATKHP_W, ATKHP_H, 0xb0413e).setStrokeStyle(2, 0x1a1a1a);
-        const text = this.scene.add.text(CARD_W / 2, CARD_H / 2, `${instance.currentAttack ?? 0}/${instance.currentHealth ?? 0}`, STAT_FUSED_STYLE).setOrigin(0.5);
-        return [box, text];
+    /** 'simplified' mode's atk/hp box — centered exactly on the card's bottom-right corner so it deliberately overflows both edges (a slighter version of the old dedicated 46x26 box, now sharing 'full' mode's smaller 34x13 size). */
+    private createStatBadge(instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[] {
+        const boxLeft = CARD_W / 2 - ATKHP_W_FULL / 2;
+        const boxTop = CARD_H / 2 - ATKHP_H_FULL / 2;
+        return this.createStatBox(instance, definition, boxLeft, boxTop);
     }
 
     /**
@@ -366,14 +390,22 @@ export class CardView {
      * minion before trading it in combat, without the full rule text. Flows left-to-right,
      * wrapping to a second row above the first if a pill would run into the atk/hp box's
      * reserved bottom-right corner.
+     *
+     * A silenced instance skips the trigger pills entirely — distinctTriggers reads the static
+     * CardDefinition, not instance state, so it would otherwise keep advertising a Deathcry/etc.
+     * that TurnStateMachine.triggerEffects will no longer actually fire — and shows a single
+     * "Silenced" pill in their place instead of just going blank (which would look identical to a
+     * plain vanilla minion that never had any keywords/effects to begin with).
      */
     private createStatusPills(instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[] {
-        const entries = [...[...instance.keywords].map((keyword) => KEYWORD_METADATA[keyword]), ...distinctTriggers(definition.effects).map((trigger) => TRIGGER_METADATA[trigger])];
+        const entries = instance.silenced
+            ? [{ label: 'Silenced', color: 0x808080 }]
+            : [...[...instance.keywords].map((keyword) => KEYWORD_METADATA[keyword]), ...distinctTriggers(definition.effects).map((trigger) => TRIGGER_METADATA[trigger])];
         if (entries.length === 0) return [];
 
         const objects: Phaser.GameObjects.GameObject[] = [];
         const startX = -CARD_W / 2 + PILL_INSET_X;
-        const rowLimitX = CARD_W / 2 - ATKHP_W / 2 - PILL_INSET_X;
+        const rowLimitX = CARD_W / 2 - ATKHP_W_FULL / 2 - PILL_INSET_X;
         let cursorX = startX;
         let cursorY = CARD_H / 2 - PILL_INSET_Y - PILL_H;
 

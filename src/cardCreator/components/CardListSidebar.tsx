@@ -4,7 +4,7 @@ import { RARITY_METADATA, UNRANKED_RARITY_COLOR } from '@/game/data/rarityMetada
 import type { CardDefinition, CardRarity } from '@/game/types/Card';
 import styles from '@/styles/CardCreator.module.css';
 
-type SortField = 'name' | 'cost' | 'rarity';
+type SortField = 'name' | 'cost' | 'rarity' | 'type';
 type SortDir = 'asc' | 'desc';
 
 // Ascending power order, matching Card.ts's CardRarity doc comment.
@@ -48,6 +48,8 @@ export function CardListSidebar({ cards, selectedId, dirtyIds, onSelect, onNew }
                         return (a.cost - b.cost) * dir || a.name.localeCompare(b.name);
                     case 'rarity':
                         return (rarityRank(a.rarity) - rarityRank(b.rarity)) * dir || a.name.localeCompare(b.name);
+                    case 'type':
+                        return a.type.localeCompare(b.type) * dir || a.name.localeCompare(b.name);
                     case 'name':
                     default:
                         return a.name.localeCompare(b.name) * dir;
@@ -73,6 +75,7 @@ export function CardListSidebar({ cards, selectedId, dirtyIds, onSelect, onNew }
                         <option value="name">Title</option>
                         <option value="cost">Cost</option>
                         <option value="rarity">Rarity</option>
+                        <option value="type">Type</option>
                     </select>
                     <button
                         type="button"
@@ -99,7 +102,15 @@ export function CardListSidebar({ cards, selectedId, dirtyIds, onSelect, onNew }
                             <span style={{ color: rarityColor(card.rarity) }}>{card.name}</span>
                             {dirtyIds.has(card.id) && <span className={styles.cardListItemDirty}>●</span>}
                         </span>
-                        <span className={styles.cardListItemCost}>{card.cost}</span>
+                        <span className={styles.cardListItemRight}>
+                            <span
+                                className={styles.cardListItemTypeBadge}
+                                title={card.type === 'minion' ? 'Minion' : 'Spell'}
+                            >
+                                {card.type === 'minion' ? 'M' : 'S'}
+                            </span>
+                            <span className={styles.cardListItemCost}>{card.cost}</span>
+                        </span>
                     </button>
                 ))}
             </div>

@@ -6,6 +6,8 @@ export const TRIGGER_METADATA: Record<EffectTrigger, { color: number; label: str
     onDeath: { color: 0xc23b5a, label: 'Deathcry' },
     startOfTurn: { color: 0x3fbf7f, label: 'Vigil' },
     endOfTurn: { color: 0x5c7080, label: 'Curfew' },
+    onAttack: { color: 0xd6543f, label: 'Strike' },
+    onDamaged: { color: 0x9c4f3f, label: 'Wound' },
 };
 
 /** Distinct triggers present in a card's effects, in first-seen order — a card with two onPlay effects still yields one "Anthem" entry. */

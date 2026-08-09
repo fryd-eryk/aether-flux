@@ -76,6 +76,12 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
             return action.count * 4;
         case 'summon':
             return action.count * 4;
+        case 'freeze':
+            if (action.target === 'chosen') return 0;
+            return 3 * (action.target === 'allEnemyMinions' ? Math.max(1, enemy.board.length) : 1);
+        case 'silence':
+            if (action.target === 'chosen') return 0;
+            return 4 * (action.target === 'allEnemyMinions' ? Math.max(1, enemy.board.length) : 1);
     }
 }
 
@@ -83,6 +89,8 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
 function scoreChosenTarget(state: GameState, aiId: PlayerId, action: EffectAction, lethalAvailable: boolean): ScoredTarget {
     if (action.kind === 'damage') return scoreDamageSpell(state, aiId, action.amount, lethalAvailable, action.chosenRestriction);
     if (action.kind === 'heal') return scoreHealSpell(state, aiId, action.amount);
+    if (action.kind === 'freeze') return scoreFreezeSpell(state, aiId, action.chosenRestriction);
+    if (action.kind === 'silence') return scoreSilenceSpell(state, aiId, action.chosenRestriction);
     return { score: 0 };
 }
 
@@ -110,7 +118,9 @@ export function scorePlayCard(
             (definition.keywords?.includes('windfury') ? 3 : 0) +
             (definition.keywords?.includes('charge') ? 3 : 0) +
             (definition.keywords?.includes('taunt') ? 2 : 0) +
-            (definition.keywords?.includes('divineShield') ? 3 : 0);
+            (definition.keywords?.includes('divineShield') ? 3 : 0) +
+            (definition.keywords?.includes('veiled') ? 2 : 0) +
+            (definition.keywords?.includes('venom') ? 4 : 0);
         const score = stats * 2 + flatEffectValue + (chosenTarget?.score ?? 0) + keywordBonus - overextendPenalty;
         return { score, targetId: chosenTarget?.targetId };
     }
@@ -186,6 +196,63 @@ function scoreHealSpell(state: GameState, aiId: PlayerId, amount: number): Score
     return best;
 }
 
+/**
+ * Scores + picks a target for a minion-restricted `freeze` effect: prefer denying the enemy's
+ * biggest attacker. Mirrors scoreDamageSpell's own-board fallback (never leaves targetId
+ * undefined when *any* minion exists anywhere, to avoid soft-locking runOpponentTurn's
+ * selectTarget call in AwaitingTarget — see CardGame/index.ts) and its -Infinity sentinel for the
+ * genuinely-no-minions-anywhere case, which naturally keeps the card from ever being chosen then.
+ */
+function scoreFreezeSpell(state: GameState, aiId: PlayerId, restriction?: ChosenTargetRestriction): ScoredTarget {
+    const enemy = state.players[opponentOf(aiId)];
+    const ai = state.players[aiId];
+
+    let best: ScoredTarget = { score: -Infinity };
+    for (const minion of enemy.board) {
+        const score = (minion.currentAttack ?? 0) * 2; // denying a bigger attacker is more valuable
+        if (score > best.score) best = { score, targetId: minion.instanceId };
+    }
+
+    if (restriction === 'minion' && enemy.board.length === 0) {
+        for (const minion of ai.board) {
+            const score = -1; // mild self-cost, still resolvable rather than leaving no legal target
+            if (score > best.score) best = { score, targetId: minion.instanceId };
+        }
+    }
+
+    return best;
+}
+
+/**
+ * Scores + picks a target for a minion-restricted `silence` effect: prefer the enemy's most
+ * keyword/effect-laden minion (nothing to gain silencing a vanilla stat stick). Same own-board
+ * fallback and -Infinity sentinel as scoreFreezeSpell/scoreDamageSpell, for the same reason.
+ */
+function scoreSilenceSpell(state: GameState, aiId: PlayerId, restriction?: ChosenTargetRestriction): ScoredTarget {
+    const enemy = state.players[opponentOf(aiId)];
+    const ai = state.players[aiId];
+
+    let best: ScoredTarget = { score: -Infinity };
+    for (const minion of enemy.board) {
+        const definition = CARD_DEFINITIONS[minion.definitionId];
+        const hasKeywords = minion.keywords.size > 0;
+        const hasEffects = (definition?.effects?.length ?? 0) > 0;
+        if (!hasKeywords && !hasEffects) continue; // nothing worth silencing
+        const value = (minion.currentAttack ?? 0) + (minion.currentHealth ?? 0);
+        const score = value * (hasKeywords && hasEffects ? 2 : 1);
+        if (score > best.score) best = { score, targetId: minion.instanceId };
+    }
+
+    if (restriction === 'minion' && best.targetId === undefined) {
+        for (const minion of [...enemy.board, ...ai.board]) {
+            const score = -5;
+            if (score > best.score) best = { score, targetId: minion.instanceId };
+        }
+    }
+
+    return best;
+}
+
 /** Scores attacking `target` (a specific enemy minion, or 'face' for the enemy hero) with `attacker`. */
 export function scoreAttack(attacker: CardInstance, target: CardInstance | 'face', lethalAvailable: boolean): number {
     const lifestealBonus = hasKeyword(attacker, 'lifesteal') ? (attacker.currentAttack ?? 0) * 0.5 : 0;
@@ -200,9 +267,10 @@ export function scoreAttack(attacker: CardInstance, target: CardInstance | 'face
     const targetAttack = target.currentAttack ?? 0;
     const targetHealth = target.currentHealth ?? 0;
 
-    // Divine Shield absorbs the whole hit rather than dying/killing outright.
-    const defenderDies = attackerAttack >= targetHealth && !hasKeyword(target, 'divineShield');
-    const attackerDies = targetAttack >= attackerHealth && !hasKeyword(attacker, 'divineShield');
+    // Divine Shield absorbs the whole hit rather than dying/killing outright. Venom makes any
+    // unshielded hit lethal regardless of the stat comparison.
+    const defenderDies = (attackerAttack >= targetHealth || hasKeyword(attacker, 'venom')) && !hasKeyword(target, 'divineShield');
+    const attackerDies = (targetAttack >= attackerHealth || hasKeyword(target, 'venom')) && !hasKeyword(attacker, 'divineShield');
 
     const attackerValue = attackerAttack + attackerHealth;
     const targetValue = targetAttack + targetHealth;

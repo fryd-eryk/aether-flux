@@ -13,6 +13,8 @@ export function createCardInstance(definition: CardDefinition, owner: PlayerId):
         summoningSick: false,
         attacksThisTurn: 0,
         keywords: new Set(definition.keywords ?? []),
+        frozen: false,
+        silenced: false,
     };
 }
 

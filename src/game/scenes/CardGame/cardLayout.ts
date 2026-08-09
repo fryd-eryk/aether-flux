@@ -12,11 +12,13 @@ export const CENTER_Y = GAME_HEIGHT / 2;
 export const CARD_W = 150;
 export const CARD_H = 225;
 
-// Fused "atk/hp" stat box (see createStatBadge) — centered exactly on a card's bottom-right
-// corner so it deliberately overflows past both edges. Declared this early (rather than with the
-// rest of the layout constants further down) because PLAYER_HAND_PEEK_Y below needs ATKHP_H to
-// keep that overflow from being clipped by the screen's bottom edge.
-export const ATKHP_W = 46;
+// 'simplified' mode's stat box (createStatBadge) now shares its actual size with 'full' mode's
+// (ATKHP_W_FULL/ATKHP_H_FULL, declared further down) — this is just the legacy sizing basis for
+// HAND_PEEK_BOTTOM_CLEARANCE below, kept as a slightly-larger-than-necessary (i.e. safe) clearance
+// margin rather than threading ATKHP_H_FULL up through the module's declaration order. Declared
+// this early (rather than with the rest of the layout constants further down) because
+// PLAYER_HAND_PEEK_Y below needs it to keep the corner-overflowing stat box from being clipped by
+// the screen's bottom edge.
 export const ATKHP_H = 26;
 
 // Shared face-down texture — key must match Preloader.ts's load.image call.
@@ -138,25 +140,31 @@ export const KEYWORD_LABEL_BASE_STYLE: Phaser.Types.GameObjects.Text.TextStyle =
 export const KEYWORD_SEPARATOR_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '10px', color: '#e8ecf5' }, 2);
 export const MISSING_ASSET_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '10px', color: '#888888', align: 'center', resolution: CARD_TEXT_RESOLUTION };
 export const PILL_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '9px', color: '#ffffff', fontStyle: 'bold' }, 2);
-export const STAT_FUSED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial Black', fontSize: '14px', color: '#ffffff' });
-// 'full' mode's inset atk/hp box (createStatBadgeInset) sits on an opaque white background, so the
-// art-legibility stroke trick the rest of on-card text relies on would just look muddy here — plain
-// dark text instead.
+// The atk/hp stat box (createStatBox, shared by 'full' and 'simplified') sits on an opaque white
+// background, so the art-legibility stroke trick the rest of on-card text relies on would just look
+// muddy here — plain dark text instead. The wounded variant (currentHealth !== maxHealth) recolors
+// just the health digits red — everything else about the two styles must stay identical (font,
+// size, resolution) since they render side-by-side in the same line.
 export const STAT_FUSED_LIGHT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial Black', fontSize: '12px', color: '#1a1a2e', resolution: CARD_TEXT_RESOLUTION };
+export const STAT_FUSED_LIGHT_WOUNDED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { ...STAT_FUSED_LIGHT_STYLE, color: '#c0392b' };
 
 // New card layout constants (createCardContainer) — starting points tuned by eye against
 // src/refs/card-layout-ref-v1.png (superseded for 'full' mode by v2, see below), not pixel-perfect gospel.
 export const HEADER_H = 30; // top band height, holding the title — shared by 'full' and 'simplified'
-// COST_BADGE_R stays 'simplified'-mode-only now (its 'full' mode counterpart no longer overflows the
-// corner) — also still used by HelpBoxController's own independent tooltip cost badge.
-export const COST_BADGE_R = 22; // cost circle, centered exactly on the card's top-right corner so it overflows both edges
-// ATKHP_W / ATKHP_H (fused atk/hp box) are declared up near CARD_W/CARD_H — see the comment there.
+// ATKHP_H (used only for HAND_PEEK_BOTTOM_CLEARANCE's legacy sizing basis) is declared up near
+// CARD_W/CARD_H — see the comment there. The stat box's real size is ATKHP_W_FULL/ATKHP_H_FULL below.
 export const PILL_H = 14;
 export const PILL_PAD_X = 5;
 export const PILL_ROW_GAP = 3;
 export const PILL_INSET_X = 6;
 export const PILL_INSET_Y = 8; // 'simplified' mode's bottom-left keyword/trigger pill stack
-export const TOOLTIP_COST_CLEARANCE = 14; // extra top padding in the hover tooltip when it draws its own overflowing cost badge
+// Extra top padding in the hover tooltip when it draws its own overflowing mana-cost box (now the
+// same small ATKHP_W_FULL x ATKHP_H_FULL shape as the atk/hp stat box, just blue — see
+// HelpBoxController.showHelpBox) — tuned down from the old value now that the box (13px tall) barely
+// overflows past the tooltip's own top margin, unlike the much taller circle badge it replaced.
+export const TOOLTIP_COST_CLEARANCE = 4;
+export const TOOLTIP_BG_RADIUS = 6; // hover tooltip's rounded-corner background — matches DESC_BOX_RADIUS's "small, tuned by eye" scale, kept separate since the tooltip isn't drawn at card scale
+export const MANA_BADGE_COLOR = 0x2f6fed; // blue fill for the tooltip's mana-cost box
 
 // 'full' mode layout (v2 — src/refs/card-layout-ref-v2.jpg): the header/footer bars are pre-authored
 // PNGs (art-legibility swirl and the "rounded corners descending down the card's sides" shape are
@@ -173,10 +181,13 @@ export const HEADER_CONTENT_H_FULL = 16; // header PNG's flat-bar height at CARD
 export const FOOTER_BAR_H = 14; // footer PNG's flat-bar height at CARD_W scale (78px @ 832px native) — rarity dot/type/atk-hp center on this
 export const RARITY_DOT_R = 4;
 export const RARITY_DOT_INSET = 8; // gap from the card's left/bottom edges to the dot's center
-export const ATKHP_W_FULL = 34; // 'full' mode's inset (non-overflowing) atk/hp box — distinct from ATKHP_W/H above, which stay 'simplified'-mode-only
+// Shared atk/hp stat box size (createStatBox) — 'full' mode positions it inset from the corner
+// (ATKHP_INSET, non-overflowing), 'simplified' mode centers it exactly on the corner so it still
+// overflows both edges, just by less than the old dedicated ATKHP_W/H (46x26) did.
+export const ATKHP_W_FULL = 30;
 export const ATKHP_H_FULL = 13;
 export const ATKHP_BOX_RADIUS = 3;
-export const ATKHP_INSET = 6; // gap from the card's right edge to the inset atk/hp box
+export const ATKHP_INSET = 6; // gap from the card's right edge to the inset atk/hp box ('full' mode only)
 export const DESC_BOX_RADIUS = 5;
 export const DESC_BOX_INSET_X = 4; // gap from the card's left/right edges to the description box
 export const DESC_BOX_PAD_Y = 6; // internal top/bottom padding between the box edge and its text

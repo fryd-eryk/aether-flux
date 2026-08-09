@@ -3,9 +3,9 @@ import type { PlayerId } from './common';
 export type CardType = 'minion' | 'spell';
 
 /** Static keyword abilities a minion can have. See CLAUDE.md's card game architecture notes for the full keyword roadmap. */
-export type Keyword = 'taunt' | 'charge' | 'divineShield' | 'windfury' | 'lifesteal';
+export type Keyword = 'taunt' | 'charge' | 'divineShield' | 'windfury' | 'lifesteal' | 'veiled' | 'venom';
 
-export type EffectTrigger = 'onPlay' | 'onDeath' | 'startOfTurn' | 'endOfTurn';
+export type EffectTrigger = 'onPlay' | 'onDeath' | 'startOfTurn' | 'endOfTurn' | 'onAttack' | 'onDamaged';
 
 export type TargetSelector =
     | 'self'
@@ -27,7 +27,9 @@ export type EffectAction =
     | { kind: 'heal'; amount: number; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
     | { kind: 'draw'; count: number }
     | { kind: 'buff'; attack?: number; health?: number; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
-    | { kind: 'summon'; definitionId: string; count: number };
+    | { kind: 'summon'; definitionId: string; count: number }
+    | { kind: 'freeze'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
+    | { kind: 'silence'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction };
 
 export interface CardEffect {
     trigger: EffectTrigger;
@@ -69,4 +71,8 @@ export interface CardInstance {
     attacksThisTurn: number;
     /** Mutated at runtime as consumable keywords (e.g. divineShield) are used up — distinct from the static CardDefinition.keywords it was seeded from. */
     keywords: Set<Keyword>;
+    /** Set by a `freeze` effect; blocks canDeclareAttack until cleared at the end of this minion's controller's next turn — see TurnStateMachine.endTurn. */
+    frozen: boolean;
+    /** Set by a `silence` effect (which also clears `keywords`); permanently suppresses this instance's own trigger effects going forward — see TurnStateMachine.triggerEffects. */
+    silenced: boolean;
 }

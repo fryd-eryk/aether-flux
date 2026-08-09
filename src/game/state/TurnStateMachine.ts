@@ -5,7 +5,7 @@ import type { CardInstance, ChosenTargetRestriction, EffectAction, EffectTrigger
 import type { PlayerId } from '../types/common';
 import type { GameState, PlayerState } from '../types/GameState';
 import { TurnPhase } from '../types/GameState';
-import { canDeclareAttack, hasKeyword, tauntRestrictedTargets } from './keywordRules';
+import { canDeclareAttack, hasKeyword, isTargetable, tauntRestrictedTargets } from './keywordRules';
 
 type PendingAction =
     | { type: 'playCard'; instanceId: string }
@@ -97,6 +97,9 @@ export class TurnStateMachine {
         this.setPhase(TurnPhase.TurnEnd);
         for (const card of player.board) {
             this.triggerEffects(card, 'endOfTurn', player.id);
+            // A minion frozen on an earlier turn only reaches this point once its own controller's
+            // turn (the one it was blocked for) is ending — see keywordRules.canDeclareAttack.
+            card.frozen = false;
         }
         this.sweepDeaths();
 
@@ -146,11 +149,19 @@ export class TurnStateMachine {
 
         this.setPhase(TurnPhase.Resolving);
         attacker.attacksThisTurn += 1;
+        // Veiled is lost the instant this minion attacks, mirroring how divineShield is consumed
+        // in dealDamage. Strike (onAttack) fires unconditionally here, before any damage resolves
+        // either way, so it's unaffected by whether the hit lands or either side survives it.
+        attacker.keywords.delete('veiled');
+        this.triggerEffects(attacker, 'onAttack', player.id);
 
         const attackDamage = attacker.currentAttack ?? 0;
         const damageDealt = this.dealDamage(targetId, attackDamage);
         if (damageDealt > 0 && hasKeyword(attacker, 'lifesteal')) {
             this.heal(player.id, damageDealt);
+        }
+        if (damageDealt > 0 && hasKeyword(attacker, 'venom') && !this.isPlayerId(targetId)) {
+            this.forceKill(targetId);
         }
 
         if (!this.isPlayerId(targetId)) {
@@ -159,6 +170,9 @@ export class TurnStateMachine {
                 const returnDamageDealt = this.dealDamage(attackerInstanceId, defender.instance.currentAttack ?? 0);
                 if (returnDamageDealt > 0 && hasKeyword(defender.instance, 'lifesteal')) {
                     this.heal(defender.owner.id, returnDamageDealt);
+                }
+                if (returnDamageDealt > 0 && hasKeyword(defender.instance, 'venom')) {
+                    this.forceKill(attackerInstanceId);
                 }
             }
         }
@@ -223,16 +237,19 @@ export class TurnStateMachine {
         const opponentId = this.opponentOf(ownerId);
         if (action.type === 'attack') {
             const enemyBoard = this.gameState.players[opponentId].board;
-            const tauntUp = enemyBoard.some((c) => hasKeyword(c, 'taunt'));
-            const attackableMinionIds = tauntRestrictedTargets(enemyBoard).map((c) => c.instanceId);
+            // Veiled minions are folded out inside tauntRestrictedTargets itself, so tauntUp must be
+            // derived from its result rather than the raw board — see keywordRules.tauntRestrictedTargets.
+            const attackable = tauntRestrictedTargets(enemyBoard);
+            const tauntUp = attackable.some((c) => hasKeyword(c, 'taunt'));
+            const attackableMinionIds = attackable.map((c) => c.instanceId);
             return tauntUp ? attackableMinionIds : [opponentId, ...attackableMinionIds];
         }
 
         const allTargets = [
             ownerId,
             opponentId,
-            ...this.gameState.players[ownerId].board.map((c) => c.instanceId),
-            ...this.gameState.players[opponentId].board.map((c) => c.instanceId),
+            ...this.gameState.players[ownerId].board.filter(isTargetable).map((c) => c.instanceId),
+            ...this.gameState.players[opponentId].board.filter(isTargetable).map((c) => c.instanceId),
         ];
 
         const restriction = this.chosenTargetRestriction(action.instanceId, ownerId);
@@ -258,6 +275,9 @@ export class TurnStateMachine {
     // --- effects ---------------------------------------------------------------
 
     private triggerEffects(instance: CardInstance, trigger: EffectTrigger, ownerId: PlayerId, chosenTargetId?: string): void {
+        // Silence permanently suppresses all of this instance's own effects, Deathcry included —
+        // one guard here covers every trigger dispatch site, current and future.
+        if (instance.silenced) return;
         const definition = CARD_DEFINITIONS[instance.definitionId];
         const effects = definition?.effects?.filter((e) => e.trigger === trigger) ?? [];
         for (const effect of effects) {
@@ -284,6 +304,16 @@ export class TurnStateMachine {
             case 'summon':
                 for (let i = 0; i < action.count; i++) this.summonMinion(action.definitionId, ownerId);
                 break;
+            case 'freeze': {
+                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId);
+                for (const targetId of targetIds) this.freezeMinion(targetId);
+                break;
+            }
+            case 'silence': {
+                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId);
+                for (const targetId of targetIds) this.silenceMinion(targetId);
+                break;
+            }
         }
     }
 
@@ -347,7 +377,34 @@ export class TurnStateMachine {
             return 0;
         }
         found.instance.currentHealth = (found.instance.currentHealth ?? 0) - amount;
+        // Wound (onDamaged) — a single choke point covering combat and spell damage alike. Fires
+        // on "survived the raw damage amount", independent of any follow-up like Venom retroactively
+        // killing the same minion afterward (see executeAttack).
+        if (amount > 0 && found.instance.currentHealth > 0) {
+            this.triggerEffects(found.instance, 'onDamaged', found.owner.id);
+        }
         return amount;
+    }
+
+    /** Kills a minion outright regardless of remaining health — used by Venom, after dealDamage has
+     * already confirmed the hit actually landed (not absorbed by Divine Shield). */
+    private forceKill(instanceId: string): void {
+        const found = this.findMinion(instanceId);
+        if (found) found.instance.currentHealth = 0;
+    }
+
+    private freezeMinion(targetId: string): void {
+        const found = this.findMinion(targetId);
+        if (found) found.instance.frozen = true;
+    }
+
+    /** Clears the target's keywords and permanently suppresses its own future trigger effects — see triggerEffects. */
+    private silenceMinion(targetId: string): void {
+        const found = this.findMinion(targetId);
+        if (found) {
+            found.instance.keywords.clear();
+            found.instance.silenced = true;
+        }
     }
 
     /** Player healing is uncapped by design (overheal past maxHealth is intentional — see CLAUDE.md). Minion healing caps at currentHealth's tracked ceiling, maxHealth, since a minion has no player-style "overheal" concept. */

@@ -120,6 +120,27 @@
     color: #ffffff;
 }
 
+.cardListItemRight {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+.cardListItemTypeBadge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    border-radius: 3px;
+    background: #2a3244;
+    color: #9aa7bd;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+}
+
 .cardListItemCost {
     color: #9aa7bd;
     flex: 0 0 auto;

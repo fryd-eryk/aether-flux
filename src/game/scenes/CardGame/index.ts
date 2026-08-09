@@ -857,8 +857,11 @@ export class CardGame extends Scene
                 this.addOutline(container, CARD_W, CARD_H, 0x38d97b);
                 container.on('pointerup', this.guarded(() => this.machine.declareAttack(instance.instanceId)));
             }
-            else if (instance.summoningSick && ownerId === 'player' && !hasKeyword(instance, 'charge'))
+            else if (ownerId === 'player' && ((instance.summoningSick && !hasKeyword(instance, 'charge')) || instance.frozen))
             {
+                // Same dim treatment for both reasons a minion can't act — otherwise a frozen-but-not
+                // -summoning-sick minion would render at full opacity with no outline and silently do
+                // nothing on click (see CLAUDE.md's "silent state-machine rejection" gotcha).
                 container.setAlpha(0.6);
             }
         });

@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (28) ---
+    // --- Common rarity (33) ---
     "stone-guardian": {
         id: "stone-guardian",
         name: "Stone Guardian",
@@ -12,6 +12,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         health: 4,
         keywords: ["taunt"],
         rarity: "common",
+        artVerticalAlign: "bottom",
     },
     "sprout-whelp": {
         id: "sprout-whelp",
@@ -110,13 +111,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Radiant Light",
         cost: 2,
         type: "spell",
-        text: "Restore 6 Health.",
+        text: "Restore 5 Health.",
         effects: [
             {
                 trigger: "onPlay",
                 action: {
                     kind: "heal",
-                    amount: 6,
+                    amount: 5,
                     target: "chosen",
                 },
             },
@@ -216,6 +217,49 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "top",
     },
+    "shrouded-wraith": {
+        id: "shrouded-wraith",
+        name: "Shrouded Wraith",
+        cost: 2,
+        type: "minion",
+        text: "",
+        attack: 2,
+        health: 1,
+        keywords: ["veiled"],
+        rarity: "common",
+    },
+    "glacial-grasp": {
+        id: "glacial-grasp",
+        name: "Glacial Grasp",
+        cost: 2,
+        type: "spell",
+        text: "Freeze a minion.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "freeze",
+                },
+            },
+        ],
+        rarity: "common",
+    },
+    "silencing-rune": {
+        id: "silencing-rune",
+        name: "Silencing Rune",
+        cost: 2,
+        type: "spell",
+        text: "Silence a minion.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "silence",
+                },
+            },
+        ],
+        rarity: "common",
+    },
     "wind-raptor": {
         id: "wind-raptor",
         name: "Wind Raptor",
@@ -267,24 +311,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         keywords: ["taunt"],
         rarity: "common",
     },
-    "minor-heal": {
-        id: "minor-heal",
-        name: "Minor Heal",
-        cost: 3,
-        type: "spell",
-        text: "Restore 4 Health.",
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "heal",
-                    amount: 4,
-                    target: "chosen",
-                },
-            },
-        ],
-        rarity: "common",
-    },
     "anthem-of-the-vanguard": {
         id: "anthem-of-the-vanguard",
         name: "Anthem of the Vanguard",
@@ -314,6 +340,57 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 3,
         health: 2,
         keywords: ["charge"],
+        rarity: "common",
+    },
+    "venomfang-adder": {
+        id: "venomfang-adder",
+        name: "Venomfang Adder",
+        cost: 3,
+        type: "minion",
+        text: "",
+        attack: 2,
+        health: 3,
+        keywords: ["venom"],
+        rarity: "common",
+    },
+    "ashfang-berserker": {
+        id: "ashfang-berserker",
+        name: "Ashfang Berserker",
+        cost: 3,
+        type: "minion",
+        text: "Strike: Deal 1 damage to the enemy hero.",
+        attack: 3,
+        health: 3,
+        effects: [
+            {
+                trigger: "onAttack",
+                action: {
+                    kind: "damage",
+                    amount: 1,
+                    target: "enemyHero",
+                },
+            },
+        ],
+        rarity: "common",
+    },
+    "emberback-boar": {
+        id: "emberback-boar",
+        name: "Emberback Boar",
+        cost: 3,
+        type: "minion",
+        text: "Wound: Deal 1 damage to the enemy hero.",
+        attack: 2,
+        health: 4,
+        effects: [
+            {
+                trigger: "onDamaged",
+                action: {
+                    kind: "damage",
+                    amount: 1,
+                    target: "enemyHero",
+                },
+            },
+        ],
         rarity: "common",
     },
     "twin-fang-viper": {
@@ -694,6 +771,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "rare",
+        artVerticalAlign: "bottom",
     },
     "gravebind-priest": {
         id: "gravebind-priest",
@@ -817,7 +895,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Cinderplume Phoenix",
         cost: 7,
         type: "minion",
-        text: "Anthem & Deathcry: Summon a 2/2 Ember Whelp.",
+        text: "Anthem, Deathcry: Summon a 1/2 Ember Fledgling.",
         attack: 3,
         health: 3,
         keywords: ["lifesteal"],
@@ -962,7 +1040,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Vigil: Restore 4 Health to your hero.",
         attack: 5,
         health: 9,
-        keywords: ["divineShield"],
+        keywords: ["taunt","divineShield"],
         effects: [
             {
                 trigger: "startOfTurn",
@@ -984,7 +1062,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Deathcry: Deal 8 damage to the enemy hero.",
         attack: 8,
         health: 8,
-        keywords: ["taunt","divineShield"],
+        keywords: ["veiled"],
         effects: [
             {
                 trigger: "onDeath",
