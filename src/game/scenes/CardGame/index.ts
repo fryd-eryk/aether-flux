@@ -32,6 +32,7 @@ import {
     HAND_DROP_ZONE_W,
     HAND_MIN_SPACING,
     HAND_PEEK_DEPTH,
+    HAND_PEEK_HOVER_MARGIN,
     HERO_DEPTH,
     HERO_HP_STYLE,
     HERO_RADIUS,
@@ -68,6 +69,14 @@ import { PileViewController } from './PileViewController';
 
 /** A hand card's idle "slot" — its arced position/rotation/scale/depth when nothing is happening to it. See handCardSlot. */
 type HandSlot = { x: number; y: number; rotation: number; scale: number; depth: number };
+
+/**
+ * A hand card's static peek-hover trigger rectangle (world space) plus its enter/leave callbacks
+ * and current state — see the scene-level 'pointermove' listener registered in create() and the
+ * comment above renderHand's population of this.handPeekZones for why this is driven by a manual
+ * geometry check rather than Phaser's own per-object pointerover/pointerout events.
+ */
+type HandPeekZone = { left: number; right: number; top: number; bottom: number; peeked: boolean; peekIn: () => void; peekOut: () => void };
 
 /**
  * Renders TurnStateMachine's GameState and forwards input into it. This scene owns no
@@ -110,6 +119,11 @@ export class CardGame extends Scene
     // peek-out tween and a cancelled drag restore a card to exactly this, so there's one source
     // of truth for "where does this card live when nothing is happening to it."
     private handSlots = new Map<Phaser.GameObjects.Container, HandSlot>();
+    // Drives peek hover — see create()'s single 'pointermove' listener and renderHand's
+    // population of this map for why it's a manual geometry check instead of Phaser's own
+    // per-object pointerover/pointerout (which silently breaks under topOnly input priority once
+    // two overlapping interactive objects, the card and its hover-padding, are both in play).
+    private handPeekZones = new Map<Phaser.GameObjects.Container, HandPeekZone>();
     private instanceContainers = new Map<string, Phaser.GameObjects.Container>();
     private heroContainers = new Map<PlayerId, Phaser.GameObjects.Container>();
 
@@ -120,10 +134,10 @@ export class CardGame extends Scene
     private opponentManaText!: Phaser.GameObjects.Text;
 
     // The hand card currently being dragged, if any — excluded from per-card peek handling (see
-    // renderHand's pointerover/pointerout wiring) so a peek firing mid-drag can't fight the drag
-    // handler's own per-pointermove setPosition() on the same container. Without this the card
-    // visibly detached from the cursor, stuttering between the tween's eased position and the
-    // drag's direct one every frame.
+    // the 'pointermove' listener in create() that walks handPeekZones) so a peek firing mid-drag
+    // can't fight the drag handler's own per-pointermove setPosition() on the same container.
+    // Without this the card visibly detached from the cursor, stuttering between the tween's
+    // eased position and the drag's direct one every frame.
     private draggedContainer: Phaser.GameObjects.Container | null = null;
 
     // --- animation orchestration --------------------------------------------------
@@ -523,6 +537,28 @@ export class CardGame extends Scene
         this.wireDragEvents();
         this.input.keyboard?.on('keydown-ESC', () => this.pileView.close());
 
+        // Drives hand-card peek hover for every currently-rendered card in one place, using a
+        // manual rectangle check against handPeekZones (populated by renderHand) rather than
+        // Phaser's per-object pointerover/pointerout. Those per-object events are filtered by
+        // Phaser's default topOnly input priority — with a card's own hit area stacked on top of
+        // its hover-padding zone, only one of the two ever receives events for a given pointer
+        // position, which previously left the padding-only area silently unresponsive (and, in an
+        // earlier attempt, left pointerout undelivered once the pointer left through it, sticking
+        // the card mid-peek forever). A scene-level 'pointermove' event is dispatched unconditionally
+        // on every pointer move, independent of any game object's hit test, so it can't be starved
+        // by topOnly — this is the single source of truth for peek state.
+        this.input.on('pointermove', (pointer: Phaser.Input.Pointer) =>
+        {
+            for (const [container, zone] of this.handPeekZones)
+            {
+                if (container === this.draggedContainer || this.isAnimating) continue;
+                const inside = pointer.worldX >= zone.left && pointer.worldX <= zone.right && pointer.worldY >= zone.top && pointer.worldY <= zone.bottom;
+                if (inside === zone.peeked) continue;
+                zone.peeked = inside;
+                if (inside) zone.peekIn(); else zone.peekOut();
+            }
+        });
+
         EventBus.on('state:phase-change', this.phaseChangeHandler);
         EventBus.on('state:card-drawn', this.cardDrawnHandler);
         EventBus.on('state:card-played', this.cardPlayedHandler);
@@ -695,6 +731,7 @@ export class CardGame extends Scene
         this.renderedObjects = [];
         this.cardInstanceByContainer.clear();
         this.handSlots.clear();
+        this.handPeekZones.clear();
         this.instanceContainers.clear();
         this.heroContainers.clear();
     }
@@ -969,28 +1006,33 @@ export class CardGame extends Scene
                 this.tweens.add({ targets: container, y: idleSlot.y, rotation: idleSlot.rotation, duration: 150, ease: 'Cubic.easeOut' });
                 container.setDepth(idleSlot.depth);
             };
-            container.on('pointerover', peekIn);
-            container.on('pointerout', peekOut);
-
-            // The card's own hit area (above) is exact-sized, for precise drag/click/tooltip
-            // targeting once cards overlap in the idle fan. Peeking-in is a much lower-stakes,
-            // read-only affordance, so it gets a separate, invisible zone 10% bigger than the
-            // card to make it easier to trigger without needing to land the cursor precisely on
-            // a sliver of an overlapped card. This zone is built once, at the card's *idle* slot,
-            // and deliberately does not track the card's later peek animation — once peeked, the
-            // card's own (now-risen) hit area is precise and easy to target on its own, so only
-            // the idle-state trigger needs the extra margin. Depth -1 keeps it beneath every hand
-            // card's own container (0..handSize-1 at rest, higher still once peeked/dragged) so a
-            // neighbor's real, on-top content always wins in the sliver where two idle cards'
-            // margins overlap, rather than this invisible zone stealing its clicks/hover.
-            const peekZone = this.add.zone(slot.x, slot.y, CARD_W * 1.1, CARD_H * 1.1);
-            peekZone.setRotation(slot.rotation);
-            peekZone.setScale(slot.scale);
-            peekZone.setDepth(-1);
-            peekZone.setInteractive();
-            peekZone.on('pointerover', peekIn);
-            peekZone.on('pointerout', peekOut);
-            this.renderedObjects.push(peekZone);
+            // Peek hover is driven entirely by the scene-level 'pointermove' listener in create(),
+            // which walks handPeekZones and calls peekIn/peekOut on state transitions — deliberately
+            // NOT by Phaser's own pointerover/pointerout on either the card or a separate zone
+            // GameObject. Both were tried and both broke: wiring only a zone below the card left the
+            // card's own footprint (the majority of the hoverable area) dead, because Phaser's default
+            // topOnly input priority means the higher card always wins that overlap and the zone
+            // underneath never sees an event there; wiring the card directly on top of the zone fixed
+            // that but reintroduced pointerout events firing (or failing to fire) based on whichever
+            // object happened to be topmost at each instant as the card's own hit area moved during
+            // the tween, which got the card stuck permanently peeked once a pointerout was missed on
+            // the way out. A manual rectangle check against the pointer's real, current world position
+            // — bypassing GameObject hit-testing and topOnly altogether — is the only source of truth
+            // that stays correct regardless of where the card's hit area currently is mid-animation.
+            // Bounds span the card's full idle-to-peeked travel range (down through where it pokes
+            // off-screen, up through PLAYER_HAND_PEEK_Y) plus HAND_PEEK_HOVER_MARGIN of breathing room
+            // on top, and the original 10% width allowance for a forgiving trigger on an overlapped
+            // idle card.
+            const peekHalfW = (CARD_W * slot.scale * 1.1) / 2;
+            this.handPeekZones.set(container, {
+                left: slot.x - peekHalfW,
+                right: slot.x + peekHalfW,
+                top: PLAYER_HAND_PEEK_Y - (CARD_H / 2) * slot.scale - HAND_PEEK_HOVER_MARGIN,
+                bottom: slot.y + (CARD_H / 2) * slot.scale + HAND_PEEK_HOVER_MARGIN,
+                peeked: false,
+                peekIn,
+                peekOut,
+            });
 
             if (!isMyTurn || state.phase !== TurnPhase.MainIdle) return;
 

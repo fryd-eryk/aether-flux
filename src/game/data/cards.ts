@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (27) ---
+    // --- Common rarity (26) ---
     "stone-guardian": {
         id: "stone-guardian",
         name: "Stone Guardian",
@@ -85,24 +85,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "",
         attack: 2,
         health: 1,
-        rarity: "common",
-    },
-    "radiant-light": {
-        id: "radiant-light",
-        name: "Radiant Light",
-        cost: 2,
-        type: "spell",
-        text: "Restore 5 Health.",
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "heal",
-                    amount: 5,
-                    target: "chosen",
-                },
-            },
-        ],
         rarity: "common",
     },
     "sunfeather-falcon": {
@@ -218,6 +200,24 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     amount: 3,
                     target: "chosen",
                     chosenRestriction: "minion",
+                },
+            },
+        ],
+        rarity: "common",
+    },
+    "radiant-orb": {
+        id: "radiant-orb",
+        name: "Radiant Orb",
+        cost: 2,
+        type: "spell",
+        text: "Restore 5 Health.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "heal",
+                    amount: 5,
+                    target: "chosen",
                 },
             },
         ],
@@ -345,16 +345,26 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "common",
     },
-    "gale-hawk": {
-        id: "gale-hawk",
-        name: "Gale Hawk",
+    "wandering-cleric": {
+        id: "wandering-cleric",
+        name: "Wandering Cleric",
         cost: 4,
         type: "minion",
-        text: "",
-        attack: 1,
+        text: "Anthem: Restore 3 Health to your hero.",
+        attack: 2,
         health: 3,
-        keywords: ["windfury"],
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "heal",
+                    amount: 3,
+                    target: "friendlyHero",
+                },
+            },
+        ],
         rarity: "common",
+        artVerticalAlign: "bottom",
     },
     "frost-behemoth": {
         id: "frost-behemoth",
@@ -390,26 +400,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         keywords: ["taunt"],
         rarity: "common",
         artVerticalAlign: "bottom",
-    },
-    "wandering-cleric": {
-        id: "wandering-cleric",
-        name: "Wandering Cleric",
-        cost: 5,
-        type: "minion",
-        text: "Anthem: Restore 3 Health to your hero.",
-        attack: 2,
-        health: 4,
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "heal",
-                    amount: 3,
-                    target: "friendlyHero",
-                },
-            },
-        ],
-        rarity: "common",
     },
 
     // --- Rare rarity (16) ---
@@ -811,9 +801,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "exotic",
         artVerticalAlign: "top",
     },
-    "twin-tail-scorpion": {
-        id: "twin-tail-scorpion",
-        name: "Twin Tail Scorpion",
+    "paintwister-scorpion": {
+        id: "paintwister-scorpion",
+        name: "Paintwister Scorpion",
         cost: 4,
         type: "minion",
         text: "",
@@ -821,6 +811,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         health: 3,
         keywords: ["windfury","venom"],
         rarity: "exotic",
+        artVerticalAlign: "top",
     },
     "ironclad-vanguard": {
         id: "ironclad-vanguard",

@@ -54,6 +54,12 @@ export const PLAYER_HERO_Y = PLAYER_BOARD_Y + 150; // fixed — the hero never m
 export const HAND_PEEK_EDGE_CLEARANCE = 10;
 export const PLAYER_HAND_PEEK_Y = GAME_HEIGHT - CARD_H / 2 - HAND_PEEK_EDGE_CLEARANCE;
 
+// Extra top/bottom margin (px) on the invisible peek-hover zone (renderHand, index.ts), beyond
+// the card's idle-to-PLAYER_HAND_PEEK_Y travel span it already covers end to end — a little
+// breathing room past both endpoints so the mouse resting right at either extreme still reads as
+// clearly "inside," rather than sitting exactly on the boundary.
+export const HAND_PEEK_HOVER_MARGIN = 20;
+
 // Hero containers is never out ranking a card
 export const HERO_DEPTH = 10;
 
