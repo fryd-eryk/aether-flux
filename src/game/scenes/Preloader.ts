@@ -1,7 +1,7 @@
 import { Scene } from 'phaser';
 
 import { CARD_DEFINITIONS } from '../data/cards';
-import { loadHeaderFooterBg } from './CardGame/cardLayout';
+import { loadFrozenTexture, loadHeaderFooterBg } from './CardGame/cardLayout';
 
 export class Preloader extends Scene
 {
@@ -47,6 +47,7 @@ export class Preloader extends Scene
         this.load.image('card-back', 'card-back/default.jpg');
 
         loadHeaderFooterBg(this);
+        loadFrozenTexture(this);
     }
 
     create ()

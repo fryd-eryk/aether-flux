@@ -68,40 +68,27 @@ export const HERO_DEPTH = 10;
 // hero), while staying well clear of drag's depth (1000) above.
 export const HAND_PEEK_DEPTH = 400;
 
-// Hand fan/arc (handCardSlot in index.ts, used for both hands' idle layout) — five independently
-// tunable knobs, each affecting exactly one visual property and nothing else:
+// Hand fan/arc (handCardSlot in index.ts, used for both hands' idle layout) — a "hinge chain"
+// model: adjacent cards' visible edges (top edge for the player, bottom edge for the opponent —
+// whichever one is actually poking into view) are joined end to end, exactly like a fanned hand of
+// real cards, so there's never a visible seam between neighbors regardless of hand size or how
+// much the outer cards have rotated. Two independently tunable knobs:
 //
-// - HAND_ARC_ANGLE_STEP_DEG / HAND_ARC_MAX_ANGLE_DEG: rotation only. A card `n` slots from the
-//   hand's center rotates by `n * HAND_ARC_ANGLE_STEP_DEG`, clamped at HAND_ARC_MAX_ANGLE_DEG so
-//   a very large hand's outermost cards don't over-rotate.
-// - HAND_ARC_LIFT_ANGLE_STEP_DEG / HAND_ARC_LIFT_MAX_ANGLE_DEG: the height/lift curve's shape
-//   only. Deliberately a *separate* step+max-angle pair from the rotation one above (mirroring
-//   its pattern rather than reusing its angle), so editing rotation never reshapes this curve —
-//   at today's default values the two pairs are numerically identical, so the visual result is
-//   unchanged; they're free to diverge from here.
-// - HAND_ARC_LIFT: the height/lift curve's amplitude only (px). It's the rise of the card's
-//   *visible* edge (top for the player, bottom for the opponent — whichever one is actually
-//   poking into view) above the flush poke edge, at the center of the hand, tapering per the
-//   HAND_ARC_LIFT_* pair toward the outer cards — the cosine falloff mimics a true circular fan,
-//   where more-tapered outer cards sit nearer the fan's rim (i.e. closer to the flush edge, more
-//   hidden).
-//
-// handCardSlot's implementation note: HAND_ARC_LIFT deliberately does NOT describe the card's own
-// center position directly — rotating a card by theta shifts its visible edge by
-// CARD_H/2 * cos(theta) relative to its own center (rotation-matrix arithmetic — a local point
-// (0, ±CARD_H/2) rotates to (±CARD_H/2*sin(theta), ∓CARD_H/2*cos(theta))), so handCardSlot solves
-// for the center position that puts the *edge* exactly `lift` above the flush edge, not the
-// center itself (that rotation-compensation term is a geometric necessity, not a tunable, and
-// keeps using the *real* rotation theta regardless of what the HAND_ARC_LIFT_* pair computes —
-// substituting it back into the edge-position equation shows theta cancels out completely, so the
-// edge's distance from the flush edge is driven purely by `lift`, at every slot, unconditionally).
-// Skipping that correction (an earlier version of this code did, and another earlier version
-// coupled the lift curve directly to the rotation angle instead of its own independent pair) made
-// the edge's actual arc amplitude come out wrong or non-independently-tunable — see git history.
+// - HAND_ARC_ANGLE_STEP_DEG / HAND_ARC_MAX_ANGLE_DEG: a card `n` slots from the hand's center
+//   rotates by `n * HAND_ARC_ANGLE_STEP_DEG`, clamped at HAND_ARC_MAX_ANGLE_DEG so a very large
+//   hand's outermost cards don't over-rotate. This is the *only* input to the fan's shape —
+//   handCardSlot derives each card's position by chaining visible-edge segments (length CARD_W,
+//   direction given by each card's own rotation) end to end, so there is no separate "lift curve":
+//   once rotation is fixed, each card's height relative to its neighbors follows automatically
+//   (an earlier version of this code drove height off a second, independent step+max-angle pair —
+//   that let a card's own rotation swing its *corners* away from its neighbor's, which is exactly
+//   what produced a visible seam between cards; see git history).
+// - HAND_ARC_LIFT: the whole chain's peak amplitude (px) — how far the fan's highest point (the
+//   hinge between the two center cards for an even-sized hand, or the exact center card's own
+//   upright edge for an odd-sized hand) rises above the flush poke edge. Purely an anchor/offset
+//   for the chain as a whole; it does not affect the chain's shape (that's rotation's job alone).
 export const HAND_ARC_ANGLE_STEP_DEG = 3;
 export const HAND_ARC_MAX_ANGLE_DEG = 18;
-export const HAND_ARC_LIFT_ANGLE_STEP_DEG = 3;
-export const HAND_ARC_LIFT_MAX_ANGLE_DEG = 18;
 export const HAND_ARC_LIFT = 26;
 
 // The hand row's spacing, always — not just a fallback floor for large hands (handRowLayout in
@@ -225,6 +212,8 @@ export const TOOLTIP_BG_RADIUS = 6; // hover tooltip's rounded-corner background
 export const OUTLINE_COLOR_TARGETABLE = 0xffd23f; // valid-target highlight (hero + board minions, AwaitingTarget) + the active player's hero-circle fill
 export const OUTLINE_COLOR_READY = 0x38d97b; // "can act now" — board attack-ready minions AND hand playable cards
 export const OUTLINE_COLOR_HOVER = 0x4fc3f7; // deck/graveyard pile hover
+export const OUTLINE_COLOR_SICK = 0x888888; // summoning-sickness border (renderBoard) — static, not shimmered like the above: it's a passive status, not an actionable prompt
+export const OUTLINE_COLOR_FROZEN = 0x6e95ac; // frozen-status border (renderBoard) — average RGB of textures/frozen-texture.jpg (via sharp .stats()), also static
 
 // Shimmer sweep tuning (addShimmeringOutline in index.ts) — the border is repainted every tick as
 // a light→bright→light gradient along the bottom-left→top-right diagonal, with a bright band that
@@ -271,6 +260,17 @@ const HEADER_FOOTER_BG_PATH = 'textures/card-header-footer-rounded-bg.png';
 export function loadHeaderFooterBg(scene: Phaser.Scene): void
 {
     scene.load.image(HEADER_FOOTER_BG_KEY, HEADER_FOOTER_BG_PATH);
+}
+
+// Frozen-status overlay (renderBoard) — a translucent ice texture painted over a frozen minion's
+// art. Board-only status chrome, so unlike HEADER_FOOTER_BG_KEY this is loaded by Preloader.ts only,
+// not CardCreatorPreview.ts (which never renders board/frozen state).
+export const FROZEN_TEXTURE_KEY = 'frozen-texture';
+const FROZEN_TEXTURE_PATH = 'textures/frozen-texture.jpg';
+
+export function loadFrozenTexture(scene: Phaser.Scene): void
+{
+    scene.load.image(FROZEN_TEXTURE_KEY, FROZEN_TEXTURE_PATH);
 }
 
 // Flat-bar height at CARD_W scale (86px @ 832px native) — title/cost text (header) and rarity

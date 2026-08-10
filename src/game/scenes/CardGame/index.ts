@@ -25,8 +25,6 @@ import {
     getPileCards,
     HAND_ARC_ANGLE_STEP_DEG,
     HAND_ARC_LIFT,
-    HAND_ARC_LIFT_ANGLE_STEP_DEG,
-    HAND_ARC_LIFT_MAX_ANGLE_DEG,
     HAND_ARC_MAX_ANGLE_DEG,
     HAND_DROP_ZONE_H,
     HAND_DROP_ZONE_W,
@@ -43,8 +41,10 @@ import {
     OPPONENT_GRAVEYARD_Y,
     OPPONENT_HAND_Y,
     OPPONENT_HERO_Y,
+    OUTLINE_COLOR_FROZEN,
     OUTLINE_COLOR_HOVER,
     OUTLINE_COLOR_READY,
+    OUTLINE_COLOR_SICK,
     OUTLINE_COLOR_TARGETABLE,
     PILE_STYLES,
     PILE_X,
@@ -771,43 +771,65 @@ export class CardGame extends Scene
     }
 
     /**
+     * A hand card's own applied rotation at index `index` of `count` — the fan's only shape
+     * input (see cardLayout.ts's HAND_ARC_* block). `liftSign` flips its sign for the opponent,
+     * matching handCardSlot's edge-chain direction (see there).
+     */
+    private handCardRotation (index: number, count: number, liftSign: 1 | -1): number
+    {
+        const mid = (count - 1) / 2;
+        const rawDeg = (index - mid) * HAND_ARC_ANGLE_STEP_DEG;
+        const deg = Math.max(-HAND_ARC_MAX_ANGLE_DEG, Math.min(HAND_ARC_MAX_ANGLE_DEG, rawDeg));
+        const theta = (deg * Math.PI) / 180;
+        return liftSign === 1 ? theta : -theta;
+    }
+
+    /**
      * A hand card's idle "slot" — its arced position/rotation for index `index` of `count`,
      * given `layout` (from handRowLayout) and the row's flush poke edge Y. `liftSign` is `+1`
      * for the player (bottom edge, lift rises off it) and `-1` for the opponent (top edge, lift
-     * drops past it) — see HAND_ARC_* in cardLayout.ts for the fan math and, importantly, why
-     * rotation and the height/lift curve are computed from two *separate* step+max-angle pairs
-     * (editing one must never reshape the other). Shared by renderHand (idle layout),
-     * playDrawAnimation (sibling re-tween / fly-in destination), and indirectly by peek/dragend
-     * restore via the handSlots map renderHand populates from this.
+     * drops past it). Shared by renderHand (idle layout), playDrawAnimation (sibling re-tween /
+     * fly-in destination), and indirectly by peek/dragend restore via the handSlots map
+     * renderHand populates from this.
+     *
+     * Positions cards as a "hinge chain": each card's own visible edge (top edge for the player,
+     * bottom edge for the opponent — whichever one is actually poking into view) is CARD_W long
+     * and runs in the direction its own rotation points it, and each card's edge starts exactly
+     * where the previous card's edge ends — like a real fanned hand of cards, so neighboring
+     * cards' corners always meet with no seam, at any hand size or rotation. `x` still comes from
+     * the flat per-index spacing (handRowLayout) — only `y` needs the chain, since the seam this
+     * fixes is purely vertical (a card's rotation swings its own corners up/down relative to a
+     * flat-spaced neighbor, not sideways by any visible amount).
+     *
+     * `edgeChainOffset(i)` is the unanchored, cumulative Y position of the chain's `i`-th joint
+     * (the point shared by card `i-1`'s trailing corner and card `i`'s leading corner), built by
+     * summing each card's own edge-segment Y-delta (`CARD_W * sin(rotation)`) in turn — computed
+     * fresh per call since a hand is always small enough that this is cheap, and it keeps every
+     * call site above (all of which already call this once per card, per index) unchanged.
+     * `K` is the joint that sits at the fan's own center — the hinge between the two center cards
+     * for an even hand, or the exact center card's own (upright, zero-rotation) edge for an odd
+     * one — which is what HAND_ARC_LIFT's amplitude anchors to, matching the old code's "how high
+     * the hand's center reaches" meaning even though the shape underneath it is now derived
+     * differently.
      */
     private handCardSlot (index: number, count: number, layout: { spacing: number; startX: number; scale: number }, edgeY: number, liftSign: 1 | -1): HandSlot
     {
         const x = layout.startX + index * layout.spacing;
-        const mid = (count - 1) / 2;
+        const cardW = CARD_W * layout.scale;
+        const cardH = CARD_H * layout.scale;
 
-        // Rotation — HAND_ARC_ANGLE_STEP_DEG/HAND_ARC_MAX_ANGLE_DEG affect ONLY the visual tilt.
-        const rawDeg = (index - mid) * HAND_ARC_ANGLE_STEP_DEG;
-        const deg = Math.max(-HAND_ARC_MAX_ANGLE_DEG, Math.min(HAND_ARC_MAX_ANGLE_DEG, rawDeg));
-        const theta = (deg * Math.PI) / 180;
+        const edgeChainOffset = (i: number): number =>
+        {
+            let offset = 0;
+            for (let k = 0; k < i; k++) offset += cardW * Math.sin(this.handCardRotation(k, count, liftSign));
+            return offset;
+        };
 
-        // Height/lift curve — its own independent step+max-angle pair, deliberately NOT theta, so
-        // editing rotation above never reshapes this curve (see cardLayout.ts's HAND_ARC_* block).
-        const liftRawDeg = (index - mid) * HAND_ARC_LIFT_ANGLE_STEP_DEG;
-        const liftDeg = Math.max(-HAND_ARC_LIFT_MAX_ANGLE_DEG, Math.min(HAND_ARC_LIFT_MAX_ANGLE_DEG, liftRawDeg));
-        const liftFalloff = Math.cos((liftDeg * Math.PI) / 180);
-        const lift = HAND_ARC_LIFT * liftFalloff * layout.scale;
+        const rotation = this.handCardRotation(index, count, liftSign);
+        const anchorTarget = edgeY - liftSign * HAND_ARC_LIFT * layout.scale;
+        const shift = anchorTarget - edgeChainOffset(Math.floor(count / 2));
 
-        // Rotation-compensation — NOT a tunable, a geometric necessity: rotating a card by theta
-        // shifts its own visible edge (top for the player, bottom for the opponent) by
-        // CARD_H/2 * cos(theta) relative to its center, so the center must be pushed out by
-        // exactly that much to keep the edge at `lift` above edgeY regardless of whatever
-        // rotation ended up applied — substituting this back into the edge-position equation
-        // shows theta cancels out completely, so the edge's distance from edgeY is driven purely
-        // by `lift`, at every slot, unconditionally (see cardLayout.ts's HAND_ARC_* block).
-        const rotationCompensation = (CARD_H / 2) * Math.cos(theta) * layout.scale;
-
-        const y = edgeY + liftSign * (rotationCompensation - lift);
-        const rotation = liftSign === 1 ? theta : -theta;
+        const y = edgeChainOffset(index) + shift + (cardW / 2) * Math.sin(rotation) + liftSign * (cardH / 2) * Math.cos(rotation);
         return { x, y, rotation, scale: layout.scale, depth: index };
     }
 
@@ -1072,7 +1094,10 @@ export class CardGame extends Scene
 
         cards.forEach((instance, index) =>
         {
-            const container = this.cardView.createCardContainer(instance, 'simplified');
+            const isSummoningSick = ownerId === 'player' && instance.summoningSick && !hasKeyword(instance, 'charge');
+            const isFrozen = ownerId === 'player' && instance.frozen;
+
+            const container = this.cardView.createCardContainer(instance, 'simplified', undefined, isSummoningSick, isFrozen);
             container.setPosition(startX + index * spacing, y);
             this.renderedObjects.push(container);
             this.instanceContainers.set(instance.instanceId, container);
@@ -1108,12 +1133,13 @@ export class CardGame extends Scene
                 this.addShimmeringOutline(container, CARD_W, CARD_H, OUTLINE_COLOR_READY);
                 container.on('pointerup', this.guarded(() => this.machine.declareAttack(instance.instanceId)));
             }
-            else if (ownerId === 'player' && ((instance.summoningSick && !hasKeyword(instance, 'charge')) || instance.frozen))
+            else
             {
-                // Same dim treatment for both reasons a minion can't act — otherwise a frozen-but-not
-                // -summoning-sick minion would render at full opacity with no outline and silently do
-                // nothing on click (see CLAUDE.md's "silent state-machine rejection" gotcha).
-                container.setAlpha(0.6);
+                // Both branches below can fire together (a minion can be frozen AND summoning-sick) —
+                // see CLAUDE.md's "silent state-machine rejection" gotcha for why every reason a
+                // minion can't act needs its own cue, not just the first one checked.
+                if (isSummoningSick) this.addStaticOutline(container, CARD_W, CARD_H, OUTLINE_COLOR_SICK);
+                if (isFrozen) this.addStaticOutline(container, CARD_W, CARD_H, OUTLINE_COLOR_FROZEN, isSummoningSick ? 10 : 5);
             }
         });
     }
@@ -1175,6 +1201,19 @@ export class CardGame extends Scene
      * but a transient hover highlight (see renderPile) needs to remove its shimmer on pointerout
      * without waiting for the next renderNow() teardown.
      */
+    /** Plain, unanimated border frame — same w+10/h+10 default sizing convention as addShimmeringOutline (so it
+     * reads as the same "outline" visual language) but drawn once with no tween, since these mark passive
+     * statuses (summoning sickness, frozen) rather than something the player can act on right now. `margin`
+     * lets two statuses that can both be true at once (a minion can be frozen AND summoning-sick) render as
+     * concentric rings instead of one flat color silently overdrawing the other. */
+    private addStaticOutline (container: Phaser.GameObjects.Container, width: number, height: number, color: number, margin = 5): void
+    {
+        const frame = this.add.graphics();
+        frame.lineStyle(4, color, 1);
+        frame.strokeRect(-width / 2 - margin, -height / 2 - margin, width + margin * 2, height + margin * 2);
+        container.addAt(frame, 0);
+    }
+
     private addShimmeringOutline (container: Phaser.GameObjects.Container, width: number, height: number, color: number): { destroy: () => void }
     {
         const w = width + 10, h = height + 10;

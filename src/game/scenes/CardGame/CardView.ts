@@ -26,6 +26,7 @@ import {
     DESC_BOX_PAD_Y,
     DESC_BOX_RADIUS,
     fitWidth,
+    FROZEN_TEXTURE_KEY,
     HEADER_FOOTER_BG_KEY,
     HEADER_FOOTER_CONTENT_H,
     HEADER_H,
@@ -56,7 +57,7 @@ import {
 export class CardView {
     constructor(private scene: Scene) {}
 
-    createCardContainer(instance: CardInstance, mode: CardDisplayMode, definitionOverride?: CardDefinition): Phaser.GameObjects.Container {
+    createCardContainer(instance: CardInstance, mode: CardDisplayMode, definitionOverride?: CardDefinition, grayscaleArt = false, frozenOverlay = false): Phaser.GameObjects.Container {
         const container = this.scene.add.container(0, 0);
         const bg = this.scene.add.rectangle(0, 0, CARD_W, CARD_H, 0x000000).setStrokeStyle(2, 0x000000);
         container.add(bg);
@@ -77,7 +78,15 @@ export class CardView {
         // text, badges) paints on top of it. artVerticalAlign only applies in 'full' mode — see its
         // doc comment on CardDefinition and artBoxFor's below.
         const artBox = mode === "full" ? this.artBoxFor(definition.artVerticalAlign) : { height: CARD_H, centerY: 0 };
-        container.add(this.createArtVisual(definition.id, CARD_W, artBox.height, artBox.centerY));
+        container.add(this.createArtVisual(definition.id, CARD_W, artBox.height, artBox.centerY, grayscaleArt));
+
+        // Frozen-status frost, painted directly over the art (below header/name/badges/pills, which
+        // must stay fully legible) rather than tinting the whole card — see FROZEN_TEXTURE_KEY.
+        if (frozenOverlay && this.scene.textures.exists(FROZEN_TEXTURE_KEY)) {
+            const frost = this.scene.add.image(0, artBox.centerY, FROZEN_TEXTURE_KEY).setAlpha(0.5);
+            coverFit(frost, CARD_W, artBox.height);
+            container.add(frost);
+        }
 
         if (mode === "simplified") {
             container.add(this.createHeaderGradient());
@@ -310,10 +319,15 @@ export class CardView {
 
     /** Card art — the actual image if its texture loaded, otherwise a black box with small gray "MISSING ASSET" text
      * (most cards have no art asset yet; see Preloader.preload). Sized/positioned by the caller so it can cover just
-     * the inset art zone ('full' mode) or the whole card ('simplified' mode). */
-    private createArtVisual(art: string, width: number, height: number, centerY: number): Phaser.GameObjects.GameObject[] {
+     * the inset art zone ('full' mode) or the whole card ('simplified' mode). `grayscaleArt` (summoning sickness,
+     * see renderBoard) swaps in a desaturated copy of the texture rather than a WebGL colorMatrix/FX filter —
+     * Phaser 4's per-object Filters system already broke card rendering once on this project (rounded-corner
+     * masks; see the "phaser4-container-filter-mask-broke-cards" memory) so plain pixel-level desaturation via
+     * canvas is the safer route. */
+    private createArtVisual(art: string, width: number, height: number, centerY: number, grayscaleArt = false): Phaser.GameObjects.GameObject[] {
         if (this.scene.textures.exists(art)) {
-            const image = this.scene.add.image(0, centerY, art);
+            const textureKey = grayscaleArt ? this.getGrayscaleArtKey(art) : art;
+            const image = this.scene.add.image(0, centerY, textureKey);
             coverFit(image, width, height);
             return [image];
         }
@@ -324,6 +338,32 @@ export class CardView {
             .setOrigin(0.5)
             .setWordWrapWidth(width - 16, true);
         return [box, label];
+    }
+
+    /** Lazily builds (and caches, keyed off `${art}__gray` in the scene's own texture manager) a desaturated
+     * copy of an already-loaded art texture by averaging each pixel's RGB via luminance weights, leaving alpha
+     * untouched. Built once per texture per scene — repeat calls for the same key just return the cached key. */
+    private getGrayscaleArtKey(art: string): string {
+        const grayKey = `${art}__gray`;
+        if (this.scene.textures.exists(grayKey)) return grayKey;
+
+        const source = this.scene.textures.get(art).getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+        const width = source.width, height = source.height;
+        const canvasTexture = this.scene.textures.createCanvas(grayKey, width, height);
+        if (!canvasTexture) return art; // createCanvas only returns null if the key already exists, which the check above rules out
+        const ctx = canvasTexture.getContext();
+        ctx.drawImage(source as CanvasImageSource, 0, 0);
+
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+            const luminance = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+            data[i] = data[i + 1] = data[i + 2] = luminance;
+        }
+        ctx.putImageData(imageData, 0, 0);
+        canvasTexture.refresh();
+
+        return grayKey;
     }
 
     /**
