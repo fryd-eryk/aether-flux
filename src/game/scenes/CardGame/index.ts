@@ -25,7 +25,11 @@ import {
     getPileCards,
     HAND_ARC_ANGLE_STEP_DEG,
     HAND_ARC_LIFT,
+    HAND_ARC_LIFT_ANGLE_STEP_DEG,
+    HAND_ARC_LIFT_MAX_ANGLE_DEG,
     HAND_ARC_MAX_ANGLE_DEG,
+    HAND_DROP_ZONE_H,
+    HAND_DROP_ZONE_W,
     HAND_MIN_SPACING,
     HAND_PEEK_DEPTH,
     HERO_DEPTH,
@@ -109,7 +113,6 @@ export class CardGame extends Scene
     private instanceContainers = new Map<string, Phaser.GameObjects.Container>();
     private heroContainers = new Map<PlayerId, Phaser.GameObjects.Container>();
 
-    private playerBoardZone!: Phaser.GameObjects.Zone;
     private turnBannerText!: Phaser.GameObjects.Text;
     private endTurnButton!: Phaser.GameObjects.Container;
     private cancelButton!: Phaser.GameObjects.Container;
@@ -159,6 +162,20 @@ export class CardGame extends Scene
     private cardDiedHandler = ({ instanceId }: { instanceId: string }): void =>
     {
         this.pendingDeathIds.push(instanceId);
+    };
+
+    // Only the human player's own hand cards get the held-at-spotlight treatment — see renderHand's
+    // heldInstanceId/heldCard and TurnStateMachine's matching emits for why playerId is checked here.
+    private targetBeginHandler = ({ instanceId, playerId }: { instanceId: string; playerId: PlayerId }): void =>
+    {
+        if (playerId !== 'player') return;
+        this.enqueueAnimation(() => this.playTargetBeginAnimation(instanceId));
+    };
+
+    private targetCancelledHandler = ({ instanceId, playerId }: { instanceId: string; playerId: PlayerId }): void =>
+    {
+        if (playerId !== 'player') return;
+        this.enqueueAnimation(() => this.playTargetCancelledAnimation(instanceId));
     };
 
     /** Queues an animation step and kicks off draining if nothing is already running. */
@@ -382,6 +399,66 @@ export class CardGame extends Scene
     }
 
     /**
+     * Pulls a hand card out to the spotlight while the player picks a target for it (see
+     * TurnStateMachine's 'state:target-begin' emit and renderHand's heldCard branch, which this
+     * settles into) — the mirror image of playDrawAnimation's sibling reflow above: closing the gap
+     * the held card leaves rather than opening one for an incoming card. Only ever fired for the
+     * human player's own hand (see targetBeginHandler).
+     */
+    private async playTargetBeginAnimation (instanceId: string): Promise<void>
+    {
+        const container = this.instanceContainers.get(instanceId);
+        if (!container) return;
+
+        const player = this.machine.state.players.player;
+        const remaining = player.hand.filter((c) => c.instanceId !== instanceId);
+        const layout = this.handRowLayout(remaining.length);
+
+        remaining.forEach((sibling, siblingIndex) =>
+        {
+            const sibContainer = this.instanceContainers.get(sibling.instanceId);
+            if (!sibContainer) return;
+            const slot = this.handCardSlot(siblingIndex, remaining.length, layout, PLAYER_HAND_POKE_Y, 1);
+            this.tweens.add({ targets: sibContainer, x: slot.x, y: slot.y, rotation: slot.rotation, scale: slot.scale, duration: 250, ease: 'Cubic.easeOut' });
+        });
+
+        container.setDepth(2500);
+        await this.tweenPromise({ targets: container, x: SPOTLIGHT_X, y: CENTER_Y, rotation: 0, scale: 1.25, duration: 300, ease: 'Cubic.easeOut' });
+    }
+
+    /**
+     * Flies a held card (see playTargetBeginAnimation above) back into the hand fan when its cast is
+     * cancelled (TurnStateMachine's 'state:target-cancelled') — the card's index in player.hand never
+     * changed (cancelTarget never touches the hand array), so its post-cancel slot is simply its
+     * normal full-fan position. Only ever fired for the human player's own hand (see
+     * targetCancelledHandler).
+     */
+    private async playTargetCancelledAnimation (instanceId: string): Promise<void>
+    {
+        const container = this.instanceContainers.get(instanceId);
+        if (!container) return;
+
+        const player = this.machine.state.players.player;
+        const index = player.hand.findIndex((c) => c.instanceId === instanceId);
+        if (index === -1) return;
+
+        const layout = this.handRowLayout(player.hand.length);
+
+        player.hand.forEach((sibling, siblingIndex) =>
+        {
+            if (sibling.instanceId === instanceId) return;
+            const sibContainer = this.instanceContainers.get(sibling.instanceId);
+            if (!sibContainer) return;
+            const slot = this.handCardSlot(siblingIndex, player.hand.length, layout, PLAYER_HAND_POKE_Y, 1);
+            this.tweens.add({ targets: sibContainer, x: slot.x, y: slot.y, rotation: slot.rotation, scale: slot.scale, duration: 250, ease: 'Cubic.easeOut' });
+        });
+
+        const destSlot = this.handCardSlot(index, player.hand.length, layout, PLAYER_HAND_POKE_Y, 1);
+        await this.tweenPromise({ targets: container, x: destSlot.x, y: destSlot.y, rotation: destSlot.rotation, scale: destSlot.scale, duration: 300, ease: 'Cubic.easeIn' });
+        container.setDepth(destSlot.depth);
+    }
+
+    /**
      * Drives one step of the opponent's turn. Executing an action always resolves the state
      * machine back to MainIdle (or GameOver); renderNow() re-schedules this method 600ms after
      * each such settle (see its tail), so a full turn is a chain of these calls, paced 600ms
@@ -432,8 +509,14 @@ export class CardGame extends Scene
         this.playerManaText = this.add.text(38, 1023, '', statStyle('#5c9cff', true, '32px')).setDepth(200);
 
         const boardZoneH = CARD_H + 30;
-        this.playerBoardZone = this.add.zone(CENTER_X, PLAYER_BOARD_Y, BOARD_ZONE_W, boardZoneH).setRectangleDropZone(BOARD_ZONE_W, boardZoneH);
         this.add.rectangle(CENTER_X, PLAYER_BOARD_Y, BOARD_ZONE_W, boardZoneH).setStrokeStyle(2, 0x3a4a6b, 0.6);
+
+        // The only registered drag drop zone now — releasing a dragged hand card over it cancels
+        // the cast; releasing anywhere else on screen attempts one (see wireDragEvents' dragend
+        // handler, which reads Phaser's own `dropped` flag rather than checking a board zone).
+        this.add
+            .zone(CENTER_X, GAME_HEIGHT, HAND_DROP_ZONE_W, HAND_DROP_ZONE_H * 2)
+            .setRectangleDropZone(HAND_DROP_ZONE_W, HAND_DROP_ZONE_H * 2);
 
         this.createEndTurnButton();
         this.createCancelButton();
@@ -445,12 +528,16 @@ export class CardGame extends Scene
         EventBus.on('state:card-played', this.cardPlayedHandler);
         EventBus.on('state:attack', this.attackHandler);
         EventBus.on('state:card-died', this.cardDiedHandler);
+        EventBus.on('state:target-begin', this.targetBeginHandler);
+        EventBus.on('state:target-cancelled', this.targetCancelledHandler);
         this.events.once('shutdown', () =>
         {
             EventBus.removeListener('state:phase-change', this.phaseChangeHandler);
             EventBus.removeListener('state:card-drawn', this.cardDrawnHandler);
             EventBus.removeListener('state:card-played', this.cardPlayedHandler);
             EventBus.removeListener('state:attack', this.attackHandler);
+            EventBus.removeListener('state:target-begin', this.targetBeginHandler);
+            EventBus.removeListener('state:target-cancelled', this.targetCancelledHandler);
             EventBus.removeListener('state:card-died', this.cardDiedHandler);
         });
 
@@ -492,29 +579,33 @@ export class CardGame extends Scene
             (gameObject as Phaser.GameObjects.Container).setPosition(dragX, dragY);
         });
 
-        this.input.on('drop', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dropZone: Phaser.GameObjects.GameObject) =>
-        {
-            if (this.isAnimating) return;
-            if (dropZone !== this.playerBoardZone) return;
-            const instanceId = this.cardInstanceByContainer.get(gameObject as Phaser.GameObjects.Container);
-            if (instanceId) this.machine.playCard(instanceId);
-        });
-
-        this.input.on('dragend', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject) =>
+        this.input.on('dragend', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dropped: boolean) =>
         {
             const container = gameObject as Phaser.GameObjects.Container;
             if (this.draggedContainer === container) this.draggedContainer = null;
-            if (!container.active) return; // already destroyed by a re-render triggered from the drop above
+            if (!container.active) return; // already destroyed by a re-render triggered from playCard below
 
-            // A successful drop synchronously plays the card and queues its animation (isAnimating
-            // flips true within the same 'drop' → 'dragend' dispatch) — skip the idle-slot restore
-            // in that case, or it would snap the container's rotation back to its old hand angle
-            // right out from under playCardPlayedAnimation, which never re-touches rotation itself
-            // (only x/y/scale), leaving the card visibly tilted through its whole spotlight/fly.
             if (this.isAnimating) return;
 
+            if (!dropped)
+            {
+                // Released anywhere but the hand (handZone is the only registered drop zone, so
+                // Phaser's own `dropped` flag already tells us whether the hand was hit) — attempt
+                // the cast. If this needs a target, playCard synchronously drives the state machine
+                // into AwaitingTarget, which re-renders (destroying `container`) before this call
+                // returns — nothing below touches it again, so that's safe.
+                const instanceId = this.cardInstanceByContainer.get(container);
+                if (instanceId) this.machine.playCard(instanceId);
+                return;
+            }
+
+            // Released back over the hand: cancel — fly back to its idle slot rather than snapping.
             const slot = this.handSlots.get(container);
-            if (slot) { container.setPosition(slot.x, slot.y); container.setRotation(slot.rotation); container.setDepth(slot.depth); }
+            if (slot)
+            {
+                this.tweens.add({ targets: container, x: slot.x, y: slot.y, rotation: slot.rotation, duration: 200, ease: 'Cubic.easeOut' });
+                container.setDepth(slot.depth);
+            }
         });
     }
 
@@ -646,24 +737,39 @@ export class CardGame extends Scene
      * A hand card's idle "slot" — its arced position/rotation for index `index` of `count`,
      * given `layout` (from handRowLayout) and the row's flush poke edge Y. `liftSign` is `+1`
      * for the player (bottom edge, lift rises off it) and `-1` for the opponent (top edge, lift
-     * drops past it) — see HAND_ARC_* in cardLayout.ts for the fan math itself. Shared by
-     * renderHand (idle layout), playDrawAnimation (sibling re-tween / fly-in destination), and
-     * indirectly by peek/dragend restore via the handSlots map renderHand populates from this.
+     * drops past it) — see HAND_ARC_* in cardLayout.ts for the fan math and, importantly, why
+     * rotation and the height/lift curve are computed from two *separate* step+max-angle pairs
+     * (editing one must never reshape the other). Shared by renderHand (idle layout),
+     * playDrawAnimation (sibling re-tween / fly-in destination), and indirectly by peek/dragend
+     * restore via the handSlots map renderHand populates from this.
      */
     private handCardSlot (index: number, count: number, layout: { spacing: number; startX: number; scale: number }, edgeY: number, liftSign: 1 | -1): HandSlot
     {
         const x = layout.startX + index * layout.spacing;
         const mid = (count - 1) / 2;
+
+        // Rotation — HAND_ARC_ANGLE_STEP_DEG/HAND_ARC_MAX_ANGLE_DEG affect ONLY the visual tilt.
         const rawDeg = (index - mid) * HAND_ARC_ANGLE_STEP_DEG;
         const deg = Math.max(-HAND_ARC_MAX_ANGLE_DEG, Math.min(HAND_ARC_MAX_ANGLE_DEG, rawDeg));
         const theta = (deg * Math.PI) / 180;
-        const cos = Math.cos(theta) * layout.scale;
-        // Solve for the CENTER position that puts the card's *visible* edge (top for the player,
-        // bottom for the opponent) exactly HAND_ARC_LIFT*cos(theta) above the flush poke edge —
-        // see HAND_ARC_LIFT's doc comment in cardLayout.ts for the rotation arithmetic this
-        // undoes. Center and visible-edge Y deliberately diverge (the center can end up well
-        // past the flush edge, off-screen) so the edge itself traces the intended harmonious arc.
-        const y = edgeY + liftSign * cos * (CARD_H / 2 - HAND_ARC_LIFT);
+
+        // Height/lift curve — its own independent step+max-angle pair, deliberately NOT theta, so
+        // editing rotation above never reshapes this curve (see cardLayout.ts's HAND_ARC_* block).
+        const liftRawDeg = (index - mid) * HAND_ARC_LIFT_ANGLE_STEP_DEG;
+        const liftDeg = Math.max(-HAND_ARC_LIFT_MAX_ANGLE_DEG, Math.min(HAND_ARC_LIFT_MAX_ANGLE_DEG, liftRawDeg));
+        const liftFalloff = Math.cos((liftDeg * Math.PI) / 180);
+        const lift = HAND_ARC_LIFT * liftFalloff * layout.scale;
+
+        // Rotation-compensation — NOT a tunable, a geometric necessity: rotating a card by theta
+        // shifts its own visible edge (top for the player, bottom for the opponent) by
+        // CARD_H/2 * cos(theta) relative to its center, so the center must be pushed out by
+        // exactly that much to keep the edge at `lift` above edgeY regardless of whatever
+        // rotation ended up applied — substituting this back into the edge-position equation
+        // shows theta cancels out completely, so the edge's distance from edgeY is driven purely
+        // by `lift`, at every slot, unconditionally (see cardLayout.ts's HAND_ARC_* block).
+        const rotationCompensation = (CARD_H / 2) * Math.cos(theta) * layout.scale;
+
+        const y = edgeY + liftSign * (rotationCompensation - lift);
         const rotation = liftSign === 1 ? theta : -theta;
         return { x, y, rotation, scale: layout.scale, depth: index };
     }
@@ -784,17 +890,31 @@ export class CardGame extends Scene
         const cards = playerState.hand;
         if (cards.length === 0) return;
 
-        const layout = this.handRowLayout(cards.length);
-        // +1 (player, bottom edge): lift rises off the poke edge. -1 (opponent, top edge): lift
-        // drops past it — mirrored fan, see handCardSlot/HAND_ARC_* in cardLayout.ts.
-        const liftSign: 1 | -1 = faceDown ? -1 : 1;
         const state = this.machine.state;
         const isMyTurn = !faceDown && playerState.id === 'player' && state.activePlayer === 'player';
 
-        cards.forEach((instance, index) =>
+        // A card the player pulled out of hand and is holding at the spotlight while picking a
+        // target (see TurnStateMachine's 'state:target-begin'/'state:target-cancelled' emits and
+        // playTargetBeginAnimation/playTargetCancelledAnimation below) — rendered separately further
+        // down instead of taking a normal fan slot, only for the human's own hand. The opponent AI
+        // can pass through AwaitingTarget too, but it resolves synchronously in the same call and
+        // its hand is always face-down, so it never needs this staged visual.
+        const heldInstanceId =
+            !faceDown && playerState.id === 'player' && state.phase === TurnPhase.AwaitingTarget
+                ? state.pendingTarget?.sourceInstanceId
+                : undefined;
+        const heldCard = heldInstanceId ? cards.find((c) => c.instanceId === heldInstanceId) : undefined;
+        const fanCards = heldCard ? cards.filter((c) => c.instanceId !== heldInstanceId) : cards;
+
+        const layout = this.handRowLayout(fanCards.length);
+        // +1 (player, bottom edge): lift rises off the poke edge. -1 (opponent, top edge): lift
+        // drops past it — mirrored fan, see handCardSlot/HAND_ARC_* in cardLayout.ts.
+        const liftSign: 1 | -1 = faceDown ? -1 : 1;
+
+        fanCards.forEach((instance, index) =>
         {
             const container = this.cardView.createCardContainer(instance, faceDown ? 'faceDown' : 'full');
-            const slot = this.handCardSlot(index, cards.length, layout, y, liftSign);
+            const slot = this.handCardSlot(index, fanCards.length, layout, y, liftSign);
             container.setPosition(slot.x, slot.y);
             container.setRotation(slot.rotation);
             container.setScale(slot.scale);
@@ -810,7 +930,8 @@ export class CardGame extends Scene
                 new Geom.Rectangle(0, 0, CARD_W, CARD_H),
                 Geom.Rectangle.Contains
             );
-            this.helpBoxController.attachKeywordHover(container, instance);
+            // 'full' mode cards already print their cost on-card — no need for the tooltip to repeat it.
+            this.helpBoxController.attachKeywordHover(container, instance, false);
 
             // Every hand card (not just currently-playable ones) gets an idle slot and can peek —
             // it's a read-only "let me see this clearly" affordance, independent of playability,
@@ -819,7 +940,16 @@ export class CardGame extends Scene
 
             const peekIn = () =>
             {
-                if (container === this.draggedContainer) return;
+                // draggedContainer only covers the *active* drag — a card that was just released
+                // (dragend clears draggedContainer immediately) can still have a queued animation
+                // flying it elsewhere (e.g. playTargetBeginAnimation's spotlight hold), so isAnimating
+                // is checked too: without it, a stray pointerover/pointerout from the mouse merely
+                // moving away after drop killTweensOf's that in-flight tween — which, if something is
+                // awaiting it (tweenPromise), never resolves, permanently stranding isAnimating true
+                // and silently swallowing every future click via guarded(). Confirmed live: dragging a
+                // targeted spell/minion out then immediately moving toward the Cancel button reliably
+                // triggered exactly this softlock before this guard was added.
+                if (container === this.draggedContainer || this.isAnimating) return;
                 this.tweens.killTweensOf(container);
                 this.tweens.add({
                     targets: container, y: PLAYER_HAND_PEEK_Y, rotation: 0, duration: 150, ease: 'Cubic.easeOut',
@@ -832,7 +962,8 @@ export class CardGame extends Scene
             };
             const peekOut = () =>
             {
-                if (container === this.draggedContainer) return;
+                // See peekIn's comment above — same reasoning applies here.
+                if (container === this.draggedContainer || this.isAnimating) return;
                 this.tweens.killTweensOf(container);
                 const idleSlot = this.handSlots.get(container)!;
                 this.tweens.add({ targets: container, y: idleSlot.y, rotation: idleSlot.rotation, duration: 150, ease: 'Cubic.easeOut' });
@@ -870,16 +1001,23 @@ export class CardGame extends Scene
             // stays at full opacity regardless, this just marks the ones actionable right now.
             this.addShimmeringOutline(container, CARD_W, CARD_H, OUTLINE_COLOR_READY);
 
-            if (definition.type === 'minion')
-            {
-                this.cardInstanceByContainer.set(container, instance.instanceId);
-                this.input.setDraggable(container);
-            }
-            else
-            {
-                container.on('pointerup', this.guarded(() => this.machine.playCard(instance.instanceId)));
-            }
+            // Minions and spells drag out identically — the drop location (anywhere but the hand,
+            // see wireDragEvents) is what casts them, not a per-type click/drag split.
+            this.cardInstanceByContainer.set(container, instance.instanceId);
+            this.input.setDraggable(container);
         });
+
+        if (heldCard)
+        {
+            const container = this.cardView.createCardContainer(heldCard, 'full');
+            container.setPosition(SPOTLIGHT_X, CENTER_Y);
+            container.setScale(1.25);
+            container.setDepth(2500);
+            this.renderedObjects.push(container);
+            this.instanceContainers.set(heldCard.instanceId, container);
+            this.addShimmeringOutline(container, CARD_W, CARD_H, OUTLINE_COLOR_TARGETABLE);
+            // No interactivity: this card is mid-cast — the player backs out via the Cancel button.
+        }
     }
 
     private renderBoard (ownerId: PlayerId, playerState: PlayerState, y: number): void
@@ -903,7 +1041,8 @@ export class CardGame extends Scene
                 new Geom.Rectangle(0, 0, CARD_W, CARD_H),
                 Geom.Rectangle.Contains
             );
-            this.helpBoxController.attachKeywordHover(container, instance);
+            // 'simplified' mode never prints cost on-card — the tooltip is the only place to see it.
+            this.helpBoxController.attachKeywordHover(container, instance, true);
 
             // See the matching comment in renderHero — only the player whose pending action this is
             // (always state.activePlayer) may resolve its target.

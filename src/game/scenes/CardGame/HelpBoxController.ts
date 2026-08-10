@@ -3,17 +3,32 @@ import type { Scene } from 'phaser';
 import { CARD_DEFINITIONS } from '../../data/cards';
 import { KEYWORD_METADATA } from '../../data/keywordMetadata';
 import type { CardInstance } from '../../types/Card';
-import { ATKHP_BOX_RADIUS, ATKHP_H_FULL, ATKHP_W_FULL, COST_TEXT_STYLE, GAME_HEIGHT, GAME_WIDTH, MANA_BADGE_COLOR, PILE_VIEW_DEPTH, TOOLTIP_BG_RADIUS, TOOLTIP_COST_CLEARANCE } from './cardLayout';
+import {
+    COST_BADGE_DARK,
+    COST_BADGE_LIGHT,
+    COST_BADGE_R_FULL,
+    COST_BADGE_STROKE_COLOR,
+    COST_BADGE_STROKE_WIDTH,
+    COST_TEXT_STYLE,
+    GAME_HEIGHT,
+    GAME_WIDTH,
+    PILE_VIEW_DEPTH,
+    TOOLTIP_BG_RADIUS,
+    TOOLTIP_COST_CLEARANCE,
+} from './cardLayout';
 
 /**
  * The card-anchored keyword/rule-text/mana-cost tooltip shown on hover for hand, board, and pile
- * cards — always the same content (keywords, rule text, mana cost) regardless of which
- * CardDisplayMode the hovered card itself is rendered in, see showHelpBox. Anchored to the
- * hovered card's own bounds (top edge, right side by default) rather than following the cursor —
- * see positionHelpBox. Owns its own Phaser objects (helpBox/helpBoxBg/helpBoxLines) entirely; the
- * only outside dependency is knowing whether the card currently under the pointer is the one
- * mid-drag (see attachKeywordHover), for which the caller supplies a callback rather than this
- * class reaching into CardGame's drag state directly.
+ * cards — keywords and rule text always show the same way regardless of CardDisplayMode, but the
+ * mana-cost badge is conditional (see attachKeywordHover/showHelpBox's `showCost`): 'full' mode
+ * cards (hand, pile-view) already print their cost on-card, so showing it again here would be
+ * redundant — only 'simplified' (board) cards, which never show cost on-card, get it in the
+ * tooltip, styled identically to the on-card badge (COST_BADGE_*). Anchored to the hovered card's
+ * own bounds (top edge, right side by default) rather than following the cursor — see
+ * positionHelpBox. Owns its own Phaser objects (helpBox/helpBoxBg/helpBoxLines) entirely; the only
+ * outside dependency is knowing whether the card currently under the pointer is the one mid-drag
+ * (see attachKeywordHover), for which the caller supplies a callback rather than this class
+ * reaching into CardGame's drag state directly.
  */
 export class HelpBoxController
 {
@@ -47,16 +62,22 @@ export class HelpBoxController
         this.helpBoxBg.fillRoundedRect(0, 0, width, height, TOOLTIP_BG_RADIUS);
     }
 
-    /** Wires the card-anchored keyword/text/cost help box to a card container. A vanilla card with neither keywords nor rule text (just a cost) gets no tooltip at all — nothing to say beyond what's already printed on the card. */
-    attachKeywordHover (container: Phaser.GameObjects.Container, instance: CardInstance): void
+    /**
+     * Wires the card-anchored keyword/text/cost help box to a card container. `showCost` should be
+     * true only for 'simplified' (board) cards — see the class doc comment for why 'full' mode
+     * (hand, pile-view) never needs it repeated here. A vanilla, cost-less-tooltip card (no
+     * keywords, no rule text, and `showCost` false) gets no tooltip at all — nothing to say beyond
+     * what's already printed on the card.
+     */
+    attachKeywordHover (container: Phaser.GameObjects.Container, instance: CardInstance, showCost: boolean): void
     {
         const definition = CARD_DEFINITIONS[instance.definitionId];
         if (!definition) return;
-        if (instance.keywords.size === 0 && definition.text === '') return;
+        if (!showCost && instance.keywords.size === 0 && definition.text === '') return;
 
         // Skip while this card is the one being dragged — see wireDragEvents' dragstart, which
         // hides an already-showing tooltip for it; this stops one from reappearing mid-drag too.
-        container.on('pointerover', () => { if (container !== this.getDraggedContainer()) this.showHelpBox(instance, container); });
+        container.on('pointerover', () => { if (container !== this.getDraggedContainer()) this.showHelpBox(instance, container, showCost); });
         container.on('pointerout', () => this.hideHelpBox());
     }
 
@@ -64,12 +85,12 @@ export class HelpBoxController
      * A plain Phaser Text can't mix styles within one string, so a colored/bold keyword label
      * next to its plain-styled description needs two Text objects per keyword instead of one
      * joined multi-line string — rebuilt every hover since the keyword set differs per card.
-     * Always prepends the card's rule text above the keyword rows and draws a cost badge
-     * overflowing the tooltip's top-right corner, with the same presentation as the on-card badge
-     * — see CardView.createCardContainer's 'full' mode — regardless of which CardDisplayMode the
-     * hovered card itself is rendered in, so hand/board/pile cards all show identical tooltip content.
+     * Always prepends the card's rule text above the keyword rows; `showCost` (see
+     * attachKeywordHover) additionally draws a mana-cost badge overflowing the tooltip's top-right
+     * corner, with the same gradient-circle-plus-stroke presentation as the on-card badge — see
+     * CardView.createHeaderFull.
      */
-    showHelpBox (instance: CardInstance, container: Phaser.GameObjects.Container): void
+    showHelpBox (instance: CardInstance, container: Phaser.GameObjects.Container, showCost: boolean): void
     {
         const definition = CARD_DEFINITIONS[instance.definitionId];
         if (!definition) return;
@@ -79,7 +100,7 @@ export class HelpBoxController
 
         const margin = 10;
         const maxWidth = 290;
-        let cursorY = margin + TOOLTIP_COST_CLEARANCE;
+        let cursorY = margin + (showCost ? TOOLTIP_COST_CLEARANCE : 0);
         let maxRight = 0;
 
         if (definition.text !== '')
@@ -124,14 +145,17 @@ export class HelpBoxController
 
         this.redrawBg(maxRight + margin, cursorY + margin - 4);
 
-        const boxLeft = this.boxWidth - ATKHP_W_FULL / 2;
-        const boxTop = -ATKHP_H_FULL / 2;
-        const badge = this.scene.add.graphics();
-        badge.fillStyle(MANA_BADGE_COLOR, 1);
-        badge.fillRoundedRect(boxLeft, boxTop, ATKHP_W_FULL, ATKHP_H_FULL, ATKHP_BOX_RADIUS);
-        const badgeText = this.scene.add.text(this.boxWidth, 0, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(0.5);
-        this.helpBox.add([badge, badgeText]);
-        this.helpBoxLines.push(badge, badgeText);
+        if (showCost)
+        {
+            const badge = this.scene.add.graphics();
+            badge.fillGradientStyle(COST_BADGE_LIGHT, COST_BADGE_LIGHT, COST_BADGE_DARK, COST_BADGE_DARK, 1, 1, 1, 1);
+            badge.fillCircle(this.boxWidth, 0, COST_BADGE_R_FULL);
+            badge.lineStyle(COST_BADGE_STROKE_WIDTH, COST_BADGE_STROKE_COLOR, 1);
+            badge.strokeCircle(this.boxWidth, 0, COST_BADGE_R_FULL);
+            const badgeText = this.scene.add.text(this.boxWidth, 0, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(0.5);
+            this.helpBox.add([badge, badgeText]);
+            this.helpBoxLines.push(badge, badgeText);
+        }
 
         this.helpBox.setVisible(true);
         this.currentContainer = container;

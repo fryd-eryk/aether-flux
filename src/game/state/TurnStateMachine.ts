@@ -85,8 +85,15 @@ export class TurnStateMachine {
 
     cancelTarget(): void {
         if (this.gameState.phase !== TurnPhase.AwaitingTarget) return;
+        const pendingAction = this.pendingAction;
+        const activePlayerId = this.gameState.activePlayer;
         this.pendingAction = undefined;
         this.gameState.pendingTarget = undefined;
+        // Only a card pulled out of hand (not an attacker choosing its target) gets the Scene's
+        // held-at-spotlight treatment — see beginTargeting's matching emit below.
+        if (pendingAction?.type === 'playCard') {
+            EventBus.emit('state:target-cancelled', { instanceId: pendingAction.instanceId, playerId: activePlayerId });
+        }
         this.setPhase(TurnPhase.MainIdle);
     }
 
@@ -230,6 +237,12 @@ export class TurnStateMachine {
             sourceInstanceId: action.type === 'playCard' ? action.instanceId : action.attackerInstanceId,
             validTargetIds: this.computeValidTargets(action, ownerId),
         };
+        // A card pulled out of hand gets held at the Scene's spotlight while the player picks a
+        // target (see CardGame's targetBeginHandler) — an attacker choosing its target never left
+        // the board, so it's excluded here.
+        if (action.type === 'playCard') {
+            EventBus.emit('state:target-begin', { instanceId: action.instanceId, playerId: ownerId });
+        }
         this.setPhase(TurnPhase.AwaitingTarget);
     }
 

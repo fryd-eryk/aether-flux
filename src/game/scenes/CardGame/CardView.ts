@@ -6,13 +6,16 @@ import { RARITY_METADATA, UNRANKED_RARITY_COLOR } from "../../data/rarityMetadat
 import { distinctTriggers, TRIGGER_METADATA } from "../../data/triggerMetadata";
 import type { CardDefinition, CardInstance } from "../../types/Card";
 import {
-    ATKHP_BOX_RADIUS,
-    ATKHP_H_FULL,
-    ATKHP_INSET,
-    ATKHP_W_FULL,
+    ATKHP_BADGE_COLOR,
+    ATKHP_BADGE_R,
     CARD_BACK_KEY,
     CARD_H,
     CARD_W,
+    COST_BADGE_DARK,
+    COST_BADGE_LIGHT,
+    COST_BADGE_R_FULL,
+    COST_BADGE_STROKE_COLOR,
+    COST_BADGE_STROKE_WIDTH,
     coverFit,
     COST_TEXT_STYLE,
     type CardDisplayMode,
@@ -23,10 +26,8 @@ import {
     DESC_BOX_PAD_Y,
     DESC_BOX_RADIUS,
     fitWidth,
-    FOOTER_BAR_H,
-    FOOTER_BG_KEY,
-    HEADER_BG_KEY,
-    HEADER_CONTENT_H_FULL,
+    HEADER_FOOTER_BG_KEY,
+    HEADER_FOOTER_CONTENT_H,
     HEADER_H,
     KEYWORD_LABEL_BASE_STYLE,
     KEYWORD_SEPARATOR_STYLE,
@@ -88,7 +89,8 @@ export class CardView {
 
             // No cost badge, no description box/footer bar — battlefield row stays art-first.
             // Keywords/triggers instead render as compact bottom-left pills (see
-            // createStatusPills), and attack/health uses the overflowing corner box.
+            // createStatusPills), and attack/health uses the same corner-overflowing atk/hp badge
+            // 'full' mode's footer uses (createStatBadge).
             container.add(this.createStatBadge(instance, definition));
             container.add(this.createStatusPills(instance, definition));
 
@@ -123,25 +125,35 @@ export class CardView {
     }
 
     /**
-     * 'full' mode's header: the pre-authored card-header-bg PNG (its alpha channel already bakes in
-     * the decorative mana-cost swirl *and* the "rounded corners descending down the card's sides"
-     * shape — see cardLayout.ts's comment above HEADER_BG_KEY) rendered at CARD_W via fitWidth, plus
-     * the mana-cost number on top, inset (no more corner-overflowing circle badge). Title text is
-     * added by the caller, matching 'simplified' mode's nameText handling.
+     * 'full' mode's header: the pre-authored card-header-footer-bg PNG (its alpha channel bakes in
+     * the "rounded corners descending down the card's sides" shape — see cardLayout.ts's comment
+     * above HEADER_FOOTER_BG_KEY; the footer reuses this same texture flipped vertically instead of
+     * its own file) rendered at CARD_W via fitWidth, plus a gradient-circle mana-cost badge centered
+     * exactly on the card's top-right corner so it deliberately overflows both edges (bringing back
+     * the pre-v2 treatment, styled with a highlight/shadow gradient this time — Phaser has no native
+     * radial fill, so this is the same diagonal-4-corner approximation createFooterBar's rarity dot
+     * uses). Title text is added by the caller, matching 'simplified' mode's nameText handling.
      */
     private createHeaderFull(definition: CardDefinition): Phaser.GameObjects.GameObject[] {
         const objects: Phaser.GameObjects.GameObject[] = [];
-        const headerCenterY = -CARD_H / 2 + HEADER_CONTENT_H_FULL / 2;
+        const headerCenterY = -CARD_H / 2 + HEADER_FOOTER_CONTENT_H / 2;
 
-        if (this.scene.textures.exists(HEADER_BG_KEY)) {
-            const bg = this.scene.add.image(0, -CARD_H / 2, HEADER_BG_KEY).setOrigin(0.5, 0);
+        if (this.scene.textures.exists(HEADER_FOOTER_BG_KEY)) {
+            const bg = this.scene.add.image(0, -CARD_H / 2, HEADER_FOOTER_BG_KEY).setOrigin(0.5, 0);
             fitWidth(bg, CARD_W);
             objects.push(bg);
         } else {
-            objects.push(this.scene.add.rectangle(0, headerCenterY, CARD_W, HEADER_CONTENT_H_FULL, 0x000000));
+            objects.push(this.scene.add.rectangle(0, headerCenterY, CARD_W, HEADER_FOOTER_CONTENT_H, 0x000000));
         }
 
-        const costText = this.scene.add.text(CARD_W / 2 - 3, headerCenterY, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(1, 0.5);
+        const badge = this.scene.add.graphics();
+        badge.fillGradientStyle(COST_BADGE_LIGHT, COST_BADGE_LIGHT, COST_BADGE_DARK, COST_BADGE_DARK, 1, 1, 1, 1);
+        badge.fillCircle(CARD_W / 2, -CARD_H / 2, COST_BADGE_R_FULL);
+        badge.lineStyle(COST_BADGE_STROKE_WIDTH, COST_BADGE_STROKE_COLOR, 1);
+        badge.strokeCircle(CARD_W / 2, -CARD_H / 2, COST_BADGE_R_FULL);
+        objects.push(badge);
+
+        const costText = this.scene.add.text(CARD_W / 2, -CARD_H / 2, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(0.5);
         objects.push(costText);
 
         return objects;
@@ -204,17 +216,17 @@ export class CardView {
         return objects;
     }
 
-    /** 'full' mode's footer: the pre-authored card-footer-bg PNG (rounded corners ascending up the card's sides baked into its alpha channel, mirroring the header's shape) holding the rarity dot + card type (left) and an inset (non-overflowing) atk/hp box (right, minion-only). */
+    /** 'full' mode's footer: the same card-header-footer-bg PNG the header uses, rendered flipped vertically (mirroring its descending corners into ascending ones), holding the rarity dot + card type (left) and the corner-overflowing atk/hp badge (right, minion-only, see createStatBadge). */
     private createFooterBar(instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[] {
-        const footerCenterY = CARD_H / 2 - FOOTER_BAR_H / 2;
+        const footerCenterY = CARD_H / 2 - HEADER_FOOTER_CONTENT_H / 2;
         const objects: Phaser.GameObjects.GameObject[] = [];
 
-        if (this.scene.textures.exists(FOOTER_BG_KEY)) {
-            const bg = this.scene.add.image(0, CARD_H / 2, FOOTER_BG_KEY).setOrigin(0.5, 1);
+        if (this.scene.textures.exists(HEADER_FOOTER_BG_KEY)) {
+            const bg = this.scene.add.image(0, CARD_H / 2, HEADER_FOOTER_BG_KEY).setOrigin(0.5, 1).setFlipY(true);
             fitWidth(bg, CARD_W);
             objects.push(bg);
         } else {
-            objects.push(this.scene.add.rectangle(0, footerCenterY, CARD_W, FOOTER_BAR_H, 0x000000));
+            objects.push(this.scene.add.rectangle(0, footerCenterY, CARD_W, HEADER_FOOTER_CONTENT_H, 0x000000));
         }
 
         const dotX = -CARD_W / 2 + RARITY_DOT_INSET;
@@ -227,60 +239,47 @@ export class CardView {
         const typeText = this.scene.add.text(dotX + RARITY_DOT_R + 3, footerCenterY, definition.type === "minion" ? "Minion" : "Spell", TYPE_LABEL_STYLE).setOrigin(0, 0.5);
         objects.push(typeText);
 
-        objects.push(...this.createStatBadgeInset(instance, definition, footerCenterY));
+        objects.push(...this.createStatBadge(instance, definition));
 
         return objects;
     }
 
     /**
-     * The atk/hp stat box shared by both modes — an opaque white rounded rect (ATKHP_W_FULL x
-     * ATKHP_H_FULL) at the given top-left position, with "atk/hp" rendered as three separate Text
+     * The atk/hp stat badge — shared by 'full' and 'simplified' mode, both of which now center it
+     * exactly on the card's bottom-right corner (the same corner-overflow treatment
+     * createHeaderFull's mana-cost badge gets on the top-right corner) rather than 'full' mode
+     * keeping it fully inset like before. A flat-white filled circle (ATKHP_BADGE_R/ATKHP_BADGE_COLOR
+     * — no gradient/stroke, unlike the mana badge), with "atk/hp" rendered as three separate Text
      * objects (attack, "/", health) rather than one string so the health digits alone can switch to
      * STAT_FUSED_LIGHT_WOUNDED_STYLE's red when the minion is wounded (currentHealth !== maxHealth)
      * — Phaser Text has no inline multi-color rich-text support, so this is the same
-     * multiple-objects-with-a-running-cursor technique createKeywordLabels uses. Callers position
-     * this differently: createStatBadgeInset ('full' mode) keeps it fully inset from the corner,
-     * createStatBadge ('simplified' mode) centers it exactly on the corner so it still overflows
-     * both edges, just by less than it used to now that the box itself is smaller. Minion-only.
+     * multiple-objects-with-a-running-cursor technique createKeywordLabels uses. Minion-only.
      */
-    private createStatBox(instance: CardInstance, definition: CardDefinition, boxLeft: number, boxTop: number): Phaser.GameObjects.GameObject[] {
+    private createStatBadge(instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[] {
         if (definition.type !== "minion") return [];
 
-        const boxCenterY = boxTop + ATKHP_H_FULL / 2;
+        const centerX = CARD_W / 2;
+        const centerY = CARD_H / 2;
         const currentAttack = instance.currentAttack ?? 0;
         const currentHealth = instance.currentHealth ?? 0;
         const wounded = currentHealth !== (instance.maxHealth ?? currentHealth);
 
-        const box = this.scene.add.graphics();
-        box.fillStyle(0xffffff, 1);
-        box.fillRoundedRect(boxLeft, boxTop, ATKHP_W_FULL, ATKHP_H_FULL, ATKHP_BOX_RADIUS);
+        const badge = this.scene.add.graphics();
+        badge.fillStyle(ATKHP_BADGE_COLOR, 1);
+        badge.fillCircle(centerX, centerY, ATKHP_BADGE_R);
 
-        const atkText = this.scene.add.text(0, boxCenterY, `${currentAttack}`, STAT_FUSED_LIGHT_STYLE).setOrigin(0, 0.5);
-        const slashText = this.scene.add.text(0, boxCenterY, "/", STAT_FUSED_LIGHT_STYLE).setOrigin(0, 0.5);
-        const hpText = this.scene.add.text(0, boxCenterY, `${currentHealth}`, wounded ? STAT_FUSED_LIGHT_WOUNDED_STYLE : STAT_FUSED_LIGHT_STYLE).setOrigin(0, 0.5);
+        const atkText = this.scene.add.text(0, centerY, `${currentAttack}`, STAT_FUSED_LIGHT_STYLE).setOrigin(0, 0.5);
+        const slashText = this.scene.add.text(0, centerY, "/", STAT_FUSED_LIGHT_STYLE).setOrigin(0, 0.5);
+        const hpText = this.scene.add.text(0, centerY, `${currentHealth}`, wounded ? STAT_FUSED_LIGHT_WOUNDED_STYLE : STAT_FUSED_LIGHT_STYLE).setOrigin(0, 0.5);
 
-        let cursorX = boxLeft + ATKHP_W_FULL / 2 - (atkText.width + slashText.width + hpText.width) / 2;
+        let cursorX = centerX - (atkText.width + slashText.width + hpText.width) / 2;
         atkText.setX(cursorX);
         cursorX += atkText.width;
         slashText.setX(cursorX);
         cursorX += slashText.width;
         hpText.setX(cursorX);
 
-        return [box, atkText, slashText, hpText];
-    }
-
-    /** 'full' mode's atk/hp box — inset from the card's bottom-right corner (not overflowing it, unlike 'simplified' mode's createStatBadge). */
-    private createStatBadgeInset(instance: CardInstance, definition: CardDefinition, footerCenterY: number): Phaser.GameObjects.GameObject[] {
-        const boxLeft = CARD_W / 2 - ATKHP_INSET - ATKHP_W_FULL;
-        const boxTop = footerCenterY - ATKHP_H_FULL / 2;
-        return this.createStatBox(instance, definition, boxLeft, boxTop);
-    }
-
-    /** 'simplified' mode's atk/hp box — centered exactly on the card's bottom-right corner so it deliberately overflows both edges (a slighter version of the old dedicated 46x26 box, now sharing 'full' mode's smaller 34x13 size). */
-    private createStatBadge(instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[] {
-        const boxLeft = CARD_W / 2 - ATKHP_W_FULL / 2;
-        const boxTop = CARD_H / 2 - ATKHP_H_FULL / 2;
-        return this.createStatBox(instance, definition, boxLeft, boxTop);
+        return [badge, atkText, slashText, hpText];
     }
 
     /**
@@ -291,9 +290,9 @@ export class CardView {
      * `y = -CARD_H/2` / `origin (0.5, 1)` at `y = CARD_H/2` — neither extends past
      * it, so nothing was ever there to hide the overflow). 'top' keeps the art's
      * bottom edge at CARD_H/2 (unchanged) and pulls its top edge down to
-     * `-CARD_H/2 + HEADER_CONTENT_H_FULL` — exactly the header PNG's opaque flat
+     * `-CARD_H/2 + HEADER_FOOTER_CONTENT_H` — exactly the header PNG's opaque flat
      * bar's bottom edge, not the full tapering image (see that constant's comment
-     * in cardLayout.ts) — by shrinking height to `CARD_H - HEADER_CONTENT_H_FULL`
+     * in cardLayout.ts) — by shrinking height to `CARD_H - HEADER_FOOTER_CONTENT_H`
      * and recentering. 'bottom' mirrors this against the footer's flat bar. Zero
      * overflow, but coverFit necessarily crops a bit more of the source art to fit
      * the smaller box — an expected side effect, not a bug.
@@ -301,9 +300,9 @@ export class CardView {
     private artBoxFor(align: CardDefinition["artVerticalAlign"]): { height: number; centerY: number } {
         switch (align) {
             case "top":
-                return { height: CARD_H - HEADER_CONTENT_H_FULL, centerY: HEADER_CONTENT_H_FULL / 2 };
+                return { height: CARD_H - HEADER_FOOTER_CONTENT_H, centerY: HEADER_FOOTER_CONTENT_H / 2 };
             case "bottom":
-                return { height: CARD_H - FOOTER_BAR_H, centerY: -FOOTER_BAR_H / 2 };
+                return { height: CARD_H - HEADER_FOOTER_CONTENT_H, centerY: -HEADER_FOOTER_CONTENT_H / 2 };
             default:
                 return { height: CARD_H, centerY: 0 };
         }
@@ -424,7 +423,7 @@ export class CardView {
 
         const objects: Phaser.GameObjects.GameObject[] = [];
         const startX = -CARD_W / 2 + PILL_INSET_X;
-        const rowLimitX = CARD_W / 2 - ATKHP_W_FULL / 2 - PILL_INSET_X;
+        const rowLimitX = CARD_W / 2 - ATKHP_BADGE_R - PILL_INSET_X;
         let cursorX = startX;
         let cursorY = CARD_H / 2 - PILL_INSET_Y - PILL_H;
 

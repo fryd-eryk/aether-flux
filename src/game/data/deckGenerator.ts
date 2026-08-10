@@ -1,11 +1,13 @@
 import type { CardRarity } from '../types/Card';
 import { CARD_DEFINITIONS } from './cards';
 
-/** How many of a 30-card deck come from each rarity — mirrors the 50-card set's own 25:20:5 split. Legendary/mythical have no cards yet, so they're left out rather than given an arbitrary count. */
+/** How many of a 30-card deck come from each rarity. Every rarity that has at least one card defined gets a guaranteed slot, even the rarer legendary/mythical tiers. */
 const RARITY_COUNTS: Partial<Record<CardRarity, number>> = {
-    common: 16,
+    common: 14,
     rare: 12,
     exotic: 2,
+    legendary: 1,
+    mythical: 1,
 };
 
 /** Max copies of a single card id allowed in a generated deck — same convention the old flat STARTER_DECK used. */
@@ -43,9 +45,10 @@ function pickWithCap(pool: string[], count: number): string[] {
 
 /**
  * Builds one randomly-generated 30-card deck, proportionate to the rarities in
- * RARITY_COUNTS (15 common / 12 rare / 3 exotic). Called once per player at game
- * start (see CardGame.ts), so each side gets an independently random deck. Card order
- * doesn't matter here — createInitialState shuffles the built deck itself.
+ * RARITY_COUNTS (14 common / 12 rare / 2 exotic / 1 legendary / 1 mythical). Called
+ * once per player at game start (see CardGame.ts), so each side gets an independently
+ * random deck. Card order doesn't matter here — createInitialState shuffles the built
+ * deck itself.
  */
 export function generateDeck(): string[] {
     return (Object.keys(RARITY_COUNTS) as CardRarity[]).flatMap((rarity) =>

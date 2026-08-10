@@ -164,7 +164,8 @@ export class PileViewController
                 new Geom.Rectangle(0, 0, CARD_W, CARD_H),
                 Geom.Rectangle.Contains
             );
-            this.helpBox.attachKeywordHover(card, instance);
+            // Pile-view cards render in 'full' mode and already print their cost on-card.
+            this.helpBox.attachKeywordHover(card, instance, false);
 
             this.objects.push(card);
         });

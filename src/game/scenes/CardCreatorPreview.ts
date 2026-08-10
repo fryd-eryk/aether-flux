@@ -2,7 +2,7 @@ import { Scene } from 'phaser';
 
 import { EventBus } from '../EventBus';
 import { CardView } from './CardGame/CardView';
-import type { CardDisplayMode } from './CardGame/cardLayout';
+import { loadHeaderFooterBg, type CardDisplayMode } from './CardGame/cardLayout';
 import type { CardDefinition } from '../types/Card';
 import { buildPreviewInstance } from '../../cardCreator/fakeCardInstance';
 
@@ -27,8 +27,10 @@ export const RENDER_SCALE = 3;
  * A standalone Scene (own Game instance, see cardCreatorMain.ts) that renders exactly
  * one card via the real CardView, driven by React form data instead of a running
  * TurnStateMachine — see the Card Creator plan. Deliberately skips Boot/Preloader's
- * card-back + every card's art (only the two 'full' mode PNGs are needed up front);
- * a selected/edited card's own art loads lazily in handleUpdate as its id changes.
+ * card-back + every card's art (only the 'full' mode header/footer PNG is needed up
+ * front, via loadHeaderFooterBg — see its comment in cardLayout.ts for why that's a
+ * shared helper rather than a second inline load.image call); a selected/edited card's
+ * own art loads lazily in handleUpdate as its id changes.
  */
 export class CardCreatorPreview extends Scene
 {
@@ -43,10 +45,7 @@ export class CardCreatorPreview extends Scene
     preload ()
     {
         this.load.setPath('assets');
-
-        // Same keys/paths as Preloader.ts — must match cardLayout.ts's HEADER_BG_KEY/FOOTER_BG_KEY.
-        this.load.image('card-header-bg', 'textures/card-header-bg.png');
-        this.load.image('card-footer-bg', 'textures/card-footer-bg.png');
+        loadHeaderFooterBg(this);
     }
 
     create ()
