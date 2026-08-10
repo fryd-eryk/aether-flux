@@ -229,6 +229,25 @@ export class TurnStateMachine {
         EventBus.emit('state:card-drawn', { playerId, instanceId: card.instanceId });
     }
 
+    /**
+     * Playtesting-only cheat: pulls one specific card out of a player's deck by id and puts it
+     * straight into their hand, bypassing the random top-of-deck draw. No phase/turn gating,
+     * unlike every other player-facing method here — it's meant to be callable at any time from
+     * the deck-inspect overlay. Reuses drawCard's own 'state:card-drawn' emit so the existing fly-
+     * to-hand animation plays unmodified. See SPEC.md's "Playtesting-only features" section —
+     * remove this (and PileViewController's wiring to it) before release.
+     */
+    debugDrawCard(playerId: PlayerId, instanceId: string): void {
+        const player = this.gameState.players[playerId];
+        const index = player.deck.findIndex((c) => c.instanceId === instanceId);
+        if (index === -1) return;
+
+        const [card] = player.deck.splice(index, 1);
+        card.zone = 'hand';
+        player.hand.push(card);
+        EventBus.emit('state:card-drawn', { playerId, instanceId: card.instanceId });
+    }
+
     // --- targeting -----------------------------------------------------------
 
     private beginTargeting(action: PendingAction, ownerId: PlayerId): void {

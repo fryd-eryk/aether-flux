@@ -197,6 +197,35 @@ form (`CardForm.tsx` + `EffectsEditor.tsx` for the `effects[]` discriminated uni
   rule directly above; a new keyword/effect authored here needs the same manual
   `ai/scoring.ts`/`OpponentAI.ts` check as one added by hand.
 
+## Playtesting-only features
+
+Deliberate cheats, left in on purpose to speed up playtesting and debugging.
+**Remove both of these before the game ships** — neither is gated behind a
+dev-only flag, so as written they'd otherwise ship live to players.
+
+- **Opponent's deck is visible.** `CardGame`'s `renderPile` renders a
+  clickable pile for *both* players' decks (not just each player's own), and
+  `PileViewController.open`/`render` place no restriction on `playerId` — so
+  clicking the opponent's deck pile opens the same full pile-inspect overlay
+  as your own, showing their entire remaining deck list. To remove: restrict
+  `renderPile`'s deck-zone call (`CardGame`'s `renderNow`) to the player's own
+  deck, or otherwise stop the opponent's deck pile from being interactive/
+  openable.
+- **Click a card in your own deck view to draw it instantly.**
+  `TurnStateMachine.debugDrawCard(playerId, instanceId)` pulls one specific
+  card out of a deck and into that player's hand, bypassing the normal random
+  top-of-deck `drawCard` entirely (no phase/turn gating either — callable any
+  time). `PileViewController` wires this in only for the `player`-owned
+  `'deck'` pile view (`debugDrawable` in `render()`): each card in that grid
+  gets a hand cursor and a click handler that calls it, then re-renders the
+  same overlay off the still-open `state` reference so the card disappears
+  from the grid and play can keep drawing more. Reuses the existing
+  `'state:card-drawn'` EventBus event, so the normal fly-from-deck-to-hand
+  animation (`playDrawAnimation`) plays unmodified — no new animation code was
+  needed. To remove: delete `TurnStateMachine.debugDrawCard`, the
+  `onDebugDraw` constructor param/wiring in `PileViewController`, and the
+  `debugDrawable`/`debugDraw` branches in its `render`/`renderGrid`.
+
 ## Assets
 
 Load new assets in `Preloader.preload()` (`this.load.image(...)` /

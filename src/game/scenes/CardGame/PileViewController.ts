@@ -36,7 +36,19 @@ export class PileViewController
     private objects: Phaser.GameObjects.GameObject[] = [];
     private openPile?: { playerId: PlayerId; zone: PileZone };
 
-    constructor (private scene: Scene, private cardView: CardView, private helpBox: HelpBoxController) {}
+    /**
+     * onDebugDraw is the playtesting-only "click a card in your own deck view to draw it" cheat
+     * (see TurnStateMachine.debugDrawCard and SPEC.md's "Playtesting-only features" section) — a
+     * callback rather than a TurnStateMachine reference so this class stays state-machine-agnostic
+     * everywhere else, matching how open()/render() already take GameState as a parameter instead
+     * of owning a machine reference themselves.
+     */
+    constructor (
+        private scene: Scene,
+        private cardView: CardView,
+        private helpBox: HelpBoxController,
+        private onDebugDraw: (playerId: PlayerId, instanceId: string) => void
+    ) {}
 
     /** Opens (or switches) the overlay and paints it immediately — called directly rather than via CardGame's deferred requestRender(), since the overlay must appear on the click that opened it. */
     open (playerId: PlayerId, zone: PileZone, state: GameState): void
@@ -81,8 +93,14 @@ export class PileViewController
         dimmer.on('pointerup', () => this.close());
         this.objects.push(dimmer);
 
+        // Playtesting-only cheat: only your own deck (not the graveyard, not the opponent's deck)
+        // draws on click — see the constructor's onDebugDraw doc and SPEC.md's "Playtesting-only
+        // features" section.
+        const debugDrawable = playerId === 'player' && zone === 'deck';
+
         const owner = playerId === 'player' ? 'Your' : "Opponent's";
-        const title = this.scene.add.text(CENTER_X, 52, `${owner} ${style.title} — ${cards.length} card${cards.length === 1 ? '' : 's'}`, {
+        const titleSuffix = debugDrawable ? ' — click a card to draw it (playtesting)' : '';
+        const title = this.scene.add.text(CENTER_X, 52, `${owner} ${style.title} — ${cards.length} card${cards.length === 1 ? '' : 's'}${titleSuffix}`, {
             fontFamily: 'Arial Black', fontSize: '36px', color: '#ffffff',
         }).setOrigin(0.5, 0).setDepth(PILE_VIEW_DEPTH + 1);
         this.objects.push(title);
@@ -107,7 +125,7 @@ export class PileViewController
             return;
         }
 
-        this.renderGrid(cards);
+        this.renderGrid(cards, debugDrawable ? { playerId, state } : undefined);
     }
 
     /**
@@ -128,8 +146,15 @@ export class PileViewController
         });
     }
 
-    /** Lays the cards out in a centered grid, scaled down just far enough that the whole pile fits on one screen — no scrolling, however big the zone gets. */
-    private renderGrid (cards: CardInstance[]): void
+    /**
+     * Lays the cards out in a centered grid, scaled down just far enough that the whole pile fits
+     * on one screen — no scrolling, however big the zone gets. `debugDraw`, when present, is the
+     * playtesting-only "click to draw" cheat (see the constructor doc) — each card additionally
+     * gets a hand cursor and a pointerup that draws it, then re-renders this same overlay in place
+     * (off the still-live `state` reference) so the drawn card disappears from the grid and the
+     * count updates without closing the view, letting a playtester draw several cards in a row.
+     */
+    private renderGrid (cards: CardInstance[], debugDraw?: { playerId: PlayerId; state: GameState }): void
     {
         const columns = Math.min(PILE_VIEW_MAX_COLUMNS, cards.length);
         const rows = Math.ceil(cards.length / columns);
@@ -158,14 +183,25 @@ export class PileViewController
             card.setPosition(CENTER_X + (column - (inRow - 1) / 2) * stepX, originY + row * stepY);
             card.setScale(scale);
             card.setDepth(PILE_VIEW_DEPTH + 1);
-            card.setInteractive(
+            card.setInteractive({
                 // See renderHero in CardGame — top-left-based, not centered. The container's
                 // scale applies to the hit area too, so this needs no scale compensation of its own.
-                new Geom.Rectangle(0, 0, CARD_W, CARD_H),
-                Geom.Rectangle.Contains
-            );
+                hitArea: new Geom.Rectangle(0, 0, CARD_W, CARD_H),
+                hitAreaCallback: Geom.Rectangle.Contains,
+                useHandCursor: !!debugDraw,
+            });
             // Pile-view cards render in 'full' mode and already print their cost on-card.
             this.helpBox.attachKeywordHover(card, instance, false);
+
+            if (debugDraw)
+            {
+                const { playerId, state } = debugDraw;
+                card.on('pointerup', () =>
+                {
+                    this.onDebugDraw(playerId, instance.instanceId);
+                    this.render(state);
+                });
+            }
 
             this.objects.push(card);
         });

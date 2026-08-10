@@ -512,7 +512,10 @@ export class CardGame extends Scene
         // finished game into the next one.
         this.cardView = new CardView(this);
         this.helpBoxController = new HelpBoxController(this, () => this.draggedContainer);
-        this.pileView = new PileViewController(this, this.cardView, this.helpBoxController);
+        // Playtesting-only cheat wiring (debugDrawCard) — see SPEC.md's "Playtesting-only
+        // features" section for why this exists and where it needs to be ripped out.
+        this.pileView = new PileViewController(this, this.cardView, this.helpBoxController,
+            (playerId, instanceId) => this.machine.debugDrawCard(playerId, instanceId));
 
         this.add.rectangle(CENTER_X, CENTER_Y, GAME_WIDTH, GAME_HEIGHT, 0x161b26);
 
@@ -1095,7 +1098,11 @@ export class CardGame extends Scene
         cards.forEach((instance, index) =>
         {
             const isSummoningSick = ownerId === 'player' && instance.summoningSick && !hasKeyword(instance, 'charge');
-            const isFrozen = ownerId === 'player' && instance.frozen;
+            // Unlike summoning sickness (only meaningful for the player's own board — it's about
+            // whether *you* can act with this card), frozen is informative for either side: an
+            // enemy minion frozen by e.g. Glacial Grasp can't attack either, and the player needs
+            // to see that.
+            const isFrozen = instance.frozen;
 
             const container = this.cardView.createCardContainer(instance, 'simplified', undefined, isSummoningSick, isFrozen);
             container.setPosition(startX + index * spacing, y);
