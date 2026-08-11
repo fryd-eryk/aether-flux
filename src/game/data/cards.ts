@@ -775,7 +775,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "top",
     },
 
-    // --- Exotic rarity (10) ---
+    // --- Exotic rarity (11) ---
     "blood-moon-ritual": {
         id: "blood-moon-ritual",
         name: "Blood Moon Ritual",
@@ -801,6 +801,35 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
         artVerticalAlign: "top",
+    },
+    "forced-coronation": {
+        id: "forced-coronation",
+        name: "Forced Coronation",
+        cost: 3,
+        type: "spell",
+        text: "Target minion gets +3/+3 and is silenced.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "buff",
+                    attack: 3,
+                    health: 3,
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                },
+            },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "silence",
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                },
+            },
+        ],
+        rarity: "exotic",
+        artVerticalAlign: "bottom",
     },
     "paintwister-scorpion": {
         id: "paintwister-scorpion",
@@ -977,7 +1006,34 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Legendary rarity (3) ---
+    // --- Legendary rarity (4) ---
+    "deep-fathoms-strike": {
+        id: "deep-fathoms-strike",
+        name: "Deep Fathoms Strike",
+        cost: 5,
+        type: "spell",
+        text: "Deal 2 damage to a minion and freeze all enemy minions.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "freeze",
+                    target: "allEnemyMinions",
+                },
+            },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 2,
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                },
+            },
+        ],
+        rarity: "legendary",
+        artVerticalAlign: "bottom",
+    },
     "martheus-the-last-bastion": {
         id: "martheus-the-last-bastion",
         name: "Martheus, The Last Bastion",

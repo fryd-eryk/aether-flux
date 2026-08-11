@@ -9,8 +9,8 @@ export const CENTER_Y = GAME_HEIGHT / 2;
 
 // 2:3 ratio, matching the 832x1248 art assets exactly — so a full-bleed cover-fit (see
 // coverFit) never needs to crop, the art's own aspect ratio already fills the card exactly.
-export const CARD_W = 150;
-export const CARD_H = 225;
+export const CARD_W = 174;
+export const CARD_H = 260;
 
 // Shared face-down texture — key must match Preloader.ts's load.image call.
 export const CARD_BACK_KEY = 'card-back';
@@ -45,9 +45,9 @@ export const BOARD_ZONE_W = 1600;
 export const OPPONENT_HERO_Y = 37;
 export const OPPONENT_HAND_Y = 0; // poked flush against the top edge — always, see above
 export const OPPONENT_BOARD_Y = 265;
-export const PLAYER_BOARD_Y = 657;
+export const PLAYER_BOARD_Y = 600;
 export const PLAYER_HAND_POKE_Y = GAME_HEIGHT - CARD_H / 2; // poked flush against the bottom edge
-export const PLAYER_HERO_Y = PLAYER_BOARD_Y + 150; // fixed — the hero never moves, see above
+export const PLAYER_HERO_Y = PLAYER_BOARD_Y + 180; // fixed — the hero never moves, see above
 
 // How far a peeked card's own edge sits clear of the screen's bottom edge — tuned by eye, so it
 // doesn't sit flush against it.
@@ -87,7 +87,7 @@ export const HAND_PEEK_DEPTH = 400;
 //   hinge between the two center cards for an even-sized hand, or the exact center card's own
 //   upright edge for an odd-sized hand) rises above the flush poke edge. Purely an anchor/offset
 //   for the chain as a whole; it does not affect the chain's shape (that's rotation's job alone).
-export const HAND_ARC_ANGLE_STEP_DEG = 3;
+export const HAND_ARC_ANGLE_STEP_DEG = 4;
 export const HAND_ARC_MAX_ANGLE_DEG = 18;
 export const HAND_ARC_LIFT = 26;
 
@@ -105,7 +105,7 @@ export const HAND_ARC_LIFT = 26;
 // can't avoid that (see handRowLayout's doc comment) — so CARD_W - 3 is the tightest spacing at
 // which the neighbor's own left edge lands exactly on the digit's right edge without crossing
 // into it, i.e. the badge stays fully visible right up to the edge of safe.
-export const HAND_MIN_SPACING = CARD_W;
+export const HAND_MIN_SPACING = CARD_W + 3;
 
 // Deck/graveyard piles share the end-turn/cancel buttons' column, offset further right so hand
 // cards (which can extend close to x=1760 at max hand size) never overlap them.
@@ -191,7 +191,7 @@ export const PILL_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStr
 // muddy here — plain dark text instead. The wounded variant (currentHealth !== maxHealth) recolors
 // just the health digits red — everything else about the two styles must stay identical (font,
 // size, resolution) since they render side-by-side in the same line.
-export const STAT_FUSED_LIGHT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial Black', fontSize: '14px', color: '#1a1a2e', resolution: CARD_TEXT_RESOLUTION };
+export const STAT_FUSED_LIGHT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial Black', fontSize: '16px', color: '#1a1a2e', resolution: CARD_TEXT_RESOLUTION };
 export const STAT_FUSED_LIGHT_WOUNDED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { ...STAT_FUSED_LIGHT_STYLE, color: '#c0392b' };
 
 // New card layout constants (createCardContainer) — starting points tuned by eye against
@@ -203,6 +203,7 @@ export const PILL_PAD_X = 5;
 export const PILL_ROW_GAP = 3;
 export const PILL_INSET_X = 6;
 export const PILL_INSET_Y = 8; // 'simplified' mode's bottom-left keyword/trigger pill stack
+export const PILL_RADIUS = 4; // keyword/status pill corner radius (b2)
 // Extra top padding in the hover tooltip when it draws its own overflowing mana-cost badge (now the
 // same gradient circle as the on-card one — see HelpBoxController.showHelpBox and COST_BADGE_R_FULL
 // below) — tuned for that circle's height, not the old flat-blue box this replaced.
@@ -279,14 +280,31 @@ export function loadFrozenTexture(scene: Phaser.Scene): void
 export const HEADER_FOOTER_CONTENT_H = 16;
 export const RARITY_DOT_R = 4;
 export const RARITY_DOT_INSET = 8; // gap from the card's left/bottom edges to the dot's center
-// Shared atk/hp stat badge (createStatBox) — a circle centered exactly on the card's bottom-right
-// corner, the same treatment COST_BADGE_R_FULL below gets on the top-right corner, used identically
-// by 'full' and 'simplified' mode now (previously 'full' sat inset with no overflow at all). Smaller
-// than the old dedicated rectangle (30x13, itself already a shrink from an even older 46x26) so it
-// overflows less despite now overflowing in both modes.
-export const ATKHP_BADGE_R = 10;
+// Atk/hp stat badge (createStatBadge) — a circle centered on the card's bottom-right corner, the
+// same corner-overflow treatment COST_BADGE_R_FULL above gets on the top-right corner (previously
+// 'full' mode sat inset with no overflow at all; both modes overflow now). Smaller than the old
+// dedicated rectangle (30x13, itself already a shrink from an even older 46x26).
+//
+// 'full' mode's badge (a1) was grown from its original radius-10 size, pinned so growth only
+// extends left/up (into the card) rather than adding more right/bottom overflow — ATKHP_BADGE_CENTER_X/Y
+// hold the circle's right/bottom extent fixed at that original radius-10 corner position (the
+// literal `10` below is that fixed anchor, not a reference to ATKHP_BADGE_R, so it doesn't drift if
+// the radius is tuned again), the same reasoning HAND_MIN_SPACING's comment gives for why the
+// mana-cost badge can't just grow further right: a rightward hand neighbor paints over the card to
+// its left, so pushing overflow further right risks the badge getting hidden under it.
+export const ATKHP_BADGE_R = 14;
+export const ATKHP_BADGE_CENTER_X = CARD_W / 2 + 10 - ATKHP_BADGE_R;
+export const ATKHP_BADGE_CENTER_Y = CARD_H / 2 + 10 - ATKHP_BADGE_R;
 export const ATKHP_BADGE_COLOR = 0xffffff; // fill — flat, not gradient, unlike the mana badge; edit here
+
+// Board-only badge (b1) — plain corner-centered (no pin — the board row doesn't pack cards as
+// tightly as a hand fan, so there's no equivalent overflow-collision risk to avoid), a touch bigger
+// than 'full' mode's now-grown badge above; createStatusPills' rowLimitX must stay in sync with
+// this (it reserves this exact radius' worth of space so pills never run into the badge).
+export const ATKHP_BADGE_R_SIMPLIFIED = ATKHP_BADGE_R + 2;
 export const DESC_BOX_RADIUS = 5;
+// Rarity-gradient border stroked around the description box (a2) — see createDescriptionBox.
+export const DESC_BOX_BORDER_WIDTH = 1;
 export const DESC_BOX_INSET_X = 4; // gap from the card's left/right edges to the description box
 export const DESC_BOX_PAD_Y = 6; // internal top/bottom padding between the box edge and its text
 export const DESC_BOX_KEYWORD_LINE_H = 14; // fixed height budgeted for the keyword line, matching createKeywordLabels' font metrics
@@ -296,7 +314,7 @@ export const DESC_BOX_LINE_GAP = 2; // gap between the keyword line and the rule
 // box's drawn background is separately stretched down past this anchor to CARD_H / 2 so it visually
 // continues behind the footer bar (which paints over it on top), but that must never move where the
 // text itself lands, so the two are intentionally decoupled.
-export const DESC_BOX_BOTTOM_Y = CARD_H / 2 - 12;
+export const DESC_BOX_BOTTOM_Y = CARD_H / 2 - 18;
 
 // Header's mana-cost badge — centered exactly on the card's top-right corner so it deliberately
 // overflows both edges (bringing back the pre-v2 treatment, see createHeaderFull), rendered over the
@@ -322,11 +340,12 @@ export type PileZone = 'deck' | 'graveyard';
  * battlefield-only layout — same full-bleed art and gradient header/title, but no cost badge, no
  * description box/footer PNG; a minion's keywords and triggered-effect flavor words instead render
  * as compact bottom-left pills (see createStatusPills), to keep the cramped board row as
- * clutter-free as possible. The atk/hp badge (createStatBadge, ATKHP_BADGE_R/ATKHP_BADGE_COLOR) is
- * the one piece shared verbatim by both modes — a flat-white circle centered on the bottom-right
- * corner so it overflows both edges, the same corner-badge treatment the mana-cost circle gets on
- * the opposite corner. 'faceDown' is the card-back, used for the opponent's hand and its matching
- * draw-animation preview.
+ * clutter-free as possible. The atk/hp badge (createStatBadge) is built by shared code in both
+ * modes — a flat-white circle centered on the bottom-right corner so it overflows both edges, the
+ * same corner-badge treatment the mana-cost circle gets on the opposite corner — but not the same
+ * size: 'full' mode uses ATKHP_BADGE_R (pinned so growth only extends left/up, see its own comment),
+ * 'simplified' mode uses the separate, slightly larger ATKHP_BADGE_R_SIMPLIFIED. 'faceDown' is the
+ * card-back, used for the opponent's hand and its matching draw-animation preview.
  */
 export type CardDisplayMode = 'full' | 'simplified' | 'faceDown';
 

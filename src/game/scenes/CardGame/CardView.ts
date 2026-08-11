@@ -7,7 +7,10 @@ import { distinctTriggers, TRIGGER_METADATA } from "../../data/triggerMetadata";
 import type { CardDefinition, CardInstance } from "../../types/Card";
 import {
     ATKHP_BADGE_COLOR,
+    ATKHP_BADGE_CENTER_X,
+    ATKHP_BADGE_CENTER_Y,
     ATKHP_BADGE_R,
+    ATKHP_BADGE_R_SIMPLIFIED,
     CARD_BACK_KEY,
     CARD_H,
     CARD_W,
@@ -19,6 +22,7 @@ import {
     coverFit,
     COST_TEXT_STYLE,
     type CardDisplayMode,
+    DESC_BOX_BORDER_WIDTH,
     DESC_BOX_BOTTOM_Y,
     DESC_BOX_INSET_X,
     DESC_BOX_KEYWORD_LINE_H,
@@ -39,6 +43,7 @@ import {
     PILL_INSET_Y,
     PILL_LABEL_STYLE,
     PILL_PAD_X,
+    PILL_RADIUS,
     PILL_ROW_GAP,
     RARITY_DOT_INSET,
     RARITY_DOT_R,
@@ -90,6 +95,7 @@ export class CardView {
 
         if (mode === "simplified") {
             container.add(this.createHeaderGradient());
+            container.add(this.createFooterGradient());
 
             // Name centered, full card width — no cost badge to dodge.
             const nameText = this.scene.add.text(0, -CARD_H / 2 + 2, definition.name, NAME_STYLE).setOrigin(0.5, 0);
@@ -99,8 +105,8 @@ export class CardView {
             // No cost badge, no description box/footer bar — battlefield row stays art-first.
             // Keywords/triggers instead render as compact bottom-left pills (see
             // createStatusPills), and attack/health uses the same corner-overflowing atk/hp badge
-            // 'full' mode's footer uses (createStatBadge).
-            container.add(this.createStatBadge(instance, definition));
+            // 'full' mode's footer uses (createStatBadge), just a size larger (b1).
+            container.add(this.createStatBadge(instance, definition, ATKHP_BADGE_R_SIMPLIFIED, CARD_W / 2, CARD_H / 2));
             container.add(this.createStatusPills(instance, definition));
 
             container.setSize(CARD_W, CARD_H);
@@ -131,6 +137,18 @@ export class CardView {
         gfx.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0.9, 0.9, 0, 0);
         gfx.fillRect(-CARD_W / 2, -CARD_H / 2, CARD_W, HEADER_H * 2);
         return gfx;
+    }
+
+    /**
+     * 'simplified' mode's bottom gradient band (b3), behind the atk/hp badge and status pills —
+     * mirrors createHeaderGradient rather than re-authoring the same fill: that Graphics object is
+     * positioned at the card's own local (0,0), i.e. its vertical center, so flipping it with
+     * scaleY = -1 reflects the top band into the exact matching position at the bottom edge for
+     * free. A Graphics object has no texture to setFlipY on the way the 'full' mode header/footer
+     * PNG does elsewhere in this file — this is the closest equivalent for a vector draw.
+     */
+    private createFooterGradient(): Phaser.GameObjects.Graphics {
+        return this.createHeaderGradient().setScale(1, -1);
     }
 
     /**
@@ -203,10 +221,28 @@ export class CardView {
 
         const boxHeight = contentHeight + DESC_BOX_PAD_Y * 2;
         const boxTop = DESC_BOX_BOTTOM_Y - boxHeight;
+        const boxX = -CARD_W / 2 + DESC_BOX_INSET_X;
+        const boxWidth = CARD_W - DESC_BOX_INSET_X * 2;
+        const boxBottomHeight = CARD_H / 2 - boxTop;
 
         const box = this.scene.add.graphics();
         box.fillStyle(0x000000, 0.75);
-        box.fillRoundedRect(-CARD_W / 2 + DESC_BOX_INSET_X, boxTop, CARD_W - DESC_BOX_INSET_X * 2, CARD_H / 2 - boxTop, DESC_BOX_RADIUS);
+        box.fillRoundedRect(boxX, boxTop, boxWidth, boxBottomHeight, DESC_BOX_RADIUS);
+
+        // Rarity-gradient border (a2), stroked on the exact same rect/radius as the fill above so it
+        // traces the rounded corners precisely — a stroke paints outward from its path, unlike a
+        // fill, so it never bleeds color into the fill's translucent interior the way a second,
+        // larger gradient fill drawn underneath would. The fill's bottom edge sits flush with the
+        // card's own bottom edge (CARD_H / 2) so the footer bar (painted after this, opaque) can hide
+        // the overflow — but stroking that same edge would leak half the border's width past the
+        // card's actual boundary (the footer's PNG only extends upward from CARD_H / 2, so it
+        // wouldn't cover that), hence borderHeight pulls the stroke's bottom in by half the border
+        // width. Left/right/top edges have plenty of clearance (DESC_BOX_INSET_X) and need no
+        // equivalent adjustment.
+        const { light, dark } = definition.rarity ? RARITY_METADATA[definition.rarity] : UNRANKED_RARITY_COLOR;
+        const borderHeight = boxBottomHeight - DESC_BOX_BORDER_WIDTH / 2;
+        box.lineGradientStyle(DESC_BOX_BORDER_WIDTH, light, light, dark, dark, 1);
+        box.strokeRoundedRect(boxX, boxTop, boxWidth, borderHeight, DESC_BOX_RADIUS);
 
         const objects: Phaser.GameObjects.GameObject[] = [box];
         let cursorY = boxTop + DESC_BOX_PAD_Y;
@@ -254,28 +290,32 @@ export class CardView {
     }
 
     /**
-     * The atk/hp stat badge — shared by 'full' and 'simplified' mode, both of which now center it
-     * exactly on the card's bottom-right corner (the same corner-overflow treatment
+     * The atk/hp stat badge — used by both 'full' and 'simplified' mode, both of which center it on
+     * (or near) the card's bottom-right corner (the same corner-overflow treatment
      * createHeaderFull's mana-cost badge gets on the top-right corner) rather than 'full' mode
-     * keeping it fully inset like before. A flat-white filled circle (ATKHP_BADGE_R/ATKHP_BADGE_COLOR
-     * — no gradient/stroke, unlike the mana badge), with "atk/hp" rendered as three separate Text
-     * objects (attack, "/", health) rather than one string so the health digits alone can switch to
+     * keeping it fully inset like before. A flat-white filled circle (ATKHP_BADGE_COLOR — no
+     * gradient/stroke, unlike the mana badge), with "atk/hp" rendered as three separate Text objects
+     * (attack, "/", health) rather than one string so the health digits alone can switch to
      * STAT_FUSED_LIGHT_WOUNDED_STYLE's red when the minion is wounded (currentHealth !== maxHealth)
      * — Phaser Text has no inline multi-color rich-text support, so this is the same
      * multiple-objects-with-a-running-cursor technique createKeywordLabels uses. Minion-only.
+     *
+     * `radius`/`centerX`/`centerY` default to 'full' mode's pinned treatment (ATKHP_BADGE_R,
+     * ATKHP_BADGE_CENTER_X/Y — grown from the corner but held to its original right/bottom overflow
+     * extent, see those constants' comment). The simplified (board) caller passes
+     * ATKHP_BADGE_R_SIMPLIFIED with a plain corner center instead (b1) — bigger, and not pinned,
+     * since the board row doesn't pack cards tightly enough for the same overflow-collision risk.
      */
-    private createStatBadge(instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[] {
+    private createStatBadge(instance: CardInstance, definition: CardDefinition, radius = ATKHP_BADGE_R, centerX = ATKHP_BADGE_CENTER_X, centerY = ATKHP_BADGE_CENTER_Y): Phaser.GameObjects.GameObject[] {
         if (definition.type !== "minion") return [];
 
-        const centerX = CARD_W / 2;
-        const centerY = CARD_H / 2;
         const currentAttack = instance.currentAttack ?? 0;
         const currentHealth = instance.currentHealth ?? 0;
         const wounded = currentHealth !== (instance.maxHealth ?? currentHealth);
 
         const badge = this.scene.add.graphics();
         badge.fillStyle(ATKHP_BADGE_COLOR, 1);
-        badge.fillCircle(centerX, centerY, ATKHP_BADGE_R);
+        badge.fillCircle(centerX, centerY, radius);
 
         const atkText = this.scene.add.text(0, centerY, `${currentAttack}`, STAT_FUSED_LIGHT_STYLE).setOrigin(0, 0.5);
         const slashText = this.scene.add.text(0, centerY, "/", STAT_FUSED_LIGHT_STYLE).setOrigin(0, 0.5);
@@ -463,7 +503,7 @@ export class CardView {
 
         const objects: Phaser.GameObjects.GameObject[] = [];
         const startX = -CARD_W / 2 + PILL_INSET_X;
-        const rowLimitX = CARD_W / 2 - ATKHP_BADGE_R - PILL_INSET_X;
+        const rowLimitX = CARD_W / 2 - ATKHP_BADGE_R_SIMPLIFIED - PILL_INSET_X;
         let cursorX = startX;
         let cursorY = CARD_H / 2 - PILL_INSET_Y - PILL_H;
 
@@ -476,7 +516,9 @@ export class CardView {
                 cursorY -= PILL_H + PILL_ROW_GAP;
             }
 
-            const pill = this.scene.add.rectangle(cursorX, cursorY + PILL_H / 2, pillWidth, PILL_H, color).setOrigin(0, 0.5);
+            const pill = this.scene.add.graphics();
+            pill.fillStyle(color, 1);
+            pill.fillRoundedRect(cursorX, cursorY, pillWidth, PILL_H, PILL_RADIUS);
             text.setPosition(cursorX + PILL_PAD_X, cursorY + PILL_H / 2);
             objects.push(pill, text);
             cursorX += pillWidth + PILL_ROW_GAP;
