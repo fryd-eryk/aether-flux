@@ -3,7 +3,12 @@
 Quick orientation for Claude Code when working in this repo. For file-by-file
 architecture, keyword-ability mechanics, card-authoring conventions, and the AI
 scoring model, see **[SPEC.md](./SPEC.md)** — read it before making non-trivial
-changes inside the card game.
+changes inside the card game. SPEC.md's **"Game design theory reference"**
+section also has genre-level TCG design theory (mana curves, deck archetypes,
+rarity/power-creep tradeoffs, keyword design, faction identity) distinct from
+this project's own decisions — consult it for vocabulary/tradeoffs when a card
+or mechanic design call comes up, alongside "Game design decisions" below for
+what this project has actually already decided.
 
 ## Commands
 

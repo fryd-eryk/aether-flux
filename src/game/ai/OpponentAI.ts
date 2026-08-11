@@ -53,14 +53,14 @@ export function decideOpponentAction(state: GameState): AIAction | null {
         if (!canDeclareAttack(attacker)) continue; // mirrors TurnStateMachine.declareAttack's own guard
 
         if (!tauntUp) {
-            const faceScore = scoreAttack(attacker, 'face', lethalAvailable);
+            const faceScore = scoreAttack(state, aiId, attacker, 'face', lethalAvailable);
             if (!best || faceScore > best.score) {
                 best = { score: faceScore, action: { kind: 'attack', attackerInstanceId: attacker.instanceId, targetId: enemyId } };
             }
         }
 
         for (const defender of legalDefenders) {
-            const score = scoreAttack(attacker, defender, lethalAvailable);
+            const score = scoreAttack(state, aiId, attacker, defender, lethalAvailable);
             if (!best || score > best.score) {
                 best = { score, action: { kind: 'attack', attackerInstanceId: attacker.instanceId, targetId: defender.instanceId } };
             }

@@ -513,9 +513,19 @@ export class CardGame extends Scene
         this.cardView = new CardView(this);
         this.helpBoxController = new HelpBoxController(this, () => this.draggedContainer);
         // Playtesting-only cheat wiring (debugDrawCard) — see SPEC.md's "Playtesting-only
-        // features" section for why this exists and where it needs to be ripped out.
+        // features" section for why this exists and where it needs to be ripped out. Unlike every
+        // other TurnStateMachine call the player can trigger, debugDrawCard fires no
+        // 'state:phase-change' (it isn't part of the normal turn flow), so nothing would otherwise
+        // schedule the renderNow() that re-lays the hand fan and rewires the new card's
+        // interactivity — requestRender() here queues that rebuild for once the draw animation
+        // (already enqueued synchronously by debugDrawCard's 'state:card-drawn' emit) drains,
+        // exactly like a real draw gets via its own eventual phase change.
         this.pileView = new PileViewController(this, this.cardView, this.helpBoxController,
-            (playerId, instanceId) => this.machine.debugDrawCard(playerId, instanceId));
+            (playerId, instanceId) =>
+            {
+                this.machine.debugDrawCard(playerId, instanceId);
+                this.requestRender();
+            });
 
         this.add.rectangle(CENTER_X, CENTER_Y, GAME_WIDTH, GAME_HEIGHT, 0x161b26);
 

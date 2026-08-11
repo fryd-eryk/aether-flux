@@ -68,12 +68,16 @@ function serializeEffectAction(action: EffectAction, level: number): string {
 
 function serializeEffect(effect: CardEffect, level: number): string {
     const actionSrc = serializeEffectAction(effect.action, level + 2);
-    return [
+    const lines = [
         `${indent(level)}{`,
         `${indent(level + 1)}trigger: ${JSON.stringify(effect.trigger)},`,
         `${indent(level + 1)}action: ${actionSrc},`,
-        `${indent(level)}}`,
-    ].join('\n');
+    ];
+    if (effect.condition) {
+        lines.push(`${indent(level + 1)}condition: { type: "momentum", minCount: ${effect.condition.minCount} },`);
+    }
+    lines.push(`${indent(level)}}`);
+    return lines.join('\n');
 }
 
 function serializeCardDefinition(def: CardDefinition, level: number): string {

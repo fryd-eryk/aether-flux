@@ -23,6 +23,8 @@ export interface PlayerState {
     maxHealth: number;
     mana: number;
     maxMana: number;
+    /** Reset to 0 in TurnStateMachine.startTurn; incremented once per card in executePlayCard. Drives Momentum(N) condition gating. */
+    cardsPlayedThisTurn: number;
     deck: CardInstance[];
     hand: CardInstance[];
     board: CardInstance[];

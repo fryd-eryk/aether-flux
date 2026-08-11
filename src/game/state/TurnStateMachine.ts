@@ -144,7 +144,24 @@ export class TurnStateMachine {
 
         this.setPhase(TurnPhase.Resolving);
         this.triggerEffects(card, 'onPlay', player.id, chosenTargetId);
+        // Counted after this card's own onPlay resolves (so a Momentum effect on the card itself
+        // reads "how many were played before it"), but before Channel fires below (so a Channel
+        // minion's own Momentum condition correctly counts this card as already played).
+        player.cardsPlayedThisTurn += 1;
         this.sweepDeaths();
+        if (definition.type !== 'minion') {
+            // Channel (onSpellCast) — every minion on the caster's own board with a matching
+            // effect reacts, distinct from the single-instance onPlay trigger just fired above.
+            this.triggerBoardWide('onSpellCast', player.id, player.board);
+            this.sweepDeaths();
+        } else {
+            // Muster (onMinionCast) — the mirror image of Channel above, for casting a minion
+            // instead of a spell. The played minion is already sitting in player.board by this
+            // point (pushed above), so it's filtered out here — otherwise it would react to its
+            // own cast, which is exactly what the single-instance onPlay trigger already covers.
+            this.triggerBoardWide('onMinionCast', player.id, player.board.filter((c) => c.instanceId !== card.instanceId));
+            this.sweepDeaths();
+        }
         EventBus.emit('state:card-played', { instanceId, playerId: player.id });
         this.finishResolving();
     }
@@ -203,6 +220,7 @@ export class TurnStateMachine {
 
         player.maxMana = Math.min(TurnStateMachine.MAX_MANA, player.maxMana + 1);
         player.mana = player.maxMana;
+        player.cardsPlayedThisTurn = 0;
 
         for (const card of player.board) {
             card.summoningSick = false;
@@ -312,8 +330,21 @@ export class TurnStateMachine {
         if (instance.silenced) return;
         const definition = CARD_DEFINITIONS[instance.definitionId];
         const effects = definition?.effects?.filter((e) => e.trigger === trigger) ?? [];
+        const cardsPlayedThisTurn = this.gameState.players[ownerId].cardsPlayedThisTurn;
         for (const effect of effects) {
+            // Momentum(N): skip this effect unless at least N cards were already played by its
+            // owner earlier this turn — a single choke point, same pattern as the silenced guard above.
+            if (effect.condition?.type === 'momentum' && cardsPlayedThisTurn < effect.condition.minCount) continue;
             this.applyEffectAction(effect.action, ownerId, chosenTargetId);
+        }
+    }
+
+    /** Fires `trigger` for every minion in `board` via the ordinary single-instance triggerEffects —
+     * the shared shape for board-wide triggers (Channel/onSpellCast, Mourn/onMinionDeath) that react
+     * to *another* card's event rather than their own. */
+    private triggerBoardWide(trigger: EffectTrigger, ownerId: PlayerId, board: CardInstance[]): void {
+        for (const card of board) {
+            this.triggerEffects(card, trigger, ownerId);
         }
     }
 
@@ -467,17 +498,26 @@ export class TurnStateMachine {
         }
     }
 
-    /** Single pass: moves dead minions to the graveyard and fires their onDeath triggers. Does not cascade further deaths from those triggers — fine given the current effect set has no onDeath actions. */
+    /** Moves dead minions to the graveyard, fires their onDeath triggers, and fires Mourn
+     * (onMinionDeath) on each surviving friendly minion per death. Repeats until a pass produces
+     * no new deaths — Mourn can itself deal damage and kill further minions, so a single pass is
+     * no longer sufficient now that Mourn exists (bounded: board size is finite, nothing revives). */
     private sweepDeaths(): void {
-        for (const player of Object.values(this.gameState.players)) {
-            const dead = player.board.filter((c) => (c.currentHealth ?? 0) <= 0);
-            if (dead.length === 0) continue;
+        let sweptAny = true;
+        while (sweptAny) {
+            sweptAny = false;
+            for (const player of Object.values(this.gameState.players)) {
+                const dead = player.board.filter((c) => (c.currentHealth ?? 0) <= 0);
+                if (dead.length === 0) continue;
 
-            player.board = player.board.filter((c) => (c.currentHealth ?? 0) > 0);
-            for (const card of dead) {
-                this.moveToGraveyard(card, player);
-                EventBus.emit('state:card-died', { instanceId: card.instanceId });
-                this.triggerEffects(card, 'onDeath', player.id);
+                sweptAny = true;
+                player.board = player.board.filter((c) => (c.currentHealth ?? 0) > 0);
+                for (const card of dead) {
+                    this.moveToGraveyard(card, player);
+                    EventBus.emit('state:card-died', { instanceId: card.instanceId });
+                    this.triggerEffects(card, 'onDeath', player.id);
+                    this.triggerBoardWide('onMinionDeath', player.id, player.board);
+                }
             }
         }
     }

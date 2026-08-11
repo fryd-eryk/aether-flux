@@ -8,9 +8,8 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         cost: 1,
         type: "minion",
         text: "",
-        attack: 0,
-        health: 4,
-        keywords: ["taunt"],
+        attack: 1,
+        health: 3,
         rarity: "common",
         artVerticalAlign: "bottom",
     },
@@ -248,10 +247,19 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Riverstone Golem",
         cost: 3,
         type: "minion",
-        text: "",
+        text: "Momentum(1): Draw a card.",
         attack: 1,
         health: 4,
-        keywords: ["taunt"],
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "draw",
+                    count: 1,
+                },
+                condition: { type: "momentum", minCount: 1 },
+            },
+        ],
         rarity: "common",
     },
     "anthem-of-the-vanguard": {
@@ -664,7 +672,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         cost: 6,
         type: "minion",
         text: "Anthem: Give your minions +1/+1.",
-        attack: 3,
+        attack: 2,
         health: 4,
         keywords: ["windfury"],
         effects: [
@@ -775,7 +783,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "top",
     },
 
-    // --- Exotic rarity (11) ---
+    // --- Exotic rarity (10) ---
     "blood-moon-ritual": {
         id: "blood-moon-ritual",
         name: "Blood Moon Ritual",
@@ -944,53 +952,32 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Sky Titan",
         cost: 8,
         type: "minion",
-        text: "Curfew: Deal 1 damage to the enemy hero.",
-        attack: 4,
+        text: "Momentum(1): whenever you cast a spell, silence target minion.",
+        attack: 3,
         health: 7,
         keywords: ["windfury"],
         effects: [
             {
-                trigger: "endOfTurn",
+                trigger: "onSpellCast",
                 action: {
-                    kind: "damage",
-                    amount: 1,
-                    target: "enemyHero",
+                    kind: "silence",
+                    target: "chosen",
+                    chosenRestriction: "minion",
                 },
+                condition: { type: "momentum", minCount: 1 },
             },
         ],
         rarity: "exotic",
         artVerticalAlign: "top",
-    },
-    "faery-colossus": {
-        id: "faery-colossus",
-        name: "Faery Colossus",
-        cost: 8,
-        type: "minion",
-        text: "Vigil: Restore 2 Health to your hero.",
-        attack: 4,
-        health: 6,
-        keywords: ["lifesteal"],
-        effects: [
-            {
-                trigger: "startOfTurn",
-                action: {
-                    kind: "heal",
-                    amount: 2,
-                    target: "friendlyHero",
-                },
-            },
-        ],
-        rarity: "exotic",
     },
     "eternal-phoenix-sovereign": {
         id: "eternal-phoenix-sovereign",
         name: "Eternal Phoenix Sovereign",
         cost: 9,
         type: "minion",
-        text: "Anthem: Give your minions +1/+2.",
-        attack: 5,
-        health: 6,
-        keywords: ["lifesteal","windfury"],
+        text: "Anthem: your minions get +1/+2.\nWhenever you cast a minion, minions you control gain 3 life.",
+        attack: 4,
+        health: 5,
         effects: [
             {
                 trigger: "onPlay",
@@ -998,6 +985,14 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     kind: "buff",
                     attack: 1,
                     health: 2,
+                    target: "allFriendlyMinions",
+                },
+            },
+            {
+                trigger: "onMinionCast",
+                action: {
+                    kind: "heal",
+                    amount: 3,
                     target: "allFriendlyMinions",
                 },
             },
@@ -1034,6 +1029,28 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "legendary",
         artVerticalAlign: "bottom",
     },
+    "faery-colossus": {
+        id: "faery-colossus",
+        name: "Faery Colossus",
+        cost: 8,
+        type: "minion",
+        text: "Curfew: your minions get +0/+1.",
+        attack: 4,
+        health: 6,
+        keywords: ["venom"],
+        effects: [
+            {
+                trigger: "endOfTurn",
+                action: {
+                    kind: "buff",
+                    attack: 0,
+                    health: 1,
+                    target: "allFriendlyMinions",
+                },
+            },
+        ],
+        rarity: "legendary",
+    },
     "martheus-the-last-bastion": {
         id: "martheus-the-last-bastion",
         name: "Martheus, The Last Bastion",
@@ -1056,27 +1073,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "legendary",
         artVerticalAlign: "bottom",
     },
-    "thos-reaper-of-worlds": {
-        id: "thos-reaper-of-worlds",
-        name: "Thos, Reaper of Worlds",
-        cost: 8,
-        type: "minion",
-        text: "Deathcry: Deal 8 damage to the enemy hero.",
-        attack: 8,
-        health: 8,
-        keywords: ["veiled"],
-        effects: [
-            {
-                trigger: "onDeath",
-                action: {
-                    kind: "damage",
-                    amount: 8,
-                    target: "enemyHero",
-                },
-            },
-        ],
-        rarity: "legendary",
-    },
     "doom-fissure": {
         id: "doom-fissure",
         name: "Doom Fissure",
@@ -1089,15 +1085,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 action: {
                     kind: "damage",
                     amount: 5,
-                    target: "allEnemyMinions",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 5,
-                    target: "allFriendlyMinions",
+                    target: "allMinions",
                 },
             },
             {
@@ -1113,7 +1101,36 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Mythical rarity (1) ---
+    // --- Mythical rarity (2) ---
+    "thos-reaper-of-worlds": {
+        id: "thos-reaper-of-worlds",
+        name: "Thos, Reaper of Worlds",
+        cost: 8,
+        type: "minion",
+        text: "Deathcry: Deal 6 damage to the enemy hero.\nMomentum(1): When Thos attacks, draw a card.",
+        attack: 8,
+        health: 8,
+        keywords: ["veiled"],
+        effects: [
+            {
+                trigger: "onDeath",
+                action: {
+                    kind: "damage",
+                    amount: 6,
+                    target: "enemyHero",
+                },
+            },
+            {
+                trigger: "onAttack",
+                action: {
+                    kind: "draw",
+                    count: 1,
+                },
+                condition: { type: "momentum", minCount: 1 },
+            },
+        ],
+        rarity: "mythical",
+    },
     "selia-new-dawn-foretold": {
         id: "selia-new-dawn-foretold",
         name: "Selia, New Dawn Foretold",

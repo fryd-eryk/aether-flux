@@ -98,6 +98,36 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                     </option>
                                 ))}
                             </select>
+                            <label className={styles.fieldLabel} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={effect.condition?.type === 'momentum'}
+                                    onChange={(e) =>
+                                        updateEffect(index, {
+                                            ...effect,
+                                            condition: e.target.checked ? { type: 'momentum', minCount: 1 } : undefined,
+                                        })
+                                    }
+                                />
+                                Momentum
+                            </label>
+                            {effect.condition?.type === 'momentum' && (
+                                <input
+                                    type="number"
+                                    min={1}
+                                    step={1}
+                                    className={styles.numberInput}
+                                    style={{ width: '4rem' }}
+                                    value={effect.condition.minCount}
+                                    onChange={(e) =>
+                                        updateEffect(index, {
+                                            ...effect,
+                                            condition: { type: 'momentum', minCount: Math.max(1, Number(e.target.value)) },
+                                        })
+                                    }
+                                />
+                            )}
+                            {errors[`${prefix}.condition`] && <span className={styles.fieldError}>{errors[`${prefix}.condition`]}</span>}
                             <div className={styles.effectRowButtons}>
                                 <button type="button" className={styles.smallButton} disabled={index === 0} onClick={() => moveEffect(index, -1)}>
                                     ↑

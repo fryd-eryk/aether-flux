@@ -5,7 +5,16 @@ export type CardType = 'minion' | 'spell';
 /** Static keyword abilities a minion can have. See CLAUDE.md's card game architecture notes for the full keyword roadmap. */
 export type Keyword = 'taunt' | 'charge' | 'divineShield' | 'windfury' | 'lifesteal' | 'veiled' | 'venom';
 
-export type EffectTrigger = 'onPlay' | 'onDeath' | 'startOfTurn' | 'endOfTurn' | 'onAttack' | 'onDamaged';
+export type EffectTrigger =
+    | 'onPlay'
+    | 'onDeath'
+    | 'startOfTurn'
+    | 'endOfTurn'
+    | 'onAttack'
+    | 'onDamaged'
+    | 'onSpellCast'
+    | 'onMinionDeath'
+    | 'onMinionCast';
 
 export type TargetSelector =
     | 'self'
@@ -33,9 +42,18 @@ export type EffectAction =
     | { kind: 'freeze'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
     | { kind: 'silence'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction };
 
+/**
+ * Gates whether a CardEffect fires beyond its trigger alone. 'momentum' is "Momentum(N):" —
+ * fires only if at least N other cards were already played by this effect's owner earlier this
+ * turn (see PlayerState.cardsPlayedThisTurn). A discriminated union since Phase 3's roadmap
+ * (SPEC.md) already earmarks a tribe-count condition landing here later.
+ */
+export type EffectCondition = { type: 'momentum'; minCount: number };
+
 export interface CardEffect {
     trigger: EffectTrigger;
     action: EffectAction;
+    condition?: EffectCondition;
 }
 
 /** A card's power-level bucket, used by deckGenerator.ts to build proportionate random decks. Ascending rarity/power order. */

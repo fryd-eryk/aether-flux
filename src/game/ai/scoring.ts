@@ -11,6 +11,11 @@ function opponentOf(id: PlayerId): PlayerId {
     return id === 'player' ? 'opponent' : 'player';
 }
 
+/** True if `effect`'s Momentum(N) condition (if any) is satisfied given `owner`'s cards played so far this turn. */
+function momentumSatisfied(effect: { condition?: { type: 'momentum'; minCount: number } }, owner: { cardsPlayedThisTurn: number }): boolean {
+    return !effect.condition || owner.cardsPlayedThisTurn >= effect.condition.minCount;
+}
+
 /**
  * Total damage the AI could put on the enemy hero this turn if it committed everything to
  * face (all eligible attackers + any affordable direct-damage spell). Comparing this against
@@ -97,10 +102,70 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
 /** Scores + picks a target for the one chosen-target effect a card is allowed (see TurnStateMachine.needsChosenTarget). */
 function scoreChosenTarget(state: GameState, aiId: PlayerId, action: EffectAction, lethalAvailable: boolean): ScoredTarget {
     if (action.kind === 'damage') return scoreDamageSpell(state, aiId, action.amount, lethalAvailable, action.chosenRestriction);
-    if (action.kind === 'heal') return scoreHealSpell(state, aiId, action.amount);
+    if (action.kind === 'heal') return scoreHealSpell(state, aiId, action.amount, action.chosenRestriction);
     if (action.kind === 'freeze') return scoreFreezeSpell(state, aiId, action.chosenRestriction);
     if (action.kind === 'silence') return scoreSilenceSpell(state, aiId, action.chosenRestriction);
     return { score: 0 };
+}
+
+/**
+ * Value of every Channel (onSpellCast) effect on the AI's own board that would fire if it cast
+ * a spell right now — mirrors how a card's own effects are summed in scorePlayCard, just scanned
+ * across the board instead of one card's own effects[]. Momentum-gated Channel effects are
+ * discounted the same way scorePlayCard discounts a card's own Momentum-gated effects.
+ */
+function channelBoardValue(state: GameState, aiId: PlayerId): number {
+    const ai = state.players[aiId];
+    return ai.board.reduce((sum, minion) => {
+        if (minion.silenced) return sum;
+        const definition = CARD_DEFINITIONS[minion.definitionId];
+        const channelEffects = definition?.effects?.filter((e) => e.trigger === 'onSpellCast') ?? [];
+        return (
+            sum +
+            channelEffects.reduce(
+                (s, e) => (momentumSatisfied(e, ai) ? s + estimateEffectValue(e.action, state, aiId) : s),
+                0
+            )
+        );
+    }, 0);
+}
+
+/**
+ * Value of every Muster (onMinionCast) effect on the AI's own board that would fire if it played
+ * a minion right now — mirrors channelBoardValue's shape for Channel (onSpellCast). No exclude
+ * param needed unlike mournBoardValue: the minion being scored is still in hand, not yet on
+ * ai.board, at scoring time (TurnStateMachine itself excludes the played instance for the same
+ * reason it's naturally absent here — see executePlayCard).
+ */
+function musterBoardValue(state: GameState, aiId: PlayerId): number {
+    const ai = state.players[aiId];
+    return ai.board.reduce((sum, minion) => {
+        if (minion.silenced) return sum;
+        const definition = CARD_DEFINITIONS[minion.definitionId];
+        const musterEffects = definition?.effects?.filter((e) => e.trigger === 'onMinionCast') ?? [];
+        return (
+            sum +
+            musterEffects.reduce((s, e) => (momentumSatisfied(e, ai) ? s + estimateEffectValue(e.action, state, aiId) : s), 0)
+        );
+    }, 0);
+}
+
+/**
+ * Value of every Mourn (onMinionDeath) effect on the AI's own board (excluding `excludeInstanceId`,
+ * the minion whose potential death is being scored) that would fire if one more friendly minion
+ * died right now. Used by scoreAttack to weigh a trade that would kill the attacker.
+ */
+function mournBoardValue(state: GameState, aiId: PlayerId, excludeInstanceId: string): number {
+    const ai = state.players[aiId];
+    return ai.board.reduce((sum, minion) => {
+        if (minion.instanceId === excludeInstanceId || minion.silenced) return sum;
+        const definition = CARD_DEFINITIONS[minion.definitionId];
+        const mournEffects = definition?.effects?.filter((e) => e.trigger === 'onMinionDeath') ?? [];
+        return (
+            sum +
+            mournEffects.reduce((s, e) => (momentumSatisfied(e, ai) ? s + estimateEffectValue(e.action, state, aiId) : s), 0)
+        );
+    }, 0);
 }
 
 /** Scores playing `card` from hand, resolving the best target for chosen-target effects along the way. */
@@ -115,8 +180,16 @@ export function scorePlayCard(
     const effects = definition.effects ?? [];
     const onPlayEffects = effects.filter((e) => e.trigger === 'onPlay');
     const chosenEffect = onPlayEffects.find((e) => 'target' in e.action && e.action.target === 'chosen');
+    // A Momentum-gated chosen-target effect must still resolve a legal target (the state machine
+    // prompts for one regardless of whether the condition ends up true), but its score shouldn't
+    // count if it won't actually fire.
+    const chosenEffectLive = chosenEffect ? momentumSatisfied(chosenEffect, ai) : false;
     const chosenTarget = chosenEffect ? scoreChosenTarget(state, aiId, chosenEffect.action, lethalAvailable) : undefined;
-    const flatEffectValue = effects.reduce((sum, e) => sum + estimateEffectValue(e.action, state, aiId), 0);
+    const chosenScore = chosenEffectLive ? (chosenTarget?.score ?? 0) : 0;
+    const flatEffectValue = effects.reduce(
+        (sum, e) => (momentumSatisfied(e, ai) ? sum + estimateEffectValue(e.action, state, aiId) : sum),
+        0
+    );
 
     if (definition.type === 'minion') {
         if (ai.board.length >= MAX_BOARD_SIZE) return { score: -1 }; // board full: the minion would just be discarded, see TurnStateMachine.executePlayCard
@@ -130,12 +203,16 @@ export function scorePlayCard(
             (definition.keywords?.includes('divineShield') ? 3 : 0) +
             (definition.keywords?.includes('veiled') ? 2 : 0) +
             (definition.keywords?.includes('venom') ? 4 : 0);
-        const score = stats * 2 + flatEffectValue + (chosenTarget?.score ?? 0) + keywordBonus - overextendPenalty;
+        // Casting this minion also fires Muster on every other board minion with a matching effect.
+        const musterValue = musterBoardValue(state, aiId);
+        const score = stats * 2 + flatEffectValue + chosenScore + keywordBonus - overextendPenalty + musterValue;
         return { score, targetId: chosenTarget?.targetId };
     }
 
-    if (onPlayEffects.length === 0) return { score: 0 };
-    return { score: flatEffectValue + (chosenTarget?.score ?? 0), targetId: chosenTarget?.targetId };
+    // Casting this spell also fires Channel on every board minion with a matching effect.
+    const channelValue = channelBoardValue(state, aiId);
+    if (onPlayEffects.length === 0 && channelValue === 0) return { score: 0 };
+    return { score: flatEffectValue + chosenScore + channelValue, targetId: chosenTarget?.targetId };
 }
 
 function scoreDamageSpell(
@@ -185,21 +262,42 @@ function scoreDamageSpell(
     return best;
 }
 
-function scoreHealSpell(state: GameState, aiId: PlayerId, amount: number): ScoredTarget {
+/**
+ * Scores + picks a target for a `heal` effect. Unlike scoreDamageSpell/scoreFreezeSpell/
+ * scoreSilenceSpell, a heal has nothing it *wants* to hit once the AI's hero and minions are
+ * already topped up — but selectTarget still needs a legal targetId or playCard leaves the state
+ * machine stuck in AwaitingTarget forever (see runOpponentTurn in CardGame/index.ts). For the
+ * unrestricted/'hero' cases, the AI's own hero is always a legal target and harmless to heal even
+ * at full health (hero healing intentionally overheals, see CLAUDE.md), so it seeds `best` as the
+ * guaranteed fallback instead of leaving targetId undefined. The 'minion' case mirrors
+ * scoreFreezeSpell/scoreSilenceSpell's own -Infinity sentinel + own/enemy-board fallback.
+ */
+function scoreHealSpell(state: GameState, aiId: PlayerId, amount: number, restriction?: ChosenTargetRestriction): ScoredTarget {
     const ai = state.players[aiId];
-    let best: ScoredTarget = { score: 0 };
+    let best: ScoredTarget = restriction === 'minion' ? { score: -Infinity } : { score: 0, targetId: aiId };
 
-    const heroMissing = ai.maxHealth - ai.health;
-    const heroScore = Math.min(amount, heroMissing) * 1.5;
-    if (heroScore > best.score) best = { score: heroScore, targetId: aiId };
+    if (restriction !== 'minion') {
+        const heroMissing = ai.maxHealth - ai.health;
+        const heroScore = Math.min(amount, heroMissing) * 1.5;
+        if (heroScore > best.score) best = { score: heroScore, targetId: aiId };
+    }
 
-    for (const minion of ai.board) {
-        const definition = CARD_DEFINITIONS[minion.definitionId];
-        if (!definition?.health) continue;
-        const missing = definition.health - (minion.currentHealth ?? 0);
-        if (missing <= 0) continue;
-        const score = Math.min(amount, missing) * 1.5;
-        if (score > best.score) best = { score, targetId: minion.instanceId };
+    if (restriction !== 'hero') {
+        for (const minion of ai.board) {
+            const definition = CARD_DEFINITIONS[minion.definitionId];
+            if (!definition?.health) continue;
+            const missing = definition.health - (minion.currentHealth ?? 0);
+            if (missing <= 0) continue;
+            const score = Math.min(amount, missing) * 1.5;
+            if (score > best.score) best = { score, targetId: minion.instanceId };
+        }
+    }
+
+    if (restriction === 'minion' && best.targetId === undefined) {
+        for (const minion of [...ai.board, ...state.players[opponentOf(aiId)].board]) {
+            const score = -1;
+            if (score > best.score) best = { score, targetId: minion.instanceId };
+        }
     }
 
     return best;
@@ -263,7 +361,13 @@ function scoreSilenceSpell(state: GameState, aiId: PlayerId, restriction?: Chose
 }
 
 /** Scores attacking `target` (a specific enemy minion, or 'face' for the enemy hero) with `attacker`. */
-export function scoreAttack(attacker: CardInstance, target: CardInstance | 'face', lethalAvailable: boolean): number {
+export function scoreAttack(
+    state: GameState,
+    aiId: PlayerId,
+    attacker: CardInstance,
+    target: CardInstance | 'face',
+    lethalAvailable: boolean
+): number {
     const lifestealBonus = hasKeyword(attacker, 'lifesteal') ? (attacker.currentAttack ?? 0) * 0.5 : 0;
 
     if (target === 'face') {
@@ -280,12 +384,15 @@ export function scoreAttack(attacker: CardInstance, target: CardInstance | 'face
     // unshielded hit lethal regardless of the stat comparison.
     const defenderDies = (attackerAttack >= targetHealth || hasKeyword(attacker, 'venom')) && !hasKeyword(target, 'divineShield');
     const attackerDies = (targetAttack >= attackerHealth || hasKeyword(target, 'venom')) && !hasKeyword(attacker, 'divineShield');
+    // Mourn (onMinionDeath): the attacker's own death (if this trade kills it) also fires Mourn on
+    // the rest of the AI's board — a best-effort nudge to the trade math, not full lookahead.
+    const mournBonus = attackerDies ? mournBoardValue(state, aiId, attacker.instanceId) : 0;
 
     const attackerValue = attackerAttack + attackerHealth;
     const targetValue = targetAttack + targetHealth;
 
     if (defenderDies && !attackerDies) return targetValue * 3 + lifestealBonus; // clean kill, keep the attacker
-    if (defenderDies && attackerDies) return targetValue - attackerValue + 5 + lifestealBonus; // even trade, favor when the defender was worth more
+    if (defenderDies && attackerDies) return targetValue - attackerValue + 5 + lifestealBonus + mournBonus; // even trade, favor when the defender was worth more
     if (!defenderDies && !attackerDies) return -2; // pointless chip damage (or a Divine Shield pop with no other upside)
-    return -10; // suicidal — attacker dies for nothing
+    return -10 + mournBonus; // suicidal — attacker dies for nothing (partially offset if it Mourns)
 }

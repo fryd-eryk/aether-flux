@@ -11,6 +11,7 @@ function createPlayerState(id: PlayerId, deckCardIds: string[]): PlayerState {
         maxHealth: 30,
         mana: 0,
         maxMana: 0,
+        cardsPlayedThisTurn: 0,
         deck: shuffle(buildDeck(deckCardIds, id, CARD_DEFINITIONS)),
         hand: [],
         board: [],

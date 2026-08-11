@@ -1,4 +1,4 @@
-import type { CardDefinition, EffectAction } from '../game/types/Card';
+import type { CardDefinition, CardEffect, EffectAction } from '../game/types/Card';
 
 /**
  * Per-field error messages for a `CardDefinition` draft, keyed by field name (or
@@ -10,6 +10,13 @@ import type { CardDefinition, EffectAction } from '../game/types/Card';
 export type FieldErrors = Record<string, string>;
 
 const INVALID_ID_CHARS = /["\n\r]/;
+
+function validateEffect(effect: CardEffect, prefix: string, errors: FieldErrors): void {
+    validateAction(effect.action, prefix, errors);
+    if (effect.condition && (!Number.isInteger(effect.condition.minCount) || effect.condition.minCount < 1)) {
+        errors[`${prefix}.condition`] = 'Momentum count must be a positive integer.';
+    }
+}
 
 function validateAction(action: EffectAction, prefix: string, errors: FieldErrors): void {
     switch (action.kind) {
@@ -81,7 +88,7 @@ export function validateCardDefinition(
     }
 
     (def.effects ?? []).forEach((effect, index) => {
-        validateAction(effect.action, `effects.${index}`, errors);
+        validateEffect(effect, `effects.${index}`, errors);
     });
 
     return errors;
