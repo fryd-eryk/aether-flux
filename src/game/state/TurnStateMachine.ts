@@ -7,6 +7,7 @@ import type { GameState, PlayerState } from '../types/GameState';
 import { TurnPhase } from '../types/GameState';
 import { resolveEffectValue } from './counters';
 import { canDeclareAttack, hasKeyword, isTargetable, tauntRestrictedTargets } from './keywordRules';
+import { minionHasTribe, restrictionTribe } from './tribes';
 
 type PendingAction =
     | { type: 'playCard'; instanceId: string }
@@ -129,7 +130,7 @@ export class TurnStateMachine {
         player.mana -= definition.cost;
         player.hand = player.hand.filter((c) => c.instanceId !== instanceId);
 
-        if (definition.type === 'minion') {
+        if (definition.type === 'minion' || definition.type === 'token') {
             card.summoningSick = true;
             card.attacksThisTurn = 0;
             if (player.board.length < TurnStateMachine.MAX_BOARD_SIZE) {
@@ -150,7 +151,7 @@ export class TurnStateMachine {
         // minion's own Momentum condition correctly counts this card as already played).
         player.cardsPlayedThisTurn += 1;
         this.sweepDeaths();
-        if (definition.type !== 'minion') {
+        if (definition.type !== 'minion' && definition.type !== 'token') {
             // Channel (onSpellCast) — every minion on the caster's own board with a matching
             // effect reacts, distinct from the single-instance onPlay trigger just fired above.
             this.triggerBoardWide('onSpellCast', player.id, player.board);
@@ -296,17 +297,16 @@ export class TurnStateMachine {
             return tauntUp ? attackableMinionIds : [opponentId, ...attackableMinionIds];
         }
 
-        const allTargets = [
-            ownerId,
-            opponentId,
-            ...this.gameState.players[ownerId].board.filter(isTargetable).map((c) => c.instanceId),
-            ...this.gameState.players[opponentId].board.filter(isTargetable).map((c) => c.instanceId),
-        ];
+        const friendlyMinions = this.gameState.players[ownerId].board.filter(isTargetable);
+        const enemyMinions = this.gameState.players[opponentId].board.filter(isTargetable);
+        const allMinions = [...friendlyMinions, ...enemyMinions];
 
         const restriction = this.chosenTargetRestriction(action.instanceId, ownerId);
-        if (restriction === 'minion') return allTargets.filter((id) => !this.isPlayerId(id));
-        if (restriction === 'hero') return allTargets.filter((id) => this.isPlayerId(id));
-        return allTargets;
+        const tribe = restrictionTribe(restriction);
+        if (tribe) return allMinions.filter((c) => minionHasTribe(CARD_DEFINITIONS[c.definitionId], tribe)).map((c) => c.instanceId);
+        if (restriction === 'minion') return allMinions.map((c) => c.instanceId);
+        if (restriction === 'hero') return [ownerId, opponentId];
+        return [ownerId, opponentId, ...allMinions.map((c) => c.instanceId)];
     }
 
     /** The chosenRestriction (if any) of the onPlay effect that's about to prompt targeting for this hand card — see needsChosenTarget, which only enters AwaitingTarget for a card that has exactly one such effect. */
@@ -433,7 +433,7 @@ export class TurnStateMachine {
     /** Moves a card to its owner's graveyard, resetting a minion's stats back to its definition's base attack/health — a dead or discarded minion shouldn't keep displaying whatever damage/buffs it had at the moment it left play. */
     private moveToGraveyard(card: CardInstance, player: PlayerState): void {
         const definition = CARD_DEFINITIONS[card.definitionId];
-        if (definition?.type === 'minion') {
+        if (definition?.type === 'minion' || definition?.type === 'token') {
             card.currentAttack = definition.attack;
             card.currentHealth = definition.health;
             card.maxHealth = definition.health;

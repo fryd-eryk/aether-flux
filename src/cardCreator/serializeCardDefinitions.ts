@@ -103,6 +103,9 @@ function serializeCardDefinition(def: CardDefinition, level: number): string {
     if (def.keywords && def.keywords.length > 0) {
         lines.push(`${indent(level)}keywords: ${JSON.stringify(def.keywords)},`);
     }
+    if (def.tribes && def.tribes.length > 0) {
+        lines.push(`${indent(level)}tribes: ${JSON.stringify(def.tribes)},`);
+    }
     if (def.effects && def.effects.length > 0) {
         const effectsSrc = def.effects.map((effect) => serializeEffect(effect, level + 1)).join(',\n');
         lines.push(`${indent(level)}effects: [\n${effectsSrc},\n${indent(level)}],`);
@@ -133,9 +136,12 @@ export function serializeCardDefinitions(cards: Record<string, CardDefinition>):
         groups.push(serializeGroup(`${RARITY_LABEL[rarity]} rarity (${defs.length})`, defs, 1));
     }
 
-    const tokens = all.filter((def) => !def.rarity);
+    // Primarily type: 'token' now, per Card.ts's CardDefinition.rarity doc comment — the `!def.rarity`
+    // half is a safety net so a stray rarity-less non-token definition still gets serialized
+    // somewhere instead of silently dropped, rather than a supported way to mark a token.
+    const tokens = all.filter((def) => def.type === 'token' || !def.rarity);
     if (tokens.length > 0) {
-        groups.push(serializeGroup('Tokens (not collectible — no `rarity`, so deckGenerator.ts never draws them)', tokens, 1));
+        groups.push(serializeGroup('Tokens (not collectible — `type: "token"`, so deckGenerator.ts never draws them)', tokens, 1));
     }
 
     const body = groups.join('\n\n');

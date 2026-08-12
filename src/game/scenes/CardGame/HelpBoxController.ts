@@ -2,8 +2,10 @@ import type { Scene } from 'phaser';
 
 import { CARD_DEFINITIONS } from '../../data/cards';
 import { KEYWORD_METADATA } from '../../data/keywordMetadata';
+import { TRIBE_METADATA } from '../../data/tribeMetadata';
 import type { CardInstance } from '../../types/Card';
 import {
+    ATKHP_BADGE_COLOR,
     COST_BADGE_DARK,
     COST_BADGE_LIGHT,
     COST_BADGE_R_FULL,
@@ -13,8 +15,12 @@ import {
     GAME_HEIGHT,
     GAME_WIDTH,
     PILE_VIEW_DEPTH,
+    PILL_RADIUS,
     TOOLTIP_BG_RADIUS,
     TOOLTIP_COST_CLEARANCE,
+    TOOLTIP_TRIBE_GAP,
+    TOOLTIP_TRIBE_PAD_X,
+    TRIBE_TAG_TEXT_STYLE,
 } from './cardLayout';
 
 /**
@@ -159,6 +165,23 @@ export class HelpBoxController
             const badgeText = this.scene.add.text(this.boxWidth, 0, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(0.5);
             this.helpBox.add([badge, badgeText]);
             this.helpBoxLines.push(badge, badgeText);
+
+            if (definition.tribes && definition.tribes.length > 0) {
+                const tribeLabel = definition.tribes.map((t) => TRIBE_METADATA[t].label).join(' / ');
+                const tribeText = this.scene.add.text(0, 0, tribeLabel, TRIBE_TAG_TEXT_STYLE).setOrigin(0.5);
+                const boxHeight = COST_BADGE_R_FULL * 2;
+                const boxWidth = tribeText.width + TOOLTIP_TRIBE_PAD_X * 2;
+                const boxRight = this.boxWidth - COST_BADGE_R_FULL - TOOLTIP_TRIBE_GAP;
+                const boxLeft = boxRight - boxWidth;
+
+                const tribeBox = this.scene.add.graphics();
+                tribeBox.fillStyle(ATKHP_BADGE_COLOR, 1);
+                tribeBox.fillRoundedRect(boxLeft, -boxHeight / 2, boxWidth, boxHeight, PILL_RADIUS);
+                tribeText.setPosition(boxLeft + boxWidth / 2, 0);
+
+                this.helpBox.add([tribeBox, tribeText]);
+                this.helpBoxLines.push(tribeBox, tribeText);
+            }
         }
 
         this.helpBox.setVisible(true);

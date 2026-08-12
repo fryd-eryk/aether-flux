@@ -66,7 +66,7 @@ export class CardCreatorPreview extends Scene
             return;
         }
 
-        const folder = definition.type === 'minion' ? 'minions' : 'spells';
+        const folder = definition.type === 'spell' ? 'spells' : 'minions';
         this.load.image(definition.id, `${folder}/${definition.id}.jpg`);
         // 'complete' is Phaser.Loader.Events.COMPLETE's runtime value — using the string
         // literal avoids importing another Phaser namespace by name just for one constant.

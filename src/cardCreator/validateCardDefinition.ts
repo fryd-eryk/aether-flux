@@ -95,7 +95,7 @@ export function validateCardDefinition(
 
     if (!Number.isInteger(def.cost) || def.cost < 1) errors.cost = 'Cost must be a positive integer.';
 
-    if (def.type === 'minion') {
+    if (def.type === 'minion' || def.type === 'token') {
         if (def.attack === undefined || !Number.isInteger(def.attack) || def.attack < 0) {
             errors.attack = 'Attack must be a non-negative integer.';
         }
@@ -105,6 +105,13 @@ export function validateCardDefinition(
     } else {
         if (def.attack !== undefined) errors.attack = 'Spells cannot have attack.';
         if (def.health !== undefined) errors.health = 'Spells cannot have health.';
+        if (def.tribes && def.tribes.length > 0) errors.tribes = 'Only minions can have tribes.';
+    }
+
+    if (def.type === 'token') {
+        if (def.rarity) errors.rarity = 'Tokens are not collectible and must not have a rarity.';
+    } else if (!def.rarity) {
+        errors.rarity = 'Rarity is required.';
     }
 
     (def.effects ?? []).forEach((effect, index) => {

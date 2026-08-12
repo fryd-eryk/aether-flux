@@ -7,8 +7,10 @@ import type {
     EffectTrigger,
     EffectValue,
     TargetSelector,
+    Tribe,
 } from '@/game/types/Card';
 import { COUNTER_METADATA } from '@/game/data/counterMetadata';
+import { TRIBE_METADATA } from '@/game/data/tribeMetadata';
 import { TRIGGER_METADATA } from '@/game/data/triggerMetadata';
 import type { FieldErrors } from '../validateCardDefinition';
 import styles from '@/styles/CardCreator.module.css';
@@ -16,8 +18,13 @@ import styles from '@/styles/CardCreator.module.css';
 const TRIGGERS = Object.keys(TRIGGER_METADATA) as EffectTrigger[];
 const ACTION_KINDS: EffectAction['kind'][] = ['damage', 'heal', 'draw', 'buff', 'summon', 'freeze', 'silence'];
 const TARGETS: TargetSelector[] = ['self', 'enemyHero', 'friendlyHero', 'chosen', 'allEnemyMinions', 'allFriendlyMinions', 'allMinions', 'allHeroes'];
-const RESTRICTIONS: ChosenTargetRestriction[] = ['minion', 'hero'];
+const RESTRICTIONS: ChosenTargetRestriction[] = ['minion', 'hero', ...(Object.keys(TRIBE_METADATA) as Tribe[])];
 const COUNTERS = Object.keys(COUNTER_METADATA) as CounterKind[];
+
+function restrictionLabel(restriction: ChosenTargetRestriction): string {
+    if (restriction === 'minion' || restriction === 'hero') return restriction;
+    return TRIBE_METADATA[restriction].label;
+}
 
 interface EffectValueInputProps {
     label: string;
@@ -296,7 +303,7 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                                 <option value="">— any (minion or hero) —</option>
                                                 {RESTRICTIONS.map((restriction) => (
                                                     <option key={restriction} value={restriction}>
-                                                        {restriction}
+                                                        {restrictionLabel(restriction)}
                                                     </option>
                                                 ))}
                                             </select>
@@ -376,7 +383,7 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                                 <option value="">— any (minion or hero) —</option>
                                                 {RESTRICTIONS.map((restriction) => (
                                                     <option key={restriction} value={restriction}>
-                                                        {restriction}
+                                                        {restrictionLabel(restriction)}
                                                     </option>
                                                 ))}
                                             </select>
@@ -463,7 +470,7 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                                 <option value="">— any (minion or hero) —</option>
                                                 {RESTRICTIONS.map((restriction) => (
                                                     <option key={restriction} value={restriction}>
-                                                        {restriction}
+                                                        {restrictionLabel(restriction)}
                                                     </option>
                                                 ))}
                                             </select>

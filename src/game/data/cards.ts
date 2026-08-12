@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (25) ---
+    // --- Common rarity (24) ---
     "stone-guardian": {
         id: "stone-guardian",
         name: "Stone Guardian",
@@ -10,6 +10,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "",
         attack: 1,
         health: 3,
+        tribes: ["elemental"],
         rarity: "common",
         artVerticalAlign: "bottom",
     },
@@ -21,6 +22,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "",
         attack: 1,
         health: 2,
+        tribes: ["elemental","nature"],
         rarity: "common",
     },
     "rusty-shieldbearer": {
@@ -32,6 +34,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 0,
         health: 3,
         keywords: ["taunt"],
+        tribes: ["human"],
         rarity: "common",
     },
     "ember-sprite": {
@@ -43,6 +46,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 1,
         health: 1,
         keywords: ["charge"],
+        tribes: ["elemental"],
         rarity: "common",
         artVerticalAlign: "bottom",
     },
@@ -74,6 +78,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 1,
         health: 1,
         keywords: ["divineShield"],
+        tribes: ["demon"],
         rarity: "common",
     },
     "bramble-python": {
@@ -86,24 +91,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         health: 1,
         rarity: "common",
     },
-    "test-counter-heal": {
-        id: "test-counter-heal",
-        name: "Test: Counter Heal",
-        cost: 1,
-        type: "spell",
-        text: "Restore {X} Health to your hero, where X is the number of minions on the board.",
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "heal",
-                    amount: { counter: "allMinionCount" },
-                    target: "friendlyHero",
-                },
-            },
-        ],
-        rarity: "common",
-    },
     "alms-cleric": {
         id: "alms-cleric",
         name: "Alms Cleric",
@@ -112,6 +99,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Anthem: Restore 2 Health to your hero.",
         attack: 1,
         health: 1,
+        tribes: ["human"],
         effects: [
             {
                 trigger: "onPlay",
@@ -170,6 +158,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Anthem: Draw a card.",
         attack: 1,
         health: 1,
+        tribes: ["human"],
         effects: [
             {
                 trigger: "onPlay",
@@ -227,6 +216,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 2,
         health: 1,
         keywords: ["veiled"],
+        tribes: ["underworld"],
         rarity: "common",
         artVerticalAlign: "bottom",
     },
@@ -238,6 +228,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Anthem: Draw a card.",
         attack: 2,
         health: 2,
+        tribes: ["demon","nature"],
         effects: [
             {
                 trigger: "onPlay",
@@ -245,26 +236,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     kind: "draw",
                     count: 1,
                 },
-            },
-        ],
-        rarity: "common",
-    },
-    "riverstone-golem": {
-        id: "riverstone-golem",
-        name: "Riverstone Golem",
-        cost: 3,
-        type: "minion",
-        text: "Momentum(1): Draw a card.",
-        attack: 1,
-        health: 4,
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "draw",
-                    count: 1,
-                },
-                condition: { type: "momentum", minCount: 1 },
             },
         ],
         rarity: "common",
@@ -298,6 +269,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 3,
         health: 2,
         keywords: ["charge"],
+        tribes: ["animal"],
         rarity: "common",
     },
     "ashfang-assassin": {
@@ -308,6 +280,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Strike: Deal 1 damage to the enemy hero.",
         attack: 3,
         health: 1,
+        tribes: ["human"],
         effects: [
             {
                 trigger: "onAttack",
@@ -329,6 +302,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 1,
         health: 1,
         keywords: ["venom"],
+        tribes: ["demon"],
         effects: [
             {
                 trigger: "onDeath",
@@ -341,6 +315,28 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "common",
     },
+    "starbound-seer": {
+        id: "starbound-seer",
+        name: "Starbound Seer",
+        cost: 3,
+        type: "minion",
+        text: "Momentum(1): Draw a card.",
+        attack: 1,
+        health: 4,
+        tribes: ["human","cosmic"],
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "draw",
+                    count: 1,
+                },
+                condition: { type: "momentum", minCount: 1 },
+            },
+        ],
+        rarity: "common",
+        artVerticalAlign: "bottom",
+    },
     "wandering-cleric": {
         id: "wandering-cleric",
         name: "Wandering Cleric",
@@ -349,6 +345,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Anthem: Restore 3 Health to your hero.",
         attack: 2,
         health: 3,
+        tribes: ["human","holy"],
         effects: [
             {
                 trigger: "onPlay",
@@ -371,6 +368,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 3,
         health: 5,
         keywords: ["charge"],
+        tribes: ["animal"],
         rarity: "common",
         artVerticalAlign: "bottom",
     },
@@ -382,6 +380,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "",
         attack: 5,
         health: 4,
+        tribes: ["human"],
         rarity: "common",
         artVerticalAlign: "top",
     },
@@ -394,6 +393,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 2,
         health: 7,
         keywords: ["taunt"],
+        tribes: ["human"],
         rarity: "common",
         artVerticalAlign: "bottom",
     },
@@ -407,6 +407,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Deathcry: Deal 2 damage to the enemy hero.",
         attack: 2,
         health: 2,
+        tribes: ["human","demon"],
         effects: [
             {
                 trigger: "onDeath",
@@ -428,6 +429,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Anthem: Restore 2 Health to your hero. Deal 1 damage.",
         attack: 1,
         health: 3,
+        tribes: ["human","elemental"],
         effects: [
             {
                 trigger: "onPlay",
@@ -457,6 +459,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Vigil: Restore 1 Health to your hero and deal 1 damage to the enemy hero.",
         attack: 1,
         health: 4,
+        tribes: ["nature"],
         effects: [
             {
                 trigger: "startOfTurn",
@@ -486,6 +489,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 2,
         health: 2,
         keywords: ["taunt"],
+        tribes: ["underworld"],
         effects: [
             {
                 trigger: "onDeath",
@@ -506,6 +510,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Anthem: Deal 3 damage to the enemy hero. Deathcry: Deal 3 damage to your hero.",
         attack: 4,
         health: 4,
+        tribes: ["demon"],
         effects: [
             {
                 trigger: "onPlay",
@@ -562,6 +567,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 1,
         health: 3,
         keywords: ["windfury","venom"],
+        tribes: ["animal"],
         rarity: "rare",
         artVerticalAlign: "top",
     },
@@ -574,6 +580,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 3,
         health: 3,
         keywords: ["windfury"],
+        tribes: ["human","animal"],
         effects: [
             {
                 trigger: "onPlay",
@@ -594,6 +601,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Anthem: Deal 3 damage to a minion.",
         attack: 3,
         health: 4,
+        tribes: ["human","elemental"],
         effects: [
             {
                 trigger: "onPlay",
@@ -653,6 +661,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Deathcry: Deal 3 damage to the enemy hero.",
         attack: 5,
         health: 5,
+        tribes: ["underworld","demon"],
         effects: [
             {
                 trigger: "onDeath",
@@ -674,6 +683,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 2,
         health: 4,
         keywords: ["windfury"],
+        tribes: ["human","animal"],
         effects: [
             {
                 trigger: "onPlay",
@@ -723,6 +733,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 3,
         health: 5,
         keywords: ["taunt"],
+        tribes: ["human","holy"],
         effects: [
             {
                 trigger: "onPlay",
@@ -817,6 +828,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Whenever Celestial Chaser attacks, draw X cards where X is the number of minions the opponent controls.",
         attack: 1,
         health: 2,
+        tribes: ["cosmic"],
         effects: [
             {
                 trigger: "onAttack",
@@ -858,14 +870,15 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "exotic",
         artVerticalAlign: "bottom",
     },
-    "emberback-boar": {
-        id: "emberback-boar",
-        name: "Emberback Boar",
+    "soulgorger-hound": {
+        id: "soulgorger-hound",
+        name: "Soulgorger Hound",
         cost: 4,
         type: "minion",
         text: "Mourn: gain +1/+0.",
         attack: 1,
         health: 4,
+        tribes: ["underworld"],
         effects: [
             {
                 trigger: "onMinionDeath",
@@ -878,6 +891,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "exotic",
+        artVerticalAlign: "bottom",
     },
     "ironclad-vanguard": {
         id: "ironclad-vanguard",
@@ -888,6 +902,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 4,
         health: 5,
         keywords: ["taunt","divineShield"],
+        tribes: ["human"],
         rarity: "exotic",
     },
     "cinderplume-phoenix": {
@@ -899,6 +914,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 3,
         health: 4,
         keywords: ["lifesteal"],
+        tribes: ["elemental","animal"],
         effects: [
             {
                 trigger: "onPlay",
@@ -929,7 +945,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 4,
         health: 4,
         keywords: ["charge","windfury"],
+        tribes: ["animal"],
         rarity: "exotic",
+        artVerticalAlign: "top",
     },
     "genesis-wellspring": {
         id: "genesis-wellspring",
@@ -984,6 +1002,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 3,
         health: 7,
         keywords: ["windfury"],
+        tribes: ["elemental","holy"],
         effects: [
             {
                 trigger: "onSpellCast",
@@ -1006,6 +1025,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Anthem: your minions get +1/+2.\nWhenever you cast a minion, minions you control gain 3 life.",
         attack: 4,
         health: 5,
+        tribes: ["elemental","animal"],
         effects: [
             {
                 trigger: "onPlay",
@@ -1066,6 +1086,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 4,
         health: 6,
         keywords: ["venom"],
+        tribes: ["elemental","nature"],
         effects: [
             {
                 trigger: "endOfTurn",
@@ -1088,6 +1109,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 5,
         health: 9,
         keywords: ["taunt","divineShield"],
+        tribes: ["human","holy"],
         effects: [
             {
                 trigger: "startOfTurn",
@@ -1136,9 +1158,10 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         cost: 8,
         type: "minion",
         text: "Deathcry: Deal 6 damage to the enemy hero.\nMomentum(1): When Thos attacks, draw a card.",
-        attack: 8,
+        attack: 7,
         health: 8,
         keywords: ["veiled"],
+        tribes: ["underworld"],
         effects: [
             {
                 trigger: "onDeath",
@@ -1168,19 +1191,21 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 5,
         health: 7,
         keywords: ["charge","divineShield","windfury","lifesteal"],
+        tribes: ["holy"],
         rarity: "mythical",
         artVerticalAlign: "bottom",
     },
 
-    // --- Tokens (not collectible — no `rarity`, so deckGenerator.ts never draws them) ---
+    // --- Tokens (not collectible — `type: "token"`, so deckGenerator.ts never draws them) ---
     "ember-fledgling": {
         id: "ember-fledgling",
         name: "Ember Fledgling",
         cost: 1,
-        type: "minion",
+        type: "token",
         text: "",
         attack: 1,
         health: 2,
+        tribes: ["elemental"],
         artVerticalAlign: "top",
     },
 };

@@ -39,7 +39,7 @@ export class Preloader extends Scene
         // absent, which createCardContainer's this.textures.exists() check falls back on.
         for (const definition of Object.values(CARD_DEFINITIONS))
         {
-            const folder = definition.type === 'minion' ? 'minions' : 'spells';
+            const folder = definition.type === 'spell' ? 'spells' : 'minions';
             this.load.image(definition.id, `${folder}/${definition.id}.jpg`);
         }
 

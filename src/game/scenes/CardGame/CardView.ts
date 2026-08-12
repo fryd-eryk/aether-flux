@@ -2,8 +2,9 @@ import type { Scene } from "phaser";
 
 import { CARD_DEFINITIONS } from "../../data/cards";
 import { KEYWORD_METADATA } from "../../data/keywordMetadata";
-import { RARITY_METADATA, UNRANKED_RARITY_COLOR } from "../../data/rarityMetadata";
+import { RARITY_METADATA, TOKEN_RARITY_COLOR } from "../../data/rarityMetadata";
 import { distinctTriggers, TRIGGER_METADATA } from "../../data/triggerMetadata";
+import { TRIBE_METADATA } from "../../data/tribeMetadata";
 import type { CardDefinition, CardInstance } from "../../types/Card";
 import {
     ATKHP_BADGE_COLOR,
@@ -50,6 +51,7 @@ import {
     RULE_TEXT_STYLE,
     STAT_FUSED_LIGHT_STYLE,
     STAT_FUSED_LIGHT_WOUNDED_STYLE,
+    TRIBE_LABEL_STYLE,
     TYPE_LABEL_STYLE,
 } from "./cardLayout";
 
@@ -244,7 +246,7 @@ export class CardView {
         // wouldn't cover that), hence borderHeight pulls the stroke's bottom in by half the border
         // width. Left/right/top edges have plenty of clearance (DESC_BOX_INSET_X) and need no
         // equivalent adjustment.
-        const { light, dark } = definition.rarity ? RARITY_METADATA[definition.rarity] : UNRANKED_RARITY_COLOR;
+        const { light, dark } = definition.type === "token" ? TOKEN_RARITY_COLOR : RARITY_METADATA[definition.rarity!];
         const borderHeight = boxBottomHeight - DESC_BOX_BORDER_WIDTH / 2;
         box.lineGradientStyle(DESC_BOX_BORDER_WIDTH, light, light, dark, dark, 1);
         box.strokeRoundedRect(boxX, boxTop, boxWidth, borderHeight, DESC_BOX_RADIUS);
@@ -280,13 +282,22 @@ export class CardView {
         }
 
         const dotX = -CARD_W / 2 + RARITY_DOT_INSET;
-        const { light, dark } = definition.rarity ? RARITY_METADATA[definition.rarity] : UNRANKED_RARITY_COLOR;
+        const { light, dark } = definition.type === "token" ? TOKEN_RARITY_COLOR : RARITY_METADATA[definition.rarity!];
         const dot = this.scene.add.graphics();
         dot.fillGradientStyle(light, light, dark, dark, 1, 1, 1, 1);
         dot.fillCircle(dotX, footerCenterY, RARITY_DOT_R);
         objects.push(dot);
 
-        const typeText = this.scene.add.text(dotX + RARITY_DOT_R + 3, footerCenterY, definition.type === "minion" ? "Minion" : "Spell", TYPE_LABEL_STYLE).setOrigin(0, 0.5);
+        let cursorX = dotX + RARITY_DOT_R + 3;
+        if (definition.tribes && definition.tribes.length > 0) {
+            const tribeLabel = definition.tribes.map((t) => TRIBE_METADATA[t].label).join(" / ");
+            const tribeText = this.scene.add.text(cursorX, footerCenterY, tribeLabel, TRIBE_LABEL_STYLE).setOrigin(0, 0.5);
+            objects.push(tribeText);
+            cursorX += tribeText.width + 4;
+        }
+
+        const typeLabel = definition.type === "minion" ? "Minion" : definition.type === "spell" ? "Spell" : "Token";
+        const typeText = this.scene.add.text(cursorX, footerCenterY, typeLabel, TYPE_LABEL_STYLE).setOrigin(0, 0.5);
         objects.push(typeText);
 
         objects.push(...this.createStatBadge(instance, definition));
@@ -310,9 +321,10 @@ export class CardView {
      * extent, see those constants' comment). The simplified (board) caller passes
      * ATKHP_BADGE_R_SIMPLIFIED with a plain corner center instead (b1) — bigger, and not pinned,
      * since the board row doesn't pack cards tightly enough for the same overflow-collision risk.
+     * Minion-only — but 'token' counts as minion here too (see CardType's doc comment in Card.ts).
      */
     private createStatBadge(instance: CardInstance, definition: CardDefinition, radius = ATKHP_BADGE_R, centerX = ATKHP_BADGE_CENTER_X, centerY = ATKHP_BADGE_CENTER_Y): Phaser.GameObjects.GameObject[] {
-        if (definition.type !== "minion") return [];
+        if (definition.type !== "minion" && definition.type !== "token") return [];
 
         const currentAttack = instance.currentAttack ?? 0;
         const currentHealth = instance.currentHealth ?? 0;

@@ -15,7 +15,9 @@ const MAX_COPIES = 2;
 
 function idsForRarity(rarity: CardRarity): string[] {
     return Object.values(CARD_DEFINITIONS)
-        .filter((definition) => definition.rarity === rarity)
+        // type: 'token' cards are excluded from generated decks regardless of rarity — see
+        // Card.ts's CardDefinition.rarity doc comment.
+        .filter((definition) => definition.type !== 'token' && definition.rarity === rarity)
         .map((definition) => definition.id);
 }
 

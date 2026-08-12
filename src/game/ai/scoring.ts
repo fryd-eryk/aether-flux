@@ -1,6 +1,7 @@
 import { CARD_DEFINITIONS } from '../data/cards';
 import { resolveEffectValue } from '../state/counters';
 import { canDeclareAttack, hasKeyword, isTargetable } from '../state/keywordRules';
+import { minionHasTribe, restrictionTribe, restrictsToMinion } from '../state/tribes';
 import type { CardDefinition, CardInstance, ChosenTargetRestriction, EffectAction } from '../types/Card';
 import type { PlayerId } from '../types/common';
 import type { GameState } from '../types/GameState';
@@ -36,11 +37,12 @@ export function computePotentialFaceDamage(state: GameState, aiId: PlayerId): nu
             const damageEffect = definition.effects?.find(
                 (e) => e.trigger === 'onPlay' && e.action.kind === 'damage' && e.action.target === 'chosen'
             );
-            // A minion-restricted damage effect (e.g. Pocket Sand's "to a minion") can never hit face.
+            // A minion-restricted damage effect (e.g. Pocket Sand's "to a minion") can never hit face
+            // — nor can a tribe-restricted one (tribes are minion-only), see restrictsToMinion.
             if (
                 damageEffect &&
                 damageEffect.action.kind === 'damage' &&
-                damageEffect.action.chosenRestriction !== 'minion'
+                !restrictsToMinion(damageEffect.action.chosenRestriction)
             ) {
                 total += resolveEffectValue(damageEffect.action.amount, aiId, state);
             }
@@ -200,7 +202,7 @@ export function scorePlayCard(
         0
     );
 
-    if (definition.type === 'minion') {
+    if (definition.type === 'minion' || definition.type === 'token') {
         if (ai.board.length >= MAX_BOARD_SIZE) return { score: -1 }; // board full: the minion would just be discarded, see TurnStateMachine.executePlayCard
 
         const stats = (card.currentAttack ?? 0) + (card.currentHealth ?? 0);
@@ -234,33 +236,37 @@ function scoreDamageSpell(
     const enemyId = opponentOf(aiId);
     const enemy = state.players[enemyId];
     const ai = state.players[aiId];
+    const tribe = restrictionTribe(restriction);
+    const matchesTribe = (minion: CardInstance) => !tribe || minionHasTribe(CARD_DEFINITIONS[minion.definitionId], tribe);
 
     // A minion-restricted effect (e.g. "Deal 2 damage to a minion") isn't a legal way to hit
-    // face — see TurnStateMachine.computeValidTargets — so don't seed a face candidate for it.
-    // -Infinity (rather than a fixed sentinel like -1) guarantees the friendly-minion loop below
-    // can still win and set a targetId even when every candidate scores negative — see its comment.
+    // face — nor is a tribe-restricted one (tribes are minion-only) — see TurnStateMachine.
+    // computeValidTargets — so don't seed a face candidate for either. -Infinity (rather than a
+    // fixed sentinel like -1) guarantees the friendly-minion loop below can still win and set a
+    // targetId even when every candidate scores negative — see its comment.
     let best: ScoredTarget =
-        restriction === 'minion' ? { score: -Infinity } : { score: amount * (lethalAvailable ? 100 : 1.5), targetId: enemyId };
+        restrictsToMinion(restriction) ? { score: -Infinity } : { score: amount * (lethalAvailable ? 100 : 1.5), targetId: enemyId };
 
-    for (const minion of enemy.board.filter(isTargetable)) {
+    for (const minion of enemy.board.filter(isTargetable).filter(matchesTribe)) {
         const health = minion.currentHealth ?? 0;
         const value = (minion.currentAttack ?? 0) + health;
         const score = amount >= health ? value * 3 : amount * 0.5;
         if (score > best.score) best = { score, targetId: minion.instanceId };
     }
 
-    // TurnStateMachine.computeValidTargets treats "a minion" as ANY minion, friendly included —
-    // so when the enemy board can't offer a (better) target, the AI must still be able to resolve
-    // one of its own, or playCard leaves the state machine stuck in AwaitingTarget forever (nothing
-    // else ever calls selectTarget for it — see OpponentAI.decideOpponentAction/runOpponentTurn).
-    // Hitting our own minion is modeled as a cost, not a benefit: roughly what the minion is worth
-    // if the hit would kill it outright, or half the raw damage as "wasted" chip damage otherwise.
-    // scorePlayCard adds this to the card's flat value (e.g. Boneshard Finger's card draw), so the
-    // AI ends up genuinely weighing "lose this minion" against "draw a card" instead of freezing.
-    // (Unrestricted/hero-restricted damage already always has the enemy-face fallback above, so
-    // this loop is scoped to the minion-only case that actually needs it.)
-    if (restriction === 'minion') {
-        for (const minion of ai.board.filter(isTargetable)) {
+    // TurnStateMachine.computeValidTargets treats "a minion" (or "a <tribe>") as ANY minion (of
+    // that tribe), friendly included — so when the enemy board can't offer a (better) target, the
+    // AI must still be able to resolve one of its own, or playCard leaves the state machine stuck
+    // in AwaitingTarget forever (nothing else ever calls selectTarget for it — see
+    // OpponentAI.decideOpponentAction/runOpponentTurn). Hitting our own minion is modeled as a
+    // cost, not a benefit: roughly what the minion is worth if the hit would kill it outright, or
+    // half the raw damage as "wasted" chip damage otherwise. scorePlayCard adds this to the card's
+    // flat value (e.g. Boneshard Finger's card draw), so the AI ends up genuinely weighing "lose
+    // this minion" against "draw a card" instead of freezing. (Unrestricted/hero-restricted damage
+    // already always has the enemy-face fallback above, so this loop is scoped to the
+    // minion/tribe-restricted case that actually needs it.)
+    if (restrictsToMinion(restriction)) {
+        for (const minion of ai.board.filter(isTargetable).filter(matchesTribe)) {
             const health = minion.currentHealth ?? 0;
             const value = (minion.currentAttack ?? 0) + health;
             const score = amount >= health ? -value * 3 : -amount * 0.5;
@@ -283,16 +289,18 @@ function scoreDamageSpell(
  */
 function scoreHealSpell(state: GameState, aiId: PlayerId, amount: number, restriction?: ChosenTargetRestriction): ScoredTarget {
     const ai = state.players[aiId];
-    let best: ScoredTarget = restriction === 'minion' ? { score: -Infinity } : { score: 0, targetId: aiId };
+    const tribe = restrictionTribe(restriction);
+    const matchesTribe = (minion: CardInstance) => !tribe || minionHasTribe(CARD_DEFINITIONS[minion.definitionId], tribe);
+    let best: ScoredTarget = restrictsToMinion(restriction) ? { score: -Infinity } : { score: 0, targetId: aiId };
 
-    if (restriction !== 'minion') {
+    if (!restrictsToMinion(restriction)) {
         const heroMissing = ai.maxHealth - ai.health;
         const heroScore = Math.min(amount, heroMissing) * 1.5;
         if (heroScore > best.score) best = { score: heroScore, targetId: aiId };
     }
 
     if (restriction !== 'hero') {
-        for (const minion of ai.board.filter(isTargetable)) {
+        for (const minion of ai.board.filter(isTargetable).filter(matchesTribe)) {
             const definition = CARD_DEFINITIONS[minion.definitionId];
             if (!definition?.health) continue;
             const missing = definition.health - (minion.currentHealth ?? 0);
@@ -302,8 +310,8 @@ function scoreHealSpell(state: GameState, aiId: PlayerId, amount: number, restri
         }
     }
 
-    if (restriction === 'minion' && best.targetId === undefined) {
-        for (const minion of [...ai.board, ...state.players[opponentOf(aiId)].board].filter(isTargetable)) {
+    if (restrictsToMinion(restriction) && best.targetId === undefined) {
+        for (const minion of [...ai.board, ...state.players[opponentOf(aiId)].board].filter(isTargetable).filter(matchesTribe)) {
             const score = -1;
             if (score > best.score) best = { score, targetId: minion.instanceId };
         }
@@ -322,15 +330,17 @@ function scoreHealSpell(state: GameState, aiId: PlayerId, amount: number, restri
 function scoreFreezeSpell(state: GameState, aiId: PlayerId, restriction?: ChosenTargetRestriction): ScoredTarget {
     const enemy = state.players[opponentOf(aiId)];
     const ai = state.players[aiId];
+    const tribe = restrictionTribe(restriction);
+    const matchesTribe = (minion: CardInstance) => !tribe || minionHasTribe(CARD_DEFINITIONS[minion.definitionId], tribe);
 
     let best: ScoredTarget = { score: -Infinity };
-    for (const minion of enemy.board.filter(isTargetable)) {
+    for (const minion of enemy.board.filter(isTargetable).filter(matchesTribe)) {
         const score = (minion.currentAttack ?? 0) * 2; // denying a bigger attacker is more valuable
         if (score > best.score) best = { score, targetId: minion.instanceId };
     }
 
-    if (restriction === 'minion' && best.targetId === undefined) {
-        for (const minion of ai.board.filter(isTargetable)) {
+    if (restrictsToMinion(restriction) && best.targetId === undefined) {
+        for (const minion of ai.board.filter(isTargetable).filter(matchesTribe)) {
             const score = -1; // mild self-cost, still resolvable rather than leaving no legal target
             if (score > best.score) best = { score, targetId: minion.instanceId };
         }
@@ -347,9 +357,11 @@ function scoreFreezeSpell(state: GameState, aiId: PlayerId, restriction?: Chosen
 function scoreSilenceSpell(state: GameState, aiId: PlayerId, restriction?: ChosenTargetRestriction): ScoredTarget {
     const enemy = state.players[opponentOf(aiId)];
     const ai = state.players[aiId];
+    const tribe = restrictionTribe(restriction);
+    const matchesTribe = (minion: CardInstance) => !tribe || minionHasTribe(CARD_DEFINITIONS[minion.definitionId], tribe);
 
     let best: ScoredTarget = { score: -Infinity };
-    for (const minion of enemy.board.filter(isTargetable)) {
+    for (const minion of enemy.board.filter(isTargetable).filter(matchesTribe)) {
         const definition = CARD_DEFINITIONS[minion.definitionId];
         const hasKeywords = minion.keywords.size > 0;
         const hasEffects = (definition?.effects?.length ?? 0) > 0;
@@ -359,8 +371,8 @@ function scoreSilenceSpell(state: GameState, aiId: PlayerId, restriction?: Chose
         if (score > best.score) best = { score, targetId: minion.instanceId };
     }
 
-    if (restriction === 'minion' && best.targetId === undefined) {
-        for (const minion of [...enemy.board, ...ai.board].filter(isTargetable)) {
+    if (restrictsToMinion(restriction) && best.targetId === undefined) {
+        for (const minion of [...enemy.board, ...ai.board].filter(isTargetable).filter(matchesTribe)) {
             const score = -5;
             if (score > best.score) best = { score, targetId: minion.instanceId };
         }

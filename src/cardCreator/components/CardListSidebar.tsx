@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { RARITY_METADATA, UNRANKED_RARITY_COLOR } from "@/game/data/rarityMetadata";
+import { RARITY_METADATA, TOKEN_RARITY_COLOR } from "@/game/data/rarityMetadata";
 import type { CardDefinition, CardRarity } from "@/game/types/Card";
 import styles from "@/styles/CardCreator.module.css";
 
@@ -10,15 +10,15 @@ type SortDir = "asc" | "desc";
 // Ascending power order, matching Card.ts's CardRarity doc comment.
 const RARITY_ORDER: CardRarity[] = ["common", "rare", "exotic", "legendary", "mythical"];
 
-// Tokens (no rarity) rank below common regardless of sort direction — they aren't a
-// power tier, so there's no "descending" position that makes sense for them either.
-function rarityRank(rarity: CardRarity | undefined): number {
-    return rarity ? RARITY_ORDER.indexOf(rarity) : -1;
+// Tokens rank below common regardless of sort direction — they aren't a power tier, so
+// there's no "descending" position that makes sense for them either.
+function rarityRank(card: CardDefinition): number {
+    return card.type === "token" || !card.rarity ? -1 : RARITY_ORDER.indexOf(card.rarity);
 }
 
 // Same light color CardView's footer rarity dot uses (rarityMetadata.ts), as a CSS hex string.
-function rarityColor(rarity: CardRarity | undefined): string {
-    const { light } = rarity ? RARITY_METADATA[rarity] : UNRANKED_RARITY_COLOR;
+function rarityColor(card: CardDefinition): string {
+    const { light } = card.type === "token" || !card.rarity ? TOKEN_RARITY_COLOR : RARITY_METADATA[card.rarity];
     return `#${light.toString(16).padStart(6, "0")}`;
 }
 
@@ -45,7 +45,7 @@ export function CardListSidebar({ cards, selectedId, dirtyIds, onSelect, onNew }
                 // Name is always the tiebreaker so cost/rarity ties don't jump around as you edit.
                 switch (sortField) {
                     case "rarity":
-                        return (rarityRank(a.rarity) - rarityRank(b.rarity)) * dir || a.name.localeCompare(b.name);
+                        return (rarityRank(a) - rarityRank(b)) * dir || a.name.localeCompare(b.name);
                     case "type":
                         return a.type.localeCompare(b.type) * dir || a.name.localeCompare(b.name);
                     case "name":
@@ -80,12 +80,12 @@ export function CardListSidebar({ cards, selectedId, dirtyIds, onSelect, onNew }
                 {entries.map((card) => (
                     <button key={card.id} type="button" className={`${styles.cardListItem} ${card.id === selectedId ? styles.cardListItemActive : ""}`} onClick={() => onSelect(card.id)}>
                         <span>
-                            <span style={{ color: rarityColor(card.rarity) }}>{card.name}</span>
+                            <span style={{ color: rarityColor(card) }}>{card.name}</span>
                             {dirtyIds.has(card.id) && <span className={styles.cardListItemDirty}>●</span>}
                         </span>
                         <span className={styles.cardListItemRight}>
-                            <span className={styles.cardListItemTypeBadge} title={card.type === "minion" ? "Minion" : "Spell"}>
-                                {card.type === "minion" ? "M" : "S"}
+                            <span className={styles.cardListItemTypeBadge} title={card.type === "minion" ? "Minion" : card.type === "spell" ? "Spell" : "Token"}>
+                                {card.type === "minion" ? "M" : card.type === "spell" ? "S" : "T"}
                             </span>
                             <span className={styles.cardListItemCost}>{card.cost}</span>
                         </span>

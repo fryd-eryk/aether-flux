@@ -180,6 +180,8 @@ export const COST_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStro
 // Repurposed as the bottom type banner's label (was small centered gray text) — white on a
 // solid green bar now, see createCardContainer's 'full' mode.
 export const TYPE_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '9px', color: '#9e9e9e', align: 'left' }, 0);
+// Muted gold, distinct from TYPE_LABEL_STYLE's gray — footer's tribe segment (Rarity Dot -> Tribe -> Type), 'full' mode only, see CardView.createFooterBar.
+export const TRIBE_LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '9px', color: '#c9b37c', align: 'left' }, 0);
 export const KEYWORD_LABEL_BASE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '10px', fontStyle: 'bold' }, 2);
 // The ", " joining multiple keyword labels on their shared line — plain (unbolded, uncolored) so
 // the colored keyword names stay the visual focus.
@@ -209,6 +211,10 @@ export const PILL_RADIUS = 4; // keyword/status pill corner radius (b2)
 // below) — tuned for that circle's height, not the old flat-blue box this replaced.
 export const TOOLTIP_COST_CLEARANCE = 10;
 export const TOOLTIP_BG_RADIUS = 6; // hover tooltip's rounded-corner background — matches DESC_BOX_RADIUS's "small, tuned by eye" scale, kept separate since the tooltip isn't drawn at card scale
+export const TOOLTIP_TRIBE_GAP = 6; // gap between the tribe tag box and the mana-cost badge's left edge
+export const TOOLTIP_TRIBE_PAD_X = 6; // horizontal text padding inside the tribe tag box
+// Dark-on-white, unstroked — matches STAT_FUSED_LIGHT_STYLE's treatment of text on ATKHP_BADGE_COLOR's white fill, just sized for a short tag label rather than a stat digit.
+export const TRIBE_TAG_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '12px', color: '#1a1a2e', resolution: CARD_TEXT_RESOLUTION };
 
 export const OUTLINE_COLOR_TARGETABLE = 0xffd23f; // valid-target highlight (hero + board minions, AwaitingTarget) + the active player's hero-circle fill
 export const OUTLINE_COLOR_READY = 0x38d97b; // "can act now" — board attack-ready minions AND hand playable cards

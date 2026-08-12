@@ -1,9 +1,18 @@
 import type { PlayerId } from './common';
 
-export type CardType = 'minion' | 'spell';
+/** 'token' is mechanically a minion (attack/health, board presence, combat) — it's a separate
+ * value purely so it's excluded from `deckGenerator.ts` and rendered/labeled distinctly, not
+ * because it behaves differently in play. Any `type === 'minion'` check that's about minion
+ * *mechanics* (stats, combat, board placement) must also match 'token'; only checks that are
+ * specifically about the printed/collectible classification (footer label, Card Creator type
+ * badge) should treat it as its own case. */
+export type CardType = 'minion' | 'spell' | 'token';
 
 /** Static keyword abilities a minion can have. See CLAUDE.md's card game architecture notes for the full keyword roadmap. */
 export type Keyword = 'taunt' | 'charge' | 'divineShield' | 'windfury' | 'lifesteal' | 'veiled' | 'venom';
+
+/** A minion's family tag(s) — used for tribe-scoped targeting/conditions. See tribeMetadata.ts for display labels and state/tribes.ts for the logic that reads this. Purely additive: a new tribe is just a new union member + a tribeMetadata.ts entry. */
+export type Tribe = 'human' | 'elemental' | 'nature' | 'animal' | 'cosmic' | 'holy' | 'underworld' | 'demon';
 
 export type EffectTrigger =
     | 'onPlay'
@@ -29,9 +38,11 @@ export type TargetSelector =
 /**
  * Narrows what a `target: 'chosen'` action may be pointed at — e.g. "Deal 2 damage to a
  * minion" must reject the enemy/friendly hero as a target, not just a `chosen` minion or hero.
+ * A specific Tribe value narrows further still ("...to a chosen Elemental") — tribes are
+ * minion-only, so it implies the same minion-only restriction 'minion' does, plus a tribe match.
  * Ignored for every other TargetSelector, which already resolves to a fixed, unambiguous target.
  */
-export type ChosenTargetRestriction = 'minion' | 'hero';
+export type ChosenTargetRestriction = 'minion' | 'hero' | Tribe;
 
 /** Live game-state readouts an EffectValue can scale off — see counters.ts's resolveCounter. */
 export type CounterKind = 'allMinionCount' | 'friendlyMinionCount' | 'enemyMinionCount' | 'friendlyHeroHealth' | 'enemyHeroHealth';
@@ -83,7 +94,9 @@ export interface CardDefinition {
     health?: number;
     effects?: CardEffect[];
     keywords?: Keyword[];
-    /** Absent for tokens (e.g. summon-effect targets) — deckGenerator.ts only draws from definitions that have a rarity, so omitting this is what keeps a token out of generated decks. */
+    /** Minion-only family tag(s). Rendered only in 'full' card mode's footer (Rarity Dot -> Tribe -> Type) — never in 'simplified' mode. */
+    tribes?: Tribe[];
+    /** Absent for `type: 'token'` cards (e.g. summon-effect targets) — deckGenerator.ts excludes tokens from generated decks by `type`, not by rarity presence. Required in practice for 'minion'/'spell' cards (the Card Creator enforces this), even though the field itself stays optional. */
     rarity?: CardRarity;
     /** 'full' mode only — nudges art to butt against the header/footer's opaque flat bar instead of centering under their tapered/transparent edges. Absent = centered (current behavior). No effect in 'simplified' mode, which has no header/footer bar to align against. */
     artVerticalAlign?: 'top' | 'bottom';

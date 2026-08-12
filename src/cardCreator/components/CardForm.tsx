@@ -1,10 +1,12 @@
-import type { CardDefinition, CardRarity, CardType, Keyword } from '@/game/types/Card';
+import type { CardDefinition, CardRarity, CardType, Keyword, Tribe } from '@/game/types/Card';
 import { KEYWORD_METADATA } from '@/game/data/keywordMetadata';
+import { TRIBE_METADATA } from '@/game/data/tribeMetadata';
 import type { FieldErrors } from '../validateCardDefinition';
 import { EffectsEditor } from './EffectsEditor';
 import styles from '@/styles/CardCreator.module.css';
 
 const KEYWORDS = Object.keys(KEYWORD_METADATA) as Keyword[];
+const TRIBES = Object.keys(TRIBE_METADATA) as Tribe[];
 const RARITIES: CardRarity[] = ['common', 'rare', 'exotic', 'legendary', 'mythical'];
 
 interface CardFormProps {
@@ -20,10 +22,18 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
     }
 
     function setType(type: CardType) {
-        if (type === 'minion') {
-            onChange({ ...draft, type, attack: draft.attack ?? 1, health: draft.health ?? 1 });
+        if (type === 'minion' || type === 'token') {
+            const next = { ...draft, type, attack: draft.attack ?? 1, health: draft.health ?? 1 };
+            if (type === 'token') {
+                // Tokens aren't collectible — type is now what excludes them from generated
+                // decks (deckGenerator.ts), so rarity is meaningless for them.
+                const { rarity: _rarity, ...rest } = next;
+                onChange(rest);
+            } else {
+                onChange(next);
+            }
         } else {
-            const { attack: _attack, health: _health, ...rest } = draft;
+            const { attack: _attack, health: _health, tribes: _tribes, ...rest } = draft;
             onChange({ ...rest, type });
         }
     }
@@ -56,6 +66,19 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
             onChange(rest);
         } else {
             onChange({ ...draft, keywords: next });
+        }
+    }
+
+    function toggleTribe(tribe: Tribe, enabled: boolean) {
+        const current = new Set(draft.tribes ?? []);
+        if (enabled) current.add(tribe);
+        else current.delete(tribe);
+        const next = [...current];
+        if (next.length === 0) {
+            const { tribes: _tribes, ...rest } = draft;
+            onChange(rest);
+        } else {
+            onChange({ ...draft, tribes: next });
         }
     }
 
@@ -93,19 +116,28 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                         <select className={styles.selectInput} value={draft.type} onChange={(e) => setType(e.target.value as CardType)}>
                             <option value="minion">Minion</option>
                             <option value="spell">Spell</option>
+                            <option value="token">Token</option>
                         </select>
                     </div>
-                    <div className={styles.field}>
-                        <label className={styles.fieldLabel}>Rarity</label>
-                        <select className={styles.selectInput} value={draft.rarity ?? ''} onChange={(e) => setRarity(e.target.value)}>
-                            <option value="">— none (token) —</option>
-                            {RARITIES.map((rarity) => (
-                                <option key={rarity} value={rarity}>
-                                    {rarity}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                    {draft.type === 'token' ? (
+                        <div className={styles.field}>
+                            <label className={styles.fieldLabel}>Rarity</label>
+                            <span className={styles.fieldHint}>Tokens aren&rsquo;t collectible — no rarity.</span>
+                        </div>
+                    ) : (
+                        <div className={styles.field}>
+                            <label className={styles.fieldLabel}>Rarity</label>
+                            <select className={styles.selectInput} value={draft.rarity ?? ''} onChange={(e) => setRarity(e.target.value)}>
+                                <option value="">— none —</option>
+                                {RARITIES.map((rarity) => (
+                                    <option key={rarity} value={rarity}>
+                                        {rarity}
+                                    </option>
+                                ))}
+                            </select>
+                            {errors.rarity && <span className={styles.fieldError}>{errors.rarity}</span>}
+                        </div>
+                    )}
                     <div className={styles.field}>
                         <label className={styles.fieldLabel}>Art vertical align</label>
                         <select
@@ -119,7 +151,7 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                         </select>
                     </div>
                 </div>
-                {draft.type === 'minion' && (
+                {(draft.type === 'minion' || draft.type === 'token') && (
                     <div className={styles.fieldRow}>
                         <div className={styles.field}>
                             <label className={styles.fieldLabel}>Attack</label>
@@ -176,6 +208,24 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                     ))}
                 </div>
             </section>
+
+            {(draft.type === 'minion' || draft.type === 'token') && (
+                <section className={styles.formSection}>
+                    <h3 className={styles.formSectionTitle}>Tribes</h3>
+                    <div className={styles.checkboxGroup}>
+                        {TRIBES.map((tribe) => (
+                            <label key={tribe} className={styles.checkboxLabel}>
+                                <input
+                                    type="checkbox"
+                                    checked={(draft.tribes ?? []).includes(tribe)}
+                                    onChange={(e) => toggleTribe(tribe, e.target.checked)}
+                                />
+                                {TRIBE_METADATA[tribe].label}
+                            </label>
+                        ))}
+                    </div>
+                </section>
+            )}
 
             <section className={styles.formSection}>
                 <h3 className={styles.formSectionTitle}>Effects</h3>
