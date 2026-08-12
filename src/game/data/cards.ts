@@ -89,6 +89,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "",
         attack: 2,
         health: 1,
+        tribes: ["animal"],
         rarity: "common",
     },
     "alms-cleric": {
@@ -280,7 +281,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Strike: Deal 1 damage to the enemy hero.",
         attack: 3,
         health: 1,
-        tribes: ["human"],
+        tribes: ["human","underworld"],
         effects: [
             {
                 trigger: "onAttack",
