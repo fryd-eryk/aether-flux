@@ -62,7 +62,7 @@ import {
 export class CardView {
     constructor(private scene: Scene) {}
 
-    createCardContainer(instance: CardInstance, mode: CardDisplayMode, definitionOverride?: CardDefinition, grayscaleArt = false, frozenOverlay = false): Phaser.GameObjects.Container {
+    createCardContainer(instance: CardInstance, mode: CardDisplayMode, definitionOverride?: CardDefinition, grayscaleArt = false, frozenOverlay = false, resolvedText?: string): Phaser.GameObjects.Container {
         const container = this.scene.add.container(0, 0);
         const bg = this.scene.add.rectangle(0, 0, CARD_W, CARD_H, 0x000000).setStrokeStyle(2, 0x000000);
         container.add(bg);
@@ -124,7 +124,7 @@ export class CardView {
         this.fitCardName(nameText, CARD_W - 23);
         container.add(nameText);
 
-        container.add(this.createDescriptionBox(instance, definition));
+        container.add(this.createDescriptionBox(instance, definition, resolvedText));
         container.add(this.createFooterBar(instance, definition));
 
         container.setSize(CARD_W, CARD_H);
@@ -199,9 +199,14 @@ export class CardView {
      * paints over that extension and hides it, rather than the box appearing to stop short right at
      * the footer's edge. Renders nothing if the card has neither keywords nor rule text.
      */
-    private createDescriptionBox(instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[] {
+    private createDescriptionBox(instance: CardInstance, definition: CardDefinition, resolvedText?: string): Phaser.GameObjects.GameObject[] {
+        // resolvedText (when passed by a caller with live GameState) has any `{X}` placeholder in
+        // definition.text already substituted with its live-resolved value — see counters.ts's
+        // resolveCardText. Falls back to definition.text verbatim (literal `{X}` and all) when
+        // absent, e.g. the Card Creator preview, which has no game state to resolve against.
+        const text = resolvedText ?? definition.text;
         const hasKeywords = instance.keywords.size > 0;
-        const hasText = definition.text !== "";
+        const hasText = text !== "";
         if (!hasKeywords && !hasText) return [];
 
         // Built up front (at a provisional y=0 baseline for the keywords — see createKeywordLabels)
@@ -213,7 +218,7 @@ export class CardView {
 
         if (hasText) {
             ruleText = this.scene.add
-                .text(-CARD_W / 2 + 8, 0, definition.text, RULE_TEXT_STYLE)
+                .text(-CARD_W / 2 + 8, 0, text, RULE_TEXT_STYLE)
                 .setOrigin(0, 0)
                 .setWordWrapWidth(CARD_W - 16, true);
             contentHeight += (hasKeywords ? DESC_BOX_LINE_GAP : 0) + ruleText.height;

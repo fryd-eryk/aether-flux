@@ -1,4 +1,4 @@
-import type { CardDefinition, CardEffect, CardRarity, EffectAction } from '../game/types/Card';
+import type { CardDefinition, CardEffect, CardRarity, EffectAction, EffectValue } from '../game/types/Card';
 
 /**
  * Regenerates `src/game/data/cards.ts`'s source text from an in-memory
@@ -27,24 +27,35 @@ function serializeKey(key: string): string {
     return IDENTIFIER_RE.test(key) ? key : JSON.stringify(key);
 }
 
+/** A flat number serializes as-is; a counter reference as an object literal, only including
+ * multiplier/offset when they differ from their 1/0 defaults (mirrors chosenRestriction's
+ * only-when-present convention below). */
+function serializeEffectValue(value: EffectValue): string {
+    if (typeof value === 'number') return String(value);
+    const parts = [`counter: ${JSON.stringify(value.counter)}`];
+    if (value.multiplier !== undefined && value.multiplier !== 1) parts.push(`multiplier: ${value.multiplier}`);
+    if (value.offset !== undefined && value.offset !== 0) parts.push(`offset: ${value.offset}`);
+    return `{ ${parts.join(', ')} }`;
+}
+
 function serializeEffectAction(action: EffectAction, level: number): string {
     const lines: string[] = [`${indent(level)}kind: ${JSON.stringify(action.kind)},`];
 
     switch (action.kind) {
         case 'damage':
         case 'heal':
-            lines.push(`${indent(level)}amount: ${action.amount},`);
+            lines.push(`${indent(level)}amount: ${serializeEffectValue(action.amount)},`);
             lines.push(`${indent(level)}target: ${JSON.stringify(action.target)},`);
             if (action.chosenRestriction) {
                 lines.push(`${indent(level)}chosenRestriction: ${JSON.stringify(action.chosenRestriction)},`);
             }
             break;
         case 'draw':
-            lines.push(`${indent(level)}count: ${action.count},`);
+            lines.push(`${indent(level)}count: ${serializeEffectValue(action.count)},`);
             break;
         case 'buff':
-            if (action.attack !== undefined) lines.push(`${indent(level)}attack: ${action.attack},`);
-            if (action.health !== undefined) lines.push(`${indent(level)}health: ${action.health},`);
+            if (action.attack !== undefined) lines.push(`${indent(level)}attack: ${serializeEffectValue(action.attack)},`);
+            if (action.health !== undefined) lines.push(`${indent(level)}health: ${serializeEffectValue(action.health)},`);
             lines.push(`${indent(level)}target: ${JSON.stringify(action.target)},`);
             if (action.chosenRestriction) {
                 lines.push(`${indent(level)}chosenRestriction: ${JSON.stringify(action.chosenRestriction)},`);

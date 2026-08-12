@@ -1,4 +1,4 @@
-import type { CardDefinition, CardEffect, EffectAction } from '../game/types/Card';
+import type { CardDefinition, CardEffect, EffectAction, EffectValue } from '../game/types/Card';
 
 /**
  * Per-field error messages for a `CardDefinition` draft, keyed by field name (or
@@ -18,11 +18,28 @@ function validateEffect(effect: CardEffect, prefix: string, errors: FieldErrors)
     }
 }
 
+/**
+ * A flat EffectValue is validated against `min` (magnitude checks like today); a counter-based
+ * one can't be — its actual value depends on live game state — so only its multiplier/offset are
+ * checked for being finite numbers when present.
+ */
+function validateEffectValue(value: EffectValue, prefix: string, field: string, errors: FieldErrors, min?: number): void {
+    if (typeof value === 'number') {
+        if (min !== undefined && !(value >= min)) errors[`${prefix}.${field}`] = `${field[0].toUpperCase()}${field.slice(1)} must be at least ${min}.`;
+        return;
+    }
+    if (value.multiplier !== undefined && !Number.isFinite(value.multiplier)) {
+        errors[`${prefix}.${field}`] = 'Multiplier must be a number.';
+    } else if (value.offset !== undefined && !Number.isFinite(value.offset)) {
+        errors[`${prefix}.${field}`] = 'Offset must be a number.';
+    }
+}
+
 function validateAction(action: EffectAction, prefix: string, errors: FieldErrors): void {
     switch (action.kind) {
         case 'damage':
         case 'heal':
-            if (!(action.amount >= 1)) errors[`${prefix}.amount`] = 'Amount must be at least 1.';
+            validateEffectValue(action.amount, prefix, 'amount', errors, 1);
             // chosenRestriction is optional even when target is 'chosen' — omitting it is the
             // documented default ("any minion or hero", e.g. Firebolt/Radiant Light/Minor Heal),
             // not an error. Only flag it as dead data when target isn't 'chosen' at all.
@@ -31,12 +48,15 @@ function validateAction(action: EffectAction, prefix: string, errors: FieldError
             }
             break;
         case 'draw':
-            if (!(action.count >= 1)) errors[`${prefix}.count`] = 'Count must be at least 1.';
+            validateEffectValue(action.count, prefix, 'count', errors, 1);
             break;
         case 'buff':
             if (action.attack === undefined && action.health === undefined) {
                 errors[`${prefix}.attack`] = 'Set at least one of attack or health.';
             }
+            // No min — a negative buff (debuff) is an intentional, already-shipped case.
+            if (action.attack !== undefined) validateEffectValue(action.attack, prefix, 'attack', errors);
+            if (action.health !== undefined) validateEffectValue(action.health, prefix, 'health', errors);
             if (action.target !== 'chosen' && action.chosenRestriction) {
                 errors[`${prefix}.chosenRestriction`] = 'Only meaningful when target is "chosen".';
             }
@@ -90,6 +110,12 @@ export function validateCardDefinition(
     (def.effects ?? []).forEach((effect, index) => {
         validateEffect(effect, `effects.${index}`, errors);
     });
+
+    // {X} is resolved live by counters.ts's resolveCardText from the card's own effects — a card
+    // with no effects has nothing to supply a value, so the placeholder would render literally.
+    if (def.text.includes('{X}') && (def.effects ?? []).length === 0) {
+        errors.text = 'Rule text uses {X} but this card has no effects to supply a value.';
+    }
 
     return errors;
 }

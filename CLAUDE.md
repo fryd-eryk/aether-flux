@@ -56,8 +56,12 @@ SPEC.md for the React↔Phaser bridge and the Next.js/Phaser import gotcha.
 `src/game/types/Card.ts` + `GameState.ts` (types) → `src/game/data/cards.ts`
 (authored card data) → `src/game/data/deckGenerator.ts` (random decks) →
 `src/game/state/TurnStateMachine.ts` (pure turn/phase logic, zero Phaser
-dependency) → `src/game/scenes/CardGame.ts` (renders state, forwards input)
-→ `src/game/ai/OpponentAI.ts` + `scoring.ts` (opponent's turn).
+dependency; `src/game/state/counters.ts` alongside it resolves live
+game-state values an effect or rule text can reference — see SPEC.md's
+"Dynamic values") → `src/game/scenes/CardGame/` (the gameplay scene, split
+across `index.ts`/`CardView.ts`/`HelpBoxController.ts`/`PileViewController.ts`
+— renders state, forwards input) → `src/game/ai/OpponentAI.ts` + `scoring.ts`
+(opponent's turn).
 
 **Card authoring**: prefer the visual editor at `/card-creator`
 (`src/cardCreator/`) over hand-editing `cards.ts` — live 1:1 preview via the

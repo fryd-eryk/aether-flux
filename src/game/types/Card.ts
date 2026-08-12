@@ -33,11 +33,24 @@ export type TargetSelector =
  */
 export type ChosenTargetRestriction = 'minion' | 'hero';
 
+/** Live game-state readouts an EffectValue can scale off — see counters.ts's resolveCounter. */
+export type CounterKind = 'allMinionCount' | 'friendlyMinionCount' | 'enemyMinionCount' | 'friendlyHeroHealth' | 'enemyHeroHealth';
+
+/**
+ * Either a flat authored number, or a magnitude computed live from game state when the effect
+ * resolves ("cast time") — `resolveCounter(...) * (multiplier ?? 1) + (offset ?? 0)`, see
+ * counters.ts. No automatic text substitution happens in the Card Creator (it has no live game
+ * state to compute against) — an author writes the literal placeholder `{X}` in a card's `text`
+ * by hand, and only the real game's renderer (resolveCardText, also in counters.ts) substitutes
+ * it with the live-resolved value when the card is actually shown in a match.
+ */
+export type EffectValue = number | { counter: CounterKind; multiplier?: number; offset?: number };
+
 export type EffectAction =
-    | { kind: 'damage'; amount: number; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
-    | { kind: 'heal'; amount: number; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
-    | { kind: 'draw'; count: number }
-    | { kind: 'buff'; attack?: number; health?: number; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
+    | { kind: 'damage'; amount: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
+    | { kind: 'heal'; amount: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
+    | { kind: 'draw'; count: EffectValue }
+    | { kind: 'buff'; attack?: EffectValue; health?: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
     | { kind: 'summon'; definitionId: string; count: number }
     | { kind: 'freeze'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
     | { kind: 'silence'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction };

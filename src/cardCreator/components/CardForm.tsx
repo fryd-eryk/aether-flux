@@ -151,6 +151,12 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                     <div className={styles.fieldWide}>
                         <label className={styles.fieldLabel}>Rule text</label>
                         <textarea className={styles.textArea} value={draft.text} onChange={(e) => set('text', e.target.value)} />
+                        <p className={styles.fieldHint}>
+                            Tip: write <code>{'{X}'}</code> where a counter-based effect value should appear — e.g. &ldquo;Restore{' '}
+                            {'{X}'} Health to your hero.&rdquo; It resolves live in a real match; the preview here shows it literally,
+                            since there&rsquo;s no board/HP to compute against outside a match.
+                        </p>
+                        {errors.text && <span className={styles.fieldError}>{errors.text}</span>}
                     </div>
                 </div>
             </section>

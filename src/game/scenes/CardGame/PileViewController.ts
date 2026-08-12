@@ -1,6 +1,7 @@
 import { Geom, type Scene } from 'phaser';
 
 import { CARD_DEFINITIONS } from '../../data/cards';
+import { resolveCardText } from '../../state/counters';
 import type { CardInstance } from '../../types/Card';
 import type { PlayerId } from '../../types/common';
 import type { GameState } from '../../types/GameState';
@@ -125,7 +126,7 @@ export class PileViewController
             return;
         }
 
-        this.renderGrid(cards, debugDrawable ? { playerId, state } : undefined);
+        this.renderGrid(cards, state, debugDrawable ? { playerId } : undefined);
     }
 
     /**
@@ -153,8 +154,10 @@ export class PileViewController
      * gets a hand cursor and a pointerup that draws it, then re-renders this same overlay in place
      * (off the still-live `state` reference) so the drawn card disappears from the grid and the
      * count updates without closing the view, letting a playtester draw several cards in a row.
+     * `state` is always passed (not just for the debug-draw case) so every card's tooltip/rule
+     * text can resolve any live counter — see counters.ts's resolveCardText.
      */
-    private renderGrid (cards: CardInstance[], debugDraw?: { playerId: PlayerId; state: GameState }): void
+    private renderGrid (cards: CardInstance[], state: GameState, debugDraw?: { playerId: PlayerId }): void
     {
         const columns = Math.min(PILE_VIEW_MAX_COLUMNS, cards.length);
         const rows = Math.ceil(cards.length / columns);
@@ -179,7 +182,7 @@ export class PileViewController
             // left-aligned under a full one.
             const inRow = Math.min(columns, cards.length - row * columns);
 
-            const card = this.cardView.createCardContainer(instance, 'full');
+            const card = this.cardView.createCardContainer(instance, 'full', undefined, false, false, resolveCardText(instance, state));
             card.setPosition(CENTER_X + (column - (inRow - 1) / 2) * stepX, originY + row * stepY);
             card.setScale(scale);
             card.setDepth(PILE_VIEW_DEPTH + 1);
@@ -191,11 +194,11 @@ export class PileViewController
                 useHandCursor: !!debugDraw,
             });
             // Pile-view cards render in 'full' mode and already print their cost on-card.
-            this.helpBox.attachKeywordHover(card, instance, false);
+            this.helpBox.attachKeywordHover(card, instance, false, resolveCardText(instance, state));
 
             if (debugDraw)
             {
-                const { playerId, state } = debugDraw;
+                const { playerId } = debugDraw;
                 card.on('pointerup', () =>
                 {
                     this.onDebugDraw(playerId, instance.instanceId);

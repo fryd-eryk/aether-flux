@@ -319,6 +319,12 @@
     color: #e05a6e;
 }
 
+.fieldHint {
+    font-size: 11px;
+    color: #9aa7bd;
+    margin: 0;
+}
+
 .checkboxGroup {
     display: flex;
     flex-wrap: wrap;

@@ -39,8 +39,9 @@ card art, the card-back texture, etc. `CardGame` is the only gameplay scene.
 - `src/game/data/deckGenerator.ts` — `generateDeck()` builds one independently-random 30-card deck per player at game start, proportionate to `RARITY_COUNTS` (14 common / 12 rare / 2 exotic / 1 legendary / 1 mythical — every rarity with at least one card defined gets a guaranteed slot), capped at `MAX_COPIES` (2) of any single card id. Replaced an earlier flat two-copies-of-everything `STARTER_DECK`.
 - `src/game/state/createInitialState.ts` — builds a full `GameState` from two deck lists.
 - `src/game/state/TurnStateMachine.ts` — the turn/phase state machine (`playCard`, `declareAttack`, `selectTarget`, `cancelTarget`, `endTurn`). Pure TypeScript, zero Phaser dependency; emits `EventBus` events (`state:phase-change`, `state:card-played`, `state:attack`, `state:card-died`, `state:card-drawn`, `state:game-over`) that `CardGame` listens to. `computeValidTargets` is also where `chosenRestriction` (minion-only / hero-only targeting) is enforced — see "Card design conventions" below. A private `moveToGraveyard` helper (used at all three graveyard-entry points: full-board discard, spell resolution, combat death) resets a minion's `currentAttack`/`currentHealth`/`maxHealth` back to its `CardDefinition` base values before filing it away, so the graveyard pile-inspect view shows printed stats, not stale combat state.
-- `src/game/scenes/CardGame.ts` — the only gameplay scene. Renders `TurnStateMachine.state` and forwards input into it; tears down and rebuilds the whole board on every `state:phase-change` event rather than incrementally patching. The opponent's turn is driven by `runOpponentTurn` (called off the `phaseChangeHandler` field's `MainIdle`/opponent branch), which asks `src/game/ai/OpponentAI.ts` for one action at a time and executes it via the same `TurnStateMachine` methods the player uses — see below.
-- **Card display modes** (`CardView.ts`, `createCardContainer`): a `CardDisplayMode` (`'full' | 'simplified' | 'faceDown'`) picks how a card renders, instead of a boolean-multiplying parameter list. Full-bleed art is the lowest z-order layer in both `'full'` and `'simplified'`. `'full'` (hand, deck/graveyard pile view, the played-card spotlight) follows the v2 mockup (`src/refs/card-layout-ref-v2.jpg`): a header bar (title top-left, a gradient-circle mana-cost badge centered on the top-right corner so it deliberately overflows both edges — bringing back the pre-v2 badge treatment, just with a highlight/shadow gradient fill instead of flat color) and a footer bar (rarity-colored gradient dot, `rarityMetadata.ts`, + card type on the left, the corner-overflowing `"atk/hp"` badge on the right, minion-only — see below) share one pre-authored PNG (`card-header-footer-bg`, `HEADER_FOOTER_BG_KEY` in `cardLayout.ts`) rather than hand-drawn `Graphics` — its alpha channel bakes in a "rounded corners descending down the card's sides" shape, rendered at `CARD_W` via `fitWidth` (a contain-to-width scale, unlike `coverFit`'s crop-to-fill) since it's authored at the art's native 832px width; the footer renders the same texture flipped vertically (`Image.setFlipY`) rather than a second file, mirroring the header's descending corners into ascending ones. The mana-cost badge and the footer's rarity dot both approximate a radial highlight with a diagonal 4-corner `Graphics.fillGradientStyle` fill, since Phaser has no native radial-gradient fill. A semi-transparent (75% opacity) black rounded description box (keyword labels, bold/colored/description-less, then rule text below — same content/order as before) floats over the art and grows *upward* from a fixed bottom anchor (`DESC_BOX_BOTTOM_Y`, deliberately independent of `HEADER_FOOTER_CONTENT_H` so footer sizing tweaks can never shift where the text lands) — its drawn background additionally stretches down past that anchor to the card's bottom edge so it visually continues underneath the footer bar, which is painted afterward (z-order) and hides the overlap. `'simplified'` (battlefield minions only, via `renderBoard`) keeps a translucent `Graphics.fillGradientStyle` header band behind the title, but drops the cost badge, description box, and footer PNG entirely — a minion's keywords and triggered-effect flavor words (see `triggerMetadata.ts` below) instead render as compact bottom-left pills via `createStatusPills`, to stay clutter-free in the cramped board row. The `"atk/hp"` badge (`CardView.createStatBadge`, `ATKHP_BADGE_R`/`ATKHP_BADGE_COLOR` in `cardLayout.ts`) is shared verbatim by both modes — a flat-white circle centered exactly on the card's bottom-right corner so it deliberately overflows both edges, the same corner-badge treatment the mana-cost circle gets on the opposite corner; its health digits alone switch to `STAT_FUSED_LIGHT_WOUNDED_STYLE`'s red when the minion is wounded (`currentHealth !== maxHealth`). The card-anchored hover tooltip (`HelpBoxController`) always shows keywords/rule text the same way regardless of mode, but only draws a mana-cost badge (styled identically to the on-card one) for `'simplified'` cards — `'full'` mode (hand, pile-view) already prints cost on-card, so repeating it in the tooltip would be redundant; `attachKeywordHover`'s `showCost` parameter is what each call site (`renderHand`, `renderBoard`, `PileViewController`) sets accordingly. In both modes, the interactive hit area stays the plain `Geom.Rectangle(0, 0, CARD_W, CARD_H)` regardless of any badge/box positioning — deliberately never enlarged to match. `'faceDown'` (opponent's hand + its draw-animation preview) renders the shared card-back texture. `CARD_W`/`CARD_H` are `150x225`, an exact 2:3 ratio matching the 832x1248 art assets — the v2 ref mockup was built at roughly that same resolution (~831x1258), so its own pixel values (e.g. a "25px" corner radius) are scaled down proportionally rather than used literally. On-card text uses a shared `withStroke()` helper for a black outline (legibility over art); the `'full'` mode atk/hp box's text is the one exception (`STAT_FUSED_LIGHT_STYLE`, no stroke) since it sits on an opaque white background where the art-legibility trick isn't needed. Off-card UI chrome (health/mana readouts, pile labels, tooltip body text) is also unstroked.
+- `src/game/state/counters.ts` — pure helpers (no Phaser dependency, same spirit as `keywordRules.ts` below) that resolve a live game-state value: `resolveCounter`/`resolveEffectValue` for an effect's magnitude, `resolveCardText` for a `{X}` placeholder in a card's rule text — see "Dynamic values (counters)" below.
+- `src/game/scenes/CardGame/` — the only gameplay scene, split across `index.ts` (the `CardGame` Scene class itself: renders `TurnStateMachine.state` and forwards input into it; tears down and rebuilds the whole board on every `state:phase-change` event rather than incrementally patching), `CardView.ts` (pure card-container builder, see "Card display modes" below), `HelpBoxController.ts` (the hover tooltip), and `PileViewController.ts` (the deck/graveyard pile-inspect overlay, see below). The opponent's turn is driven by `index.ts`'s `runOpponentTurn` (called off the `phaseChangeHandler` field's `MainIdle`/opponent branch), which asks `src/game/ai/OpponentAI.ts` for one action at a time and executes it via the same `TurnStateMachine` methods the player uses — see below.
+- **Card display modes** (`CardView.ts`, `createCardContainer`): a `CardDisplayMode` (`'full' | 'simplified' | 'faceDown'`) picks how a card renders, instead of a boolean-multiplying parameter list. Full-bleed art is the lowest z-order layer in both `'full'` and `'simplified'`. `'full'` (hand, deck/graveyard pile view, the played-card spotlight) follows the v2 mockup (`src/refs/card-layout-ref-v2.jpg`): a header bar (title top-left, a gradient-circle mana-cost badge centered on the top-right corner so it deliberately overflows both edges — bringing back the pre-v2 badge treatment, just with a highlight/shadow gradient fill instead of flat color) and a footer bar (rarity-colored gradient dot, `rarityMetadata.ts`, + card type on the left, the corner-overflowing `"atk/hp"` badge on the right, minion-only — see below) share one pre-authored PNG (`card-header-footer-bg`, `HEADER_FOOTER_BG_KEY` in `cardLayout.ts`) rather than hand-drawn `Graphics` — its alpha channel bakes in a "rounded corners descending down the card's sides" shape, rendered at `CARD_W` via `fitWidth` (a contain-to-width scale, unlike `coverFit`'s crop-to-fill) since it's authored at the art's native 832px width; the footer renders the same texture flipped vertically (`Image.setFlipY`) rather than a second file, mirroring the header's descending corners into ascending ones. The mana-cost badge and the footer's rarity dot both approximate a radial highlight with a diagonal 4-corner `Graphics.fillGradientStyle` fill, since Phaser has no native radial-gradient fill. A semi-transparent (75% opacity) black rounded description box (keyword labels, bold/colored/description-less, then rule text below — same content/order as before) floats over the art and grows *upward* from a fixed bottom anchor (`DESC_BOX_BOTTOM_Y`, deliberately independent of `HEADER_FOOTER_CONTENT_H` so footer sizing tweaks can never shift where the text lands) — its drawn background additionally stretches down past that anchor to the card's bottom edge so it visually continues underneath the footer bar, which is painted afterward (z-order) and hides the overlap. `createCardContainer`/`createDescriptionBox` take an optional trailing `resolvedText?: string` that, when passed, is shown in place of `definition.text` — this is how a `{X}` placeholder in rule text ends up substituted with its live value (see "Dynamic values (counters)" below) without `CardView` itself ever touching `GameState`: every real-game call site (`CardGame/index.ts`'s `renderHand`/`renderBoard`/reveal/draw-animation, `PileViewController`) resolves the text first via `counters.ts`'s `resolveCardText` and passes the result in; omitting the param (as the Card Creator preview does) falls back to `definition.text` verbatim, `{X}` and all — `CardView` stays a pure builder with no game-state awareness either way. `HelpBoxController.attachKeywordHover`/`showHelpBox` take the identical optional param for the same reason, since the hover tooltip also prints rule text. `'simplified'` (battlefield minions only, via `renderBoard`) keeps a translucent `Graphics.fillGradientStyle` header band behind the title, but drops the cost badge, description box, and footer PNG entirely — a minion's keywords and triggered-effect flavor words (see `triggerMetadata.ts` below) instead render as compact bottom-left pills via `createStatusPills`, to stay clutter-free in the cramped board row. The `"atk/hp"` badge (`CardView.createStatBadge`, `ATKHP_BADGE_R`/`ATKHP_BADGE_COLOR` in `cardLayout.ts`) is shared verbatim by both modes — a flat-white circle centered exactly on the card's bottom-right corner so it deliberately overflows both edges, the same corner-badge treatment the mana-cost circle gets on the opposite corner; its health digits alone switch to `STAT_FUSED_LIGHT_WOUNDED_STYLE`'s red when the minion is wounded (`currentHealth !== maxHealth`). The card-anchored hover tooltip (`HelpBoxController`) always shows keywords/rule text the same way regardless of mode, but only draws a mana-cost badge (styled identically to the on-card one) for `'simplified'` cards — `'full'` mode (hand, pile-view) already prints cost on-card, so repeating it in the tooltip would be redundant; `attachKeywordHover`'s `showCost` parameter is what each call site (`renderHand`, `renderBoard`, `PileViewController`) sets accordingly. In both modes, the interactive hit area stays the plain `Geom.Rectangle(0, 0, CARD_W, CARD_H)` regardless of any badge/box positioning — deliberately never enlarged to match. `'faceDown'` (opponent's hand + its draw-animation preview) renders the shared card-back texture. `CARD_W`/`CARD_H` are `150x225`, an exact 2:3 ratio matching the 832x1248 art assets — the v2 ref mockup was built at roughly that same resolution (~831x1258), so its own pixel values (e.g. a "25px" corner radius) are scaled down proportionally rather than used literally. On-card text uses a shared `withStroke()` helper for a black outline (legibility over art); the `'full'` mode atk/hp box's text is the one exception (`STAT_FUSED_LIGHT_STYLE`, no stroke) since it sits on an opaque white background where the art-legibility trick isn't needed. Off-card UI chrome (health/mana readouts, pile labels, tooltip body text) is also unstroked.
 - **Art rendering**: `createArtVisual` uses `definition.id` directly as the texture key (no separate `art` field on `CardDefinition` — removed after verifying every entry's `art` duplicated its `id`). Art is fit with `coverFit(image, width, height)` — a CSS `background-size: cover` equivalent that crops the source texture to the target aspect ratio via `setCrop` (in texture pixels) before `setDisplaySize`, so art stretches uniformly instead of distorting. Applied to card art in both display modes and to the card-back texture on face-down cards and the deck pile stack. Falls back to a plain rectangle if the texture failed to load.
 - **Deck/graveyard piles & the pile-inspect overlay** (`CardGame.ts`): both off-board zones render through one `renderPile(playerState, zone, y)` (`PileZone = 'deck' | 'graveyard'`), stacked in the `PILE_X` column with each player's graveyard one `PILE_ROW_GAP` from its own deck, on that player's side. The deck pile renders the card-back texture; the graveyard stays on its existing colored-rectangle stack (a graveyard isn't conceptually face-down the way a deck is). Clicking a pile opens a full-screen dimmed grid of its contents. Which pile is open is *scene state* (`openPileView`), not a fire-and-forget overlay: `renderNow()` tears it down with the rest of the board and repaints it at its tail, so an open pile survives the board rebuilds that fire every 600ms during the opponent's turn and keeps showing live contents. Its objects live in `pileViewObjects`, kept separate from `renderedObjects` for that reason. The deck view sorts by cost then name so opening your own deck doesn't leak the shuffled draw order; the graveyard keeps its natural chronological order.
 - `src/game/ai/` — the opponent AI. `types.ts` defines `AIAction`. `scoring.ts` has pure, stateless heuristic scoring functions (`scorePlayCard`, `scoreAttack`, `computePotentialFaceDamage` for lethal detection) — these respect the same `chosenRestriction` targeting rules as the player (a minion-restricted damage effect never seeds a face candidate or counts toward lethal). `OpponentAI.ts`'s `decideOpponentAction(state)` scores every legal action available to the active player and returns the single best one (or `null` to pass) — a greedy, single-step scorer with no search/lookahead beyond the explicit lethal check, modeled on Hearthstone's shipped AI design (see Blizzard's 2014 GDC "AI Postmortem" talk). `CardGame` calls `decideOpponentAction` again each time an action resolves back to `MainIdle`, so a full opponent turn is a chain of one-action-at-a-time decisions, paced 600ms apart.
@@ -53,85 +54,85 @@ Implemented so far (Phases 1–2a of a larger roadmap — see the design convers
 
 Two triggers joined the original Anthem/Deathcry/Vigil/Curfew set in Phase 2a: **Strike** (`onAttack`) fires unconditionally the instant an attack is declared, before either side's `dealDamage` call, so it's unaffected by whether the hit lands or either side survives it; **Wound** (`onDamaged`) fires from inside `dealDamage` itself — a single choke point covering combat *and* spell damage alike — whenever a minion takes damage and survives it, independent of any follow-up like Venom retroactively killing the same minion afterward. Two effect-action kinds joined damage/heal/draw/buff/summon: **freeze** (target can't attack on its next turn — a `CardInstance.frozen` flag read by `canDeclareAttack`, cleared in `endTurn`'s existing per-active-player-board loop, so a minion frozen on turn N stays blocked through the whole of its controller's next turn) and **silence** (strips *everything the target's own card text grants* — clears its `keywords` Set and permanently suppresses all of that instance's own trigger effects going forward, Deathcry included, via a persistent `CardInstance.silenced` flag guarded once at the top of `triggerEffects`; does not undo already-applied stat buffs or clear `frozen`, since neither is "the card's own printed text"). Silencing a minion also swaps its board status pills for a single "Silenced" pill (`CardView.createStatusPills`) rather than letting them go blank, since blank would look identical to a plain vanilla minion.
 
-### Keyword & trigger roadmap (Phase 2b+ proposal — not yet implemented)
+Phase 2b/2c then added four more, growing the rules vocabulary toward combo-style interactions rather than static effects. **Momentum(N)** is the combo primitive: `CardEffect.condition?: { type: 'momentum'; minCount: number }` gates whether `triggerEffects` applies that specific effect, firing only if at least N cards were already played by its owner earlier this turn (card-text flavor: `Momentum(N):`, e.g. `riverstone-golem`'s "Momentum(1): Draw a card."). `PlayerState.cardsPlayedThisTurn` resets to 0 in `startTurn` and increments in `executePlayCard` — deliberately *after* the played card's own effects resolve but *before* any board-wide trigger that card's play sets off, so a Momentum-gated effect on the card itself reads "how many were played before it," while a Momentum-gated Channel effect on another minion correctly counts the just-cast spell as already played. `ai/scoring.ts`'s `momentumSatisfied` discounts a Momentum-gated effect's value to 0 unless `state.players[aiId].cardsPlayedThisTurn` already clears the threshold at scoring time — no extra plumbing needed in `OpponentAI.ts` itself, since it re-scores off fresh live `GameState` on every call anyway.
 
-A design proposal, not yet coded, for growing the rules vocabulary further
-toward combo-style interactions and, eventually, decks buildable around a
-coherent strategy. Deliberately uses original vocabulary rather than reusing
-genre-standard (Hearthstone) terms, even where a mechanic's underlying rule
-is similar. Phased so each slice stays small enough to individually satisfy
-the "Every new rule must be checked against the opponent AI" rule above — a
-future implementation pass should tackle one phase at a time, updating
-`ai/scoring.ts`/`OpponentAI.ts` and play-testing against the AI before
-considering that phase done, exactly as required of every keyword above.
+Three triggers followed, all dispatched through a new `triggerBoardWide(trigger, ownerId, board)` helper — the first triggers in the codebase that fire because of *someone else's* event rather than for the instance the event happened to. **Channel** (`onSpellCast`) — whenever the controller casts any spell, every minion on their own board with a Channel effect fires; dispatched from `executePlayCard`'s spell branch, after the spell's own `onPlay` trigger. **Mourn** (`onMinionDeath`) — whenever a friendly minion dies, every other minion on that board with a Mourn effect fires; dispatched from `sweepDeaths`, once per dying minion, over the board with that minion already removed. Because a Mourn effect can itself deal damage and kill further minions, `sweepDeaths` re-sweeps in a loop until a pass produces no new deaths, rather than the single pass that sufficed before Mourn existed. **Muster** (`onMinionCast`) mirrors Channel for casting a *minion* instead of a spell — dispatched from `executePlayCard`'s minion branch — but needs one thing Channel doesn't: since the played minion is already sitting in `player.board` by the time triggers resolve (pushed there before `triggerEffects` runs), the `triggerBoardWide('onMinionCast', ...)` scan explicitly excludes it, or it would fire its own Muster effect off its own cast (already covered by its own `onPlay`/Anthem trigger). Muster still fires even when the minion is discarded for a full board, since the mana was spent and the card was cast either way. All three are threaded into `ai/scoring.ts` — `channelBoardValue`/`musterBoardValue`/`mournBoardValue` sum the board-wide payoff into `scorePlayCard`/`scoreAttack` the same way a card's own effects are valued, each respecting `momentumSatisfied` for any Momentum-gated board effect they scan over.
 
-**Phase 2b — Momentum, the combo primitive.** The foundational piece for
-"build a deck around a strategy," since it lets an effect scale off what else
-happened this turn rather than being static.
+### Keyword & trigger roadmap (not yet implemented)
 
-- New `PlayerState.cardsPlayedThisTurn: number`, reset to 0 in `startTurn`,
-  incremented once per card (spell or minion) in `executePlayCard`.
-- New optional `CardEffect.condition?: { type: 'momentum' }` — gates whether
-  `triggerEffects` applies that specific effect: fires only if
-  `cardsPlayedThisTurn` was already > 0 *before* the current card's own
-  increment, i.e. "you've already played something else this turn."
-- Card-text flavor word: **"Momentum:"** prefix describing the bonus clause,
-  e.g. "Momentum: draw a card instead."
-- AI: needs a `scoring.ts` adjustment so the AI values a Momentum-gated
-  effect according to whether it will actually be live given the AI's own
-  play sequencing that turn, not scored as if always active.
+Two items remain from the original growth-the-vocabulary proposal this section used to fully describe as a roadmap — Momentum, Channel, Mourn, and Muster above are what shipped from it; these two are what's left:
 
-**Phase 2c — board-wide triggers + an aura keyword.** The biggest structural
-lift, flagged as later work because it introduces a genuinely new dispatch
-shape — "fires because of *someone else's* event" rather than "fires for the
-instance the event happened to." Its board-wide-trigger half is now
-implemented (the aura keyword below is still pending):
-
-- Trigger **onSpellCast** (flavor **"Channel:"**) — whenever the controller
-  casts *any* spell, every board minion with a Channel effect fires. Fired
-  from `executePlayCard` via a `triggerBoardWide('onSpellCast', ...)` scan
-  over `player.board` after a spell resolves, distinct from the one
-  `triggerEffects` call for the played card itself. Spells never join the
-  board, so no self-exclusion is needed the way onMinionCast (below) needs one.
-- Trigger **onMinionDeath**, any-friendly-minion scope (flavor **"Mourn:"**)
-  — distinct from the existing self-only `onDeath`. Fired via the same
-  `triggerBoardWide` helper from inside `sweepDeaths`, once per minion that
-  dies, over the board with that minion already removed.
-- Trigger **onMinionCast** (flavor **"Muster:"**) — the mirror image of
-  Channel, for casting a *minion* instead of a spell: whenever the controller
-  casts any minion, every *other* board minion with a Muster effect fires.
-  Also fired from `executePlayCard`, on the `definition.type === 'minion'`
-  branch — since the played minion is already sitting in `player.board` by
-  that point (pushed there before triggers resolve), the scan explicitly
-  filters it out of the `triggerBoardWide('onMinionCast', ...)` call, or it
-  would trigger a Muster effect off its own cast — that's already covered by
-  its own `onPlay`/Anthem trigger. Fires even if the minion is discarded for
-  a full board (see `executePlayCard`'s summon-vs-discard branch) — the mana
-  was spent and the card was cast either way. `ai/scoring.ts`'s
-  `musterBoardValue` (mirroring `channelBoardValue`) folds this into
-  `scorePlayCard`'s minion-scoring branch, same pattern as Channel/Mourn.
 - Keyword **Resonance X** — an aura: while this minion is alive, the
   controller's damage-dealing *spells* deal X more damage. Needs
   `applyEffectAction`'s damage case to know whether the source card was a
   spell (not a combat hit or another minion's effect) and to sum `Resonance`
   across the controller's live board at resolution time — the first
   aura-style (recomputed-on-the-fly) keyword in the codebase, versus today's
-  all-instantaneous ones.
+  all-instantaneous ones. A prior planning pass scoped this and then
+  deliberately cut it before implementation — see "Dynamic values
+  (counters)" below for what shipped instead: an effect can already scale
+  off a live minion *count*, just not specifically off "how many Resonance
+  minions are on the board."
+- **Deckbuilding identity, down the line.** Not scoped in detail, just
+  flagged as the eventual payoff of the condition system Momentum
+  introduced: a `CardDefinition.tribe?: string` tagging field (using this
+  game's own flavor vocabulary — e.g. its existing elemental/apocalyptic
+  card themes — rather than borrowing Hearthstone's Beast/Dragon/Murloc
+  taxonomy), plus a tribe-count style `EffectCondition` and/or tribe-scoped
+  `TargetSelector`, letting future cards read "for each `<tribe>` you
+  control" and giving `deckGenerator.ts` a hook for archetype-aware
+  deckbuilding later.
 
-**Phase 3 — deckbuilding identity, down the line.** Not scoped in detail,
-just flagged as the eventual payoff of Phase 2's condition system: a
-`CardDefinition.tribe?: string` tagging field (using this game's own flavor
-vocabulary — e.g. its existing elemental/apocalyptic card themes — rather
-than borrowing Hearthstone's Beast/Dragon/Murloc taxonomy), plus a
-tribe-count style `EffectCondition` and/or tribe-scoped `TargetSelector`,
-letting future cards read "for each `<tribe>` you control" and giving
-`deckGenerator.ts` a hook for archetype-aware deckbuilding later.
+### Dynamic values (counters)
+
+A `CardEffect`'s numeric magnitude doesn't have to be a flat, hand-authored
+number — `damage`/`heal`'s `amount`, `draw`'s `count`, and `buff`'s
+`attack`/`health` are typed as `EffectValue = number | { counter: CounterKind;
+multiplier?: number; offset?: number }` (`Card.ts`). `CounterKind` covers five
+live readouts: `allMinionCount`/`friendlyMinionCount`/`enemyMinionCount` and
+`friendlyHeroHealth`/`enemyHeroHealth`. `summon.count` deliberately stays a
+plain `number` — a board-count-scaled summon count wasn't a requested use
+case and would be an unusual design; trivial to extend later if needed.
+
+`src/game/state/counters.ts` is the pure resolver (no Phaser dependency,
+same shape as `keywordRules.ts`): `resolveCounter(counter, ownerId, state)`
+reads the live value off `GameState`; `resolveEffectValue(value, ownerId,
+state)` passes a plain number through as-is, or computes
+`resolveCounter(...) * (multiplier ?? 1) + (offset ?? 0)` for a counter
+reference. `TurnStateMachine.applyEffectAction` resolves a `EffectValue`
+**once per action invocation**, before its per-target loop — not once per
+card, not re-resolved per target — and clamps the resolved value with
+`Math.max(0, ...)` for `damage`/`heal` only (a counter-based amount could
+mathematically resolve negative, e.g. a large negative `offset`, which would
+otherwise silently invert `dealDamage` into a heal; a negative resolved
+`buff` is left unclamped, since a debuff is already an intentional,
+shipped case). `ai/scoring.ts` threads `resolveEffectValue` into every site
+that used to read these fields as a plain number (`computePotentialFaceDamage`,
+`estimateEffectValue`, `scoreChosenTarget`'s dispatch into
+`scoreDamageSpell`/`scoreHealSpell`) — no changes needed in `OpponentAI.ts`
+itself, same reasoning as Momentum above.
+
+**`{X}` in rule text** is the display half: a card author writes the literal
+placeholder `{X}` by hand in `CardDefinition.text` (e.g.
+`test-counter-heal`'s "Restore {X} Health to your hero, where X is the
+number of minions on the board."), and `counters.ts`'s
+`resolveCardText(instance, state)` substitutes it with the live-resolved
+value of that card's *first* effect whose headline `EffectValue` isn't a
+plain number when the card is actually rendered in a match — see "Card
+display modes" above for how `CardView`/`HelpBoxController` receive that
+already-resolved string via an optional `resolvedText` param rather than
+touching `GameState` themselves. Only one `{X}`/one value per card is
+supported — this is deliberately not a general templating language. The
+Card Creator has no live board/HP to compute against, so it never attempts
+to resolve `{X}` — the preview shows it literally, by design, not as a gap;
+see "Card Creator" below.
 
 ## Card design conventions
 
 Conventions to follow when authoring or editing entries in `src/game/data/cards.ts`:
 
 - **Trigger flavor text maps 1:1 to `EffectTrigger`**: card `text` uses a fixed flavor word per trigger so players can read a card's timing at a glance — `Anthem:` = `onPlay`, `Deathcry:` = `onDeath`, `Vigil:` = `startOfTurn`, `Curfew:` = `endOfTurn`, `Strike:` = `onAttack`, `Wound:` = `onDamaged`, `Channel:` = `onSpellCast`, `Mourn:` = `onMinionDeath`, `Muster:` = `onMinionCast`. Keep new cards' text consistent with this vocabulary rather than inventing new flavor words per trigger.
+- **`{X}` in rule text resolves to the card's first effect's headline value at render time** — see "Dynamic values (counters)" above. Substitutes whatever that value resolves to, flat or counter-based, so it's only really worth writing when that value *is* counter-based (a flat one would just print a redundant fixed number). Writing `{X}` on a card with no effects at all leaves the literal `{X}` in the text and is flagged by the Card Creator's validator.
 - **`chosenRestriction` must match the card's own text.** Any effect using `target: 'chosen'` defaults to "any minion or hero" in `TurnStateMachine.computeValidTargets` — a card whose text says "a minion" (e.g. "Deal 3 damage to a minion") must set `chosenRestriction: 'minion'`, or it will silently accept the enemy hero as a legal target despite what it says. This was a real bug (Pocket Sand, Frostbite Bolt, Firelance, Boneshard Finger, Emberheart Shaman all lacked it originally) — when adding a new "to a minion"/"to a hero" effect, set the matching restriction and mirror it in `ai/scoring.ts` (`scoreDamageSpell`, `computePotentialFaceDamage`) so the AI respects the same limitation instead of soft-locking in `AwaitingTarget`.
 - **Every new rule must be checked against the opponent AI, not just the player-facing path — no exceptions, including cards authored via the Card Creator.** `ai/scoring.ts`/`OpponentAI.ts` are hand-authored heuristics with no automatic awareness of `TurnStateMachine`/`keywordRules.ts` changes — a new keyword, effect kind, or targeting rule can render and enforce perfectly for the player while the AI either ignores it, misplays it, or soft-locks on it, and nothing will error to surface that. This is a standing rule, not a one-off reminder: after adding or editing any card rule, actually watch the AI play a card that exercises it (or trace the new case through `scoring.ts` by hand) before calling the change done. The Card Creator (see below) only ever writes to `cards.ts` — it has no path to `ai/scoring.ts`, so anything authored through it is exactly as exposed to this gap as a hand-edited card.
 - **Rarity is a power-level bucket, not flavor.** `CardRarity` (`common | rare | exotic | legendary | mythical`, ascending) drives `deckGenerator.ts`'s proportional random deck-building (14 common / 12 rare / 2 exotic / 1 legendary / 1 mythical per 30-card deck currently, guaranteeing every rarity at least one slot) — a card's rarity should reflect its intended power level and how often it should show up, not just feel. Moving a card between rarity tiers (as opposed to only tuning its stats) is a legitimate, deliberate balance lever.
@@ -146,6 +147,12 @@ it instead of hand-editing `cards.ts` — see CLAUDE.md's "Card authoring" point
 Three-column layout: a card-list sidebar (`CardListSidebar.tsx` — search, New Card)
 → a 33%-width live preview (`PreviewPane.tsx`, Full/Simplified toggle) → the field
 form (`CardForm.tsx` + `EffectsEditor.tsx` for the `effects[]` discriminated union).
+`EffectsEditor.tsx`'s `EffectValueInput` component (used for damage/heal `amount`,
+draw `count`, buff `attack`/`health`) is the Fixed/Counter toggle for an
+`EffectValue` field — Counter mode adds a dropdown sourced from
+`src/game/data/counterMetadata.ts` (mirrors `keywordMetadata.ts`/`triggerMetadata.ts`'s
+shape) plus optional multiplier/offset inputs. It only ever *records* which counter
+is picked — see the next bullet for why it can't show a computed number.
 
 - **Preview rendering**: a second, independent `Phaser.Game` (`src/game/cardCreatorMain.ts`'s
   `StartCardCreatorPreview`, mounted into its own `<div id="card-creator-preview">` by
@@ -159,6 +166,11 @@ form (`CardForm.tsx` + `EffectsEditor.tsx` for the `effects[]` discriminated uni
   real game uses, via a throwaway `CardInstance` built by `fakeCardInstance.ts`'s
   `buildPreviewInstance` (only `currentAttack`/`currentHealth`/`keywords` off a
   `CardInstance` actually feed rendering — everything else on it is a dummy value).
+  There's no board, no opponent, no HP anywhere in this pipeline — deliberately, not
+  a gap to fill in — so a `{X}` placeholder in rule text always renders literally
+  here (`CardCreatorPreview.rebuild` calls `createCardContainer` without the
+  optional `resolvedText` param, same as the pre-counters 3-arg call). See "Dynamic
+  values (counters)" above.
 - **The one engine change this required**: `createCardContainer` normally looks up its
   `CardDefinition` from the static `CARD_DEFINITIONS` import by `instance.definitionId`
   — which can't work for a card still being drafted (not saved yet, or mid-edit with
@@ -170,9 +182,14 @@ form (`CardForm.tsx` + `EffectsEditor.tsx` for the `effects[]` discriminated uni
   uniqueness/shape, cost/attack/health integer rules, minion-only attack/health
   presence, and per-`effects[]`-row rules (amount/count minimums, `chosenRestriction`
   required exactly when `target === 'chosen'`, `summon.definitionId` must resolve).
-  Runs again immediately before every save as a belt-and-suspenders check, since no
-  `tsc` runs in-browser — this validator is the only structural check that ever exists
-  before a write.
+  An `EffectValue` field's magnitude check only applies to the flat-number case — a
+  counter-based value can't be sanity-checked at design time, since its actual number
+  depends on live game state; `multiplier`/`offset` are still checked for being finite
+  numbers when present. Also flags rule text containing `{X}` on a card with no
+  effects at all, since `resolveCardText` would have nothing to substitute (see "Card
+  design conventions" and "Dynamic values (counters)" above). Runs again immediately
+  before every save as a belt-and-suspenders check, since no `tsc` runs in-browser —
+  this validator is the only structural check that ever exists before a write.
 - **Saving**: `src/pages/api/card-creator/save.ts`, a small dev-only Next.js API route
   (`useSaveCards.ts` POSTs `{ source }` to it) that `fs.writeFileSync`s straight over
   `src/game/data/cards.ts`. Gated on `process.env.NODE_ENV === 'development'` (403

@@ -4,6 +4,7 @@ import { decideOpponentAction } from '../../ai/OpponentAI';
 import { CARD_DEFINITIONS } from '../../data/cards';
 import { generateDeck } from '../../data/deckGenerator';
 import { EventBus } from '../../EventBus';
+import { resolveCardText } from '../../state/counters';
 import { canDeclareAttack, hasKeyword } from '../../state/keywordRules';
 import { createInitialState } from '../../state/createInitialState';
 import { TurnStateMachine } from '../../state/TurnStateMachine';
@@ -322,7 +323,7 @@ export class CardGame extends Scene
                 ?? player.graveyard.find((c) => c.instanceId === instanceId);
             if (instance)
             {
-                const revealed = this.cardView.createCardContainer(instance, 'full');
+                const revealed = this.cardView.createCardContainer(instance, 'full', undefined, false, false, resolveCardText(instance, this.machine.state));
                 revealed.setPosition(container.x, container.y);
 
                 const index = this.renderedObjects.indexOf(container);
@@ -400,7 +401,7 @@ export class CardGame extends Scene
 
         const destSlot = this.handCardSlot(index, player.hand.length, layout, edgeY, liftSign);
         const origin = this.deckPilePosition(playerId);
-        const flying = this.cardView.createCardContainer(player.hand[index], faceDown ? 'faceDown' : 'full');
+        const flying = this.cardView.createCardContainer(player.hand[index], faceDown ? 'faceDown' : 'full', undefined, false, false, resolveCardText(player.hand[index], this.machine.state));
         flying.setPosition(origin.x, origin.y);
         flying.setDepth(3000);
         flying.setScale(0.6);
@@ -985,7 +986,7 @@ export class CardGame extends Scene
 
         fanCards.forEach((instance, index) =>
         {
-            const container = this.cardView.createCardContainer(instance, faceDown ? 'faceDown' : 'full');
+            const container = this.cardView.createCardContainer(instance, faceDown ? 'faceDown' : 'full', undefined, false, false, resolveCardText(instance, state));
             const slot = this.handCardSlot(index, fanCards.length, layout, y, liftSign);
             container.setPosition(slot.x, slot.y);
             container.setRotation(slot.rotation);
@@ -1003,7 +1004,7 @@ export class CardGame extends Scene
                 Geom.Rectangle.Contains
             );
             // 'full' mode cards already print their cost on-card — no need for the tooltip to repeat it.
-            this.helpBoxController.attachKeywordHover(container, instance, false);
+            this.helpBoxController.attachKeywordHover(container, instance, false, resolveCardText(instance, state));
 
             // Every hand card (not just currently-playable ones) gets an idle slot and can peek —
             // it's a read-only "let me see this clearly" affordance, independent of playability,
@@ -1086,7 +1087,7 @@ export class CardGame extends Scene
 
         if (heldCard)
         {
-            const container = this.cardView.createCardContainer(heldCard, 'full');
+            const container = this.cardView.createCardContainer(heldCard, 'full', undefined, false, false, resolveCardText(heldCard, state));
             container.setPosition(SPOTLIGHT_X, CENTER_Y);
             container.setScale(1.25);
             container.setDepth(2500);
@@ -1114,7 +1115,7 @@ export class CardGame extends Scene
             // to see that.
             const isFrozen = instance.frozen;
 
-            const container = this.cardView.createCardContainer(instance, 'simplified', undefined, isSummoningSick, isFrozen);
+            const container = this.cardView.createCardContainer(instance, 'simplified', undefined, isSummoningSick, isFrozen, resolveCardText(instance, state));
             container.setPosition(startX + index * spacing, y);
             this.renderedObjects.push(container);
             this.instanceContainers.set(instance.instanceId, container);
@@ -1126,7 +1127,7 @@ export class CardGame extends Scene
                 Geom.Rectangle.Contains
             );
             // 'simplified' mode never prints cost on-card — the tooltip is the only place to see it.
-            this.helpBoxController.attachKeywordHover(container, instance, true);
+            this.helpBoxController.attachKeywordHover(container, instance, true, resolveCardText(instance, state));
 
             // See the matching comment in renderHero — only the player whose pending action this is
             // (always state.activePlayer) may resolve its target.

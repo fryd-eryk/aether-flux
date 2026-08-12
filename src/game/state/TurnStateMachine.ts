@@ -5,6 +5,7 @@ import type { CardInstance, ChosenTargetRestriction, EffectAction, EffectTrigger
 import type { PlayerId } from '../types/common';
 import type { GameState, PlayerState } from '../types/GameState';
 import { TurnPhase } from '../types/GameState';
+import { resolveEffectValue } from './counters';
 import { canDeclareAttack, hasKeyword, isTargetable, tauntRestrictedTargets } from './keywordRules';
 
 type PendingAction =
@@ -351,19 +352,32 @@ export class TurnStateMachine {
     private applyEffectAction(action: EffectAction, ownerId: PlayerId, chosenTargetId?: string): void {
         switch (action.kind) {
             case 'damage':
-            case 'heal':
-            case 'buff': {
+            case 'heal': {
+                // Resolved once for the whole action (not re-resolved per target, and not clamped
+                // until here) — a counter-based amount could mathematically resolve negative (e.g.
+                // a large negative offset), which would silently invert dealDamage into a heal or
+                // vice versa without this floor.
+                const amount = Math.max(0, resolveEffectValue(action.amount, ownerId, this.gameState));
                 const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId);
                 for (const targetId of targetIds) {
-                    if (action.kind === 'damage') this.dealDamage(targetId, action.amount);
-                    else if (action.kind === 'heal') this.heal(targetId, action.amount);
-                    else this.buff(targetId, action.attack ?? 0, action.health ?? 0);
+                    if (action.kind === 'damage') this.dealDamage(targetId, amount);
+                    else this.heal(targetId, amount);
                 }
                 break;
             }
-            case 'draw':
-                for (let i = 0; i < action.count; i++) this.drawCard(ownerId);
+            case 'buff': {
+                // Not clamped — a negative buff (debuff) is an intentional, already-shipped case.
+                const attack = resolveEffectValue(action.attack ?? 0, ownerId, this.gameState);
+                const health = resolveEffectValue(action.health ?? 0, ownerId, this.gameState);
+                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId);
+                for (const targetId of targetIds) this.buff(targetId, attack, health);
                 break;
+            }
+            case 'draw': {
+                const count = Math.max(0, resolveEffectValue(action.count, ownerId, this.gameState));
+                for (let i = 0; i < count; i++) this.drawCard(ownerId);
+                break;
+            }
             case 'summon':
                 for (let i = 0; i < action.count; i++) this.summonMinion(action.definitionId, ownerId);
                 break;

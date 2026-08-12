@@ -69,7 +69,7 @@ export class HelpBoxController
      * keywords, no rule text, and `showCost` false) gets no tooltip at all — nothing to say beyond
      * what's already printed on the card.
      */
-    attachKeywordHover (container: Phaser.GameObjects.Container, instance: CardInstance, showCost: boolean): void
+    attachKeywordHover (container: Phaser.GameObjects.Container, instance: CardInstance, showCost: boolean, resolvedText?: string): void
     {
         const definition = CARD_DEFINITIONS[instance.definitionId];
         if (!definition) return;
@@ -77,7 +77,7 @@ export class HelpBoxController
 
         // Skip while this card is the one being dragged — see wireDragEvents' dragstart, which
         // hides an already-showing tooltip for it; this stops one from reappearing mid-drag too.
-        container.on('pointerover', () => { if (container !== this.getDraggedContainer()) this.showHelpBox(instance, container, showCost); });
+        container.on('pointerover', () => { if (container !== this.getDraggedContainer()) this.showHelpBox(instance, container, showCost, resolvedText); });
         container.on('pointerout', () => this.hideHelpBox());
     }
 
@@ -90,10 +90,14 @@ export class HelpBoxController
      * corner, with the same gradient-circle-plus-stroke presentation as the on-card badge — see
      * CardView.createHeaderFull.
      */
-    showHelpBox (instance: CardInstance, container: Phaser.GameObjects.Container, showCost: boolean): void
+    showHelpBox (instance: CardInstance, container: Phaser.GameObjects.Container, showCost: boolean, resolvedText?: string): void
     {
         const definition = CARD_DEFINITIONS[instance.definitionId];
         if (!definition) return;
+        // See CardView.createDescriptionBox's matching comment — resolvedText already has any
+        // `{X}` placeholder substituted with its live value; falls back to the literal authored
+        // text (e.g. in contexts with no live GameState) when absent.
+        const text = resolvedText ?? definition.text;
 
         this.helpBoxLines.forEach((line) => line.destroy());
         this.helpBoxLines = [];
@@ -103,18 +107,18 @@ export class HelpBoxController
         let cursorY = margin + (showCost ? TOOLTIP_COST_CLEARANCE : 0);
         let maxRight = 0;
 
-        if (definition.text !== '')
+        if (text !== '')
         {
-            const text = this.scene.add.text(margin, cursorY, definition.text, {
+            const helpText = this.scene.add.text(margin, cursorY, text, {
                 fontFamily: 'Arial', fontSize: '15px', color: '#ffffff',
                 wordWrap: { width: maxWidth },
             }).setOrigin(0, 0);
 
-            this.helpBox.add(text);
-            this.helpBoxLines.push(text);
+            this.helpBox.add(helpText);
+            this.helpBoxLines.push(helpText);
 
-            maxRight = Math.max(maxRight, text.x + text.width);
-            cursorY += text.height + 14;
+            maxRight = Math.max(maxRight, helpText.x + helpText.width);
+            cursorY += helpText.height + 14;
         }
 
         for (const keyword of instance.keywords)

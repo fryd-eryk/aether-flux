@@ -2,10 +2,13 @@ import type {
     CardDefinition,
     CardEffect,
     ChosenTargetRestriction,
+    CounterKind,
     EffectAction,
     EffectTrigger,
+    EffectValue,
     TargetSelector,
 } from '@/game/types/Card';
+import { COUNTER_METADATA } from '@/game/data/counterMetadata';
 import { TRIGGER_METADATA } from '@/game/data/triggerMetadata';
 import type { FieldErrors } from '../validateCardDefinition';
 import styles from '@/styles/CardCreator.module.css';
@@ -14,6 +17,100 @@ const TRIGGERS = Object.keys(TRIGGER_METADATA) as EffectTrigger[];
 const ACTION_KINDS: EffectAction['kind'][] = ['damage', 'heal', 'draw', 'buff', 'summon', 'freeze', 'silence'];
 const TARGETS: TargetSelector[] = ['self', 'enemyHero', 'friendlyHero', 'chosen', 'allEnemyMinions', 'allFriendlyMinions', 'allMinions', 'allHeroes'];
 const RESTRICTIONS: ChosenTargetRestriction[] = ['minion', 'hero'];
+const COUNTERS = Object.keys(COUNTER_METADATA) as CounterKind[];
+
+interface EffectValueInputProps {
+    label: string;
+    value: EffectValue | undefined;
+    onChange: (value: EffectValue | undefined) => void;
+    min?: number;
+    /** Buff's attack/health are individually optional — "at least one of attack or health" is
+     * enforced elsewhere (validateCardDefinition.ts), not here. Damage/heal amount and draw count
+     * are always required, so they don't offer this option. */
+    allowUnset?: boolean;
+    error?: string;
+}
+
+/**
+ * Fixed number vs. live counter (see counters.ts's resolveEffectValue) toggle for a single
+ * EffectValue field. No value is ever computed/previewed here — the Card Creator has no live
+ * game state to compute against; picking a counter just records which one, and multiplier/offset
+ * for the "twice your minion count" / "count plus 2" style of scaling.
+ */
+function EffectValueInput({ label, value, onChange, min, allowUnset, error }: EffectValueInputProps) {
+    const mode = value === undefined ? 'unset' : typeof value === 'number' ? 'flat' : 'counter';
+
+    return (
+        <div className={styles.field}>
+            <label className={styles.fieldLabel}>{label}</label>
+            <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                <select
+                    className={styles.selectInput}
+                    style={{ width: 'auto' }}
+                    value={mode}
+                    onChange={(e) => {
+                        const next = e.target.value;
+                        if (next === 'unset') onChange(undefined);
+                        else if (next === 'counter') onChange({ counter: 'enemyMinionCount', multiplier: 1 });
+                        else onChange(min ?? 1);
+                    }}
+                >
+                    {allowUnset && <option value="unset">— unset —</option>}
+                    <option value="flat">Fixed</option>
+                    <option value="counter">Counter</option>
+                </select>
+                {mode === 'counter' && typeof value === 'object' && (
+                    <>
+                        <select
+                            className={styles.selectInput}
+                            value={value.counter}
+                            onChange={(e) => onChange({ ...value, counter: e.target.value as CounterKind })}
+                        >
+                            {COUNTERS.map((counter) => (
+                                <option key={counter} value={counter}>
+                                    {COUNTER_METADATA[counter].label}
+                                </option>
+                            ))}
+                        </select>
+                        <input
+                            type="number"
+                            step={1}
+                            className={styles.numberInput}
+                            style={{ width: '4rem' }}
+                            placeholder="×1"
+                            value={value.multiplier ?? ''}
+                            onChange={(e) =>
+                                onChange({ ...value, multiplier: e.target.value === '' ? undefined : Number(e.target.value) })
+                            }
+                        />
+                        <input
+                            type="number"
+                            step={1}
+                            className={styles.numberInput}
+                            style={{ width: '4rem' }}
+                            placeholder="+0"
+                            value={value.offset ?? ''}
+                            onChange={(e) =>
+                                onChange({ ...value, offset: e.target.value === '' ? undefined : Number(e.target.value) })
+                            }
+                        />
+                    </>
+                )}
+                {mode === 'flat' && (
+                    <input
+                        type="number"
+                        min={min}
+                        step={1}
+                        className={styles.numberInput}
+                        value={value as number}
+                        onChange={(e) => onChange(Number(e.target.value))}
+                    />
+                )}
+            </div>
+            {error && <span className={styles.fieldError}>{error}</span>}
+        </div>
+    );
+}
 
 function defaultActionFor(kind: EffectAction['kind']): EffectAction {
     switch (kind) {
@@ -149,20 +246,15 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                         <div className={styles.fieldRow}>
                             {(action.kind === 'damage' || action.kind === 'heal') && (
                                 <>
-                                    <div className={styles.field}>
-                                        <label className={styles.fieldLabel}>Amount</label>
-                                        <input
-                                            type="number"
-                                            min={1}
-                                            step={1}
-                                            className={styles.numberInput}
-                                            value={action.amount}
-                                            onChange={(e) =>
-                                                updateEffect(index, { ...effect, action: { ...action, amount: Number(e.target.value) } })
-                                            }
-                                        />
-                                        {errors[`${prefix}.amount`] && <span className={styles.fieldError}>{errors[`${prefix}.amount`]}</span>}
-                                    </div>
+                                    <EffectValueInput
+                                        label="Amount"
+                                        value={action.amount}
+                                        min={1}
+                                        error={errors[`${prefix}.amount`]}
+                                        onChange={(value) =>
+                                            updateEffect(index, { ...effect, action: { ...action, amount: (value ?? 1) as EffectValue } })
+                                        }
+                                    />
                                     <div className={styles.field}>
                                         <label className={styles.fieldLabel}>Target</label>
                                         <select
@@ -217,55 +309,32 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                             )}
 
                             {action.kind === 'draw' && (
-                                <div className={styles.field}>
-                                    <label className={styles.fieldLabel}>Count</label>
-                                    <input
-                                        type="number"
-                                        min={1}
-                                        step={1}
-                                        className={styles.numberInput}
-                                        value={action.count}
-                                        onChange={(e) =>
-                                            updateEffect(index, { ...effect, action: { ...action, count: Number(e.target.value) } })
-                                        }
-                                    />
-                                    {errors[`${prefix}.count`] && <span className={styles.fieldError}>{errors[`${prefix}.count`]}</span>}
-                                </div>
+                                <EffectValueInput
+                                    label="Count"
+                                    value={action.count}
+                                    min={1}
+                                    error={errors[`${prefix}.count`]}
+                                    onChange={(value) =>
+                                        updateEffect(index, { ...effect, action: { ...action, count: (value ?? 1) as EffectValue } })
+                                    }
+                                />
                             )}
 
                             {action.kind === 'buff' && (
                                 <>
-                                    <div className={styles.field}>
-                                        <label className={styles.fieldLabel}>Attack</label>
-                                        <input
-                                            type="number"
-                                            step={1}
-                                            className={styles.numberInput}
-                                            value={action.attack ?? ''}
-                                            onChange={(e) =>
-                                                updateEffect(index, {
-                                                    ...effect,
-                                                    action: { ...action, attack: e.target.value === '' ? undefined : Number(e.target.value) },
-                                                })
-                                            }
-                                        />
-                                        {errors[`${prefix}.attack`] && <span className={styles.fieldError}>{errors[`${prefix}.attack`]}</span>}
-                                    </div>
-                                    <div className={styles.field}>
-                                        <label className={styles.fieldLabel}>Health</label>
-                                        <input
-                                            type="number"
-                                            step={1}
-                                            className={styles.numberInput}
-                                            value={action.health ?? ''}
-                                            onChange={(e) =>
-                                                updateEffect(index, {
-                                                    ...effect,
-                                                    action: { ...action, health: e.target.value === '' ? undefined : Number(e.target.value) },
-                                                })
-                                            }
-                                        />
-                                    </div>
+                                    <EffectValueInput
+                                        label="Attack"
+                                        value={action.attack}
+                                        allowUnset
+                                        error={errors[`${prefix}.attack`]}
+                                        onChange={(value) => updateEffect(index, { ...effect, action: { ...action, attack: value } })}
+                                    />
+                                    <EffectValueInput
+                                        label="Health"
+                                        value={action.health}
+                                        allowUnset
+                                        onChange={(value) => updateEffect(index, { ...effect, action: { ...action, health: value } })}
+                                    />
                                     <div className={styles.field}>
                                         <label className={styles.fieldLabel}>Target</label>
                                         <select

@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (26) ---
+    // --- Common rarity (25) ---
     "stone-guardian": {
         id: "stone-guardian",
         name: "Stone Guardian",
@@ -86,15 +86,22 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         health: 1,
         rarity: "common",
     },
-    "sunfeather-falcon": {
-        id: "sunfeather-falcon",
-        name: "Sunfeather Falcon",
-        cost: 2,
-        type: "minion",
-        text: "",
-        attack: 2,
-        health: 1,
-        keywords: ["charge"],
+    "test-counter-heal": {
+        id: "test-counter-heal",
+        name: "Test: Counter Heal",
+        cost: 1,
+        type: "spell",
+        text: "Restore {X} Health to your hero, where X is the number of minions on the board.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "heal",
+                    amount: { counter: "allMinionCount" },
+                    target: "friendlyHero",
+                },
+            },
+        ],
         rarity: "common",
     },
     "alms-cleric": {
@@ -334,26 +341,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "common",
     },
-    "emberback-boar": {
-        id: "emberback-boar",
-        name: "Emberback Boar",
-        cost: 4,
-        type: "minion",
-        text: "Wound: Deal 1 damage to the enemy hero.",
-        attack: 2,
-        health: 4,
-        effects: [
-            {
-                trigger: "onDamaged",
-                action: {
-                    kind: "damage",
-                    amount: 1,
-                    target: "enemyHero",
-                },
-            },
-        ],
-        rarity: "common",
-    },
     "wandering-cleric": {
         id: "wandering-cleric",
         name: "Wandering Cleric",
@@ -411,7 +398,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Rare rarity (16) ---
+    // --- Rare rarity (17) ---
     "mind-lost-cultist": {
         id: "mind-lost-cultist",
         name: "Mind-lost Cultist",
@@ -565,6 +552,18 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
         artVerticalAlign: "bottom",
+    },
+    "paintwister-scorpion": {
+        id: "paintwister-scorpion",
+        name: "Paintwister Scorpion",
+        cost: 4,
+        type: "minion",
+        text: "",
+        attack: 1,
+        health: 3,
+        keywords: ["windfury","venom"],
+        rarity: "rare",
+        artVerticalAlign: "top",
     },
     "squall-falconer": {
         id: "squall-falconer",
@@ -783,7 +782,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "top",
     },
 
-    // --- Exotic rarity (10) ---
+    // --- Exotic rarity (11) ---
     "blood-moon-ritual": {
         id: "blood-moon-ritual",
         name: "Blood Moon Ritual",
@@ -809,6 +808,26 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
         artVerticalAlign: "top",
+    },
+    "celestial-chaser": {
+        id: "celestial-chaser",
+        name: "Celestial Chaser",
+        cost: 2,
+        type: "minion",
+        text: "Whenever Celestial Chaser attacks, draw X cards where X is the number of minions the opponent controls.",
+        attack: 1,
+        health: 2,
+        effects: [
+            {
+                trigger: "onAttack",
+                action: {
+                    kind: "draw",
+                    count: { counter: "enemyMinionCount" },
+                },
+            },
+        ],
+        rarity: "exotic",
+        artVerticalAlign: "bottom",
     },
     "forced-coronation": {
         id: "forced-coronation",
@@ -839,17 +858,26 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "exotic",
         artVerticalAlign: "bottom",
     },
-    "paintwister-scorpion": {
-        id: "paintwister-scorpion",
-        name: "Paintwister Scorpion",
+    "emberback-boar": {
+        id: "emberback-boar",
+        name: "Emberback Boar",
         cost: 4,
         type: "minion",
-        text: "",
+        text: "Mourn: gain +1/+0.",
         attack: 1,
-        health: 3,
-        keywords: ["windfury","venom"],
+        health: 4,
+        effects: [
+            {
+                trigger: "onMinionDeath",
+                action: {
+                    kind: "buff",
+                    attack: 1,
+                    health: 0,
+                    target: "self",
+                },
+            },
+        ],
         rarity: "exotic",
-        artVerticalAlign: "top",
     },
     "ironclad-vanguard": {
         id: "ironclad-vanguard",
@@ -862,25 +890,14 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         keywords: ["taunt","divineShield"],
         rarity: "exotic",
     },
-    "charging-direwolf": {
-        id: "charging-direwolf",
-        name: "Charging Direwolf",
-        cost: 7,
-        type: "minion",
-        text: "",
-        attack: 4,
-        health: 4,
-        keywords: ["charge","windfury"],
-        rarity: "exotic",
-    },
     "cinderplume-phoenix": {
         id: "cinderplume-phoenix",
         name: "Cinderplume Phoenix",
-        cost: 7,
+        cost: 6,
         type: "minion",
         text: "Anthem, Deathcry: Summon a 1/2 Ember Fledgling.",
         attack: 3,
-        health: 3,
+        health: 4,
         keywords: ["lifesteal"],
         effects: [
             {
@@ -902,6 +919,17 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
         artVerticalAlign: "bottom",
+    },
+    "charging-direwolf": {
+        id: "charging-direwolf",
+        name: "Charging Direwolf",
+        cost: 7,
+        type: "minion",
+        text: "",
+        attack: 4,
+        health: 4,
+        keywords: ["charge","windfury"],
+        rarity: "exotic",
     },
     "genesis-wellspring": {
         id: "genesis-wellspring",

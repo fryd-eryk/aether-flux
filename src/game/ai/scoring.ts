@@ -1,5 +1,6 @@
 import { CARD_DEFINITIONS } from '../data/cards';
-import { canDeclareAttack, hasKeyword } from '../state/keywordRules';
+import { resolveEffectValue } from '../state/counters';
+import { canDeclareAttack, hasKeyword, isTargetable } from '../state/keywordRules';
 import type { CardDefinition, CardInstance, ChosenTargetRestriction, EffectAction } from '../types/Card';
 import type { PlayerId } from '../types/common';
 import type { GameState } from '../types/GameState';
@@ -41,7 +42,7 @@ export function computePotentialFaceDamage(state: GameState, aiId: PlayerId): nu
                 damageEffect.action.kind === 'damage' &&
                 damageEffect.action.chosenRestriction !== 'minion'
             ) {
-                total += damageEffect.action.amount;
+                total += resolveEffectValue(damageEffect.action.amount, aiId, state);
             }
         } else if (definition.keywords?.includes('charge')) {
             // A Charge minion could be played and swung at face for lethal in the same turn.
@@ -69,23 +70,29 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
     const enemy = state.players[opponentOf(aiId)];
 
     switch (action.kind) {
-        case 'damage':
+        case 'damage': {
             if (action.target === 'chosen') return 0;
+            const amount = resolveEffectValue(action.amount, aiId, state);
             // allMinions/allHeroes hit both sides — net the boards against each other (and halve a
             // mutual face hit) rather than a flat per-target count, so the AI disfavors nuking a
             // board/face split that actually favors the enemy. See CLAUDE.md's Apocalypse precedent.
-            if (action.target === 'allMinions') return action.amount * (enemy.board.length - ai.board.length);
-            if (action.target === 'allHeroes') return action.amount * 0.5;
-            return action.amount * (action.target === 'allEnemyMinions' ? Math.max(1, enemy.board.length) : 1);
-        case 'heal':
+            if (action.target === 'allMinions') return amount * (enemy.board.length - ai.board.length);
+            if (action.target === 'allHeroes') return amount * 0.5;
+            return amount * (action.target === 'allEnemyMinions' ? Math.max(1, enemy.board.length) : 1);
+        }
+        case 'heal': {
             if (action.target === 'chosen') return 0;
-            if (action.target === 'allMinions') return action.amount * 0.5 * (ai.board.length - enemy.board.length);
-            return action.amount * (action.target === 'allFriendlyMinions' ? Math.max(1, ai.board.length) : 1) * 0.5;
-        case 'buff':
-            if (action.target === 'allMinions') return ((action.attack ?? 0) + (action.health ?? 0)) * (ai.board.length - enemy.board.length);
-            return ((action.attack ?? 0) + (action.health ?? 0)) * (action.target === 'allFriendlyMinions' ? Math.max(1, ai.board.length) : 1);
+            const amount = resolveEffectValue(action.amount, aiId, state);
+            if (action.target === 'allMinions') return amount * 0.5 * (ai.board.length - enemy.board.length);
+            return amount * (action.target === 'allFriendlyMinions' ? Math.max(1, ai.board.length) : 1) * 0.5;
+        }
+        case 'buff': {
+            const magnitude = resolveEffectValue(action.attack ?? 0, aiId, state) + resolveEffectValue(action.health ?? 0, aiId, state);
+            if (action.target === 'allMinions') return magnitude * (ai.board.length - enemy.board.length);
+            return magnitude * (action.target === 'allFriendlyMinions' ? Math.max(1, ai.board.length) : 1);
+        }
         case 'draw':
-            return action.count * 4;
+            return resolveEffectValue(action.count, aiId, state) * 4;
         case 'summon':
             return action.count * 4;
         case 'freeze':
@@ -101,8 +108,10 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
 
 /** Scores + picks a target for the one chosen-target effect a card is allowed (see TurnStateMachine.needsChosenTarget). */
 function scoreChosenTarget(state: GameState, aiId: PlayerId, action: EffectAction, lethalAvailable: boolean): ScoredTarget {
-    if (action.kind === 'damage') return scoreDamageSpell(state, aiId, action.amount, lethalAvailable, action.chosenRestriction);
-    if (action.kind === 'heal') return scoreHealSpell(state, aiId, action.amount, action.chosenRestriction);
+    if (action.kind === 'damage') {
+        return scoreDamageSpell(state, aiId, resolveEffectValue(action.amount, aiId, state), lethalAvailable, action.chosenRestriction);
+    }
+    if (action.kind === 'heal') return scoreHealSpell(state, aiId, resolveEffectValue(action.amount, aiId, state), action.chosenRestriction);
     if (action.kind === 'freeze') return scoreFreezeSpell(state, aiId, action.chosenRestriction);
     if (action.kind === 'silence') return scoreSilenceSpell(state, aiId, action.chosenRestriction);
     return { score: 0 };
@@ -233,7 +242,7 @@ function scoreDamageSpell(
     let best: ScoredTarget =
         restriction === 'minion' ? { score: -Infinity } : { score: amount * (lethalAvailable ? 100 : 1.5), targetId: enemyId };
 
-    for (const minion of enemy.board) {
+    for (const minion of enemy.board.filter(isTargetable)) {
         const health = minion.currentHealth ?? 0;
         const value = (minion.currentAttack ?? 0) + health;
         const score = amount >= health ? value * 3 : amount * 0.5;
@@ -251,7 +260,7 @@ function scoreDamageSpell(
     // (Unrestricted/hero-restricted damage already always has the enemy-face fallback above, so
     // this loop is scoped to the minion-only case that actually needs it.)
     if (restriction === 'minion') {
-        for (const minion of ai.board) {
+        for (const minion of ai.board.filter(isTargetable)) {
             const health = minion.currentHealth ?? 0;
             const value = (minion.currentAttack ?? 0) + health;
             const score = amount >= health ? -value * 3 : -amount * 0.5;
@@ -283,7 +292,7 @@ function scoreHealSpell(state: GameState, aiId: PlayerId, amount: number, restri
     }
 
     if (restriction !== 'hero') {
-        for (const minion of ai.board) {
+        for (const minion of ai.board.filter(isTargetable)) {
             const definition = CARD_DEFINITIONS[minion.definitionId];
             if (!definition?.health) continue;
             const missing = definition.health - (minion.currentHealth ?? 0);
@@ -294,7 +303,7 @@ function scoreHealSpell(state: GameState, aiId: PlayerId, amount: number, restri
     }
 
     if (restriction === 'minion' && best.targetId === undefined) {
-        for (const minion of [...ai.board, ...state.players[opponentOf(aiId)].board]) {
+        for (const minion of [...ai.board, ...state.players[opponentOf(aiId)].board].filter(isTargetable)) {
             const score = -1;
             if (score > best.score) best = { score, targetId: minion.instanceId };
         }
@@ -315,13 +324,13 @@ function scoreFreezeSpell(state: GameState, aiId: PlayerId, restriction?: Chosen
     const ai = state.players[aiId];
 
     let best: ScoredTarget = { score: -Infinity };
-    for (const minion of enemy.board) {
+    for (const minion of enemy.board.filter(isTargetable)) {
         const score = (minion.currentAttack ?? 0) * 2; // denying a bigger attacker is more valuable
         if (score > best.score) best = { score, targetId: minion.instanceId };
     }
 
-    if (restriction === 'minion' && enemy.board.length === 0) {
-        for (const minion of ai.board) {
+    if (restriction === 'minion' && best.targetId === undefined) {
+        for (const minion of ai.board.filter(isTargetable)) {
             const score = -1; // mild self-cost, still resolvable rather than leaving no legal target
             if (score > best.score) best = { score, targetId: minion.instanceId };
         }
@@ -340,7 +349,7 @@ function scoreSilenceSpell(state: GameState, aiId: PlayerId, restriction?: Chose
     const ai = state.players[aiId];
 
     let best: ScoredTarget = { score: -Infinity };
-    for (const minion of enemy.board) {
+    for (const minion of enemy.board.filter(isTargetable)) {
         const definition = CARD_DEFINITIONS[minion.definitionId];
         const hasKeywords = minion.keywords.size > 0;
         const hasEffects = (definition?.effects?.length ?? 0) > 0;
@@ -351,7 +360,7 @@ function scoreSilenceSpell(state: GameState, aiId: PlayerId, restriction?: Chose
     }
 
     if (restriction === 'minion' && best.targetId === undefined) {
-        for (const minion of [...enemy.board, ...ai.board]) {
+        for (const minion of [...enemy.board, ...ai.board].filter(isTargetable)) {
             const score = -5;
             if (score > best.score) best = { score, targetId: minion.instanceId };
         }
