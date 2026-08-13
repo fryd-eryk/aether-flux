@@ -212,18 +212,40 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "top",
     },
+    "infectious-imp": {
+        id: "infectious-imp",
+        name: "Infectious Imp",
+        cost: 2,
+        type: "minion",
+        text: "**Deathcry:** Deal 1 damage to the enemy hero.",
+        attack: 1,
+        health: 1,
+        keywords: ["venom"],
+        tribes: ["demon"],
+        effects: [
+            {
+                trigger: "onDeath",
+                action: {
+                    kind: "damage",
+                    amount: 1,
+                    target: "enemyHero",
+                },
+            },
+        ],
+        rarity: "common",
+    },
     "bog-witch": {
         id: "bog-witch",
         name: "Sad Bog Witch",
         cost: 3,
         type: "minion",
-        text: "Wound: gains +1/+0.",
+        text: "When a minion dies, Sad Bog Witch deals 1 damage to you and gains +1/+0.",
         attack: 0,
         health: 3,
         tribes: ["nature","demon"],
         effects: [
             {
-                trigger: "onDamaged",
+                trigger: "onMinionDeath",
                 action: {
                     kind: "buff",
                     attack: 1,
@@ -231,8 +253,17 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     target: "self",
                 },
             },
+            {
+                trigger: "onMinionDeath",
+                action: {
+                    kind: "damage",
+                    amount: 1,
+                    target: "friendlyHero",
+                },
+            },
         ],
         rarity: "common",
+        artVerticalAlign: "bottom",
     },
     "anthem-of-the-vanguard": {
         id: "anthem-of-the-vanguard",
@@ -288,28 +319,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onAttack",
-                action: {
-                    kind: "damage",
-                    amount: 1,
-                    target: "enemyHero",
-                },
-            },
-        ],
-        rarity: "common",
-    },
-    "infectious-imp": {
-        id: "infectious-imp",
-        name: "Infectious Imp",
-        cost: 3,
-        type: "minion",
-        text: "Deathcry: Deal 1 damage to the enemy hero.",
-        attack: 1,
-        health: 1,
-        keywords: ["venom"],
-        tribes: ["demon"],
-        effects: [
-            {
-                trigger: "onDeath",
                 action: {
                     kind: "damage",
                     amount: 1,
@@ -437,28 +446,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         tribes: ["nature","animal"],
         rarity: "rare",
     },
-    "mind-lost-cultist": {
-        id: "mind-lost-cultist",
-        name: "Mind-lost Cultist",
-        cost: 2,
-        type: "minion",
-        text: "Deathcry: Deal 2 damage to the enemy hero.",
-        attack: 2,
-        health: 2,
-        tribes: ["human","demon"],
-        effects: [
-            {
-                trigger: "onDeath",
-                action: {
-                    kind: "damage",
-                    amount: 2,
-                    target: "enemyHero",
-                },
-            },
-        ],
-        rarity: "rare",
-        artVerticalAlign: "bottom",
-    },
     "celestial-chaser": {
         id: "celestial-chaser",
         name: "Celestial Chaser",
@@ -474,6 +461,28 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 action: {
                     kind: "draw",
                     count: { counter: "enemyMinionCount" },
+                },
+            },
+        ],
+        rarity: "rare",
+        artVerticalAlign: "bottom",
+    },
+    "mind-lost-cultist": {
+        id: "mind-lost-cultist",
+        name: "Mind-lost Cultist",
+        cost: 3,
+        type: "minion",
+        text: "**Deathcry:** Deal 2 damage to the enemy hero.",
+        attack: 2,
+        health: 3,
+        tribes: ["human","demon"],
+        effects: [
+            {
+                trigger: "onDeath",
+                action: {
+                    kind: "damage",
+                    amount: 2,
+                    target: "enemyHero",
                 },
             },
         ],
@@ -1153,6 +1162,17 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         health: 6,
         keywords: ["lifesteal"],
         tribes: ["demon"],
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 1,
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                },
+            },
+        ],
         rarity: "legendary",
         artVerticalAlign: "top",
     },
