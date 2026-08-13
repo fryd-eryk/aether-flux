@@ -109,6 +109,14 @@ design, not a bug fix.
   `cards.ts`, it never touches `ai/scoring.ts`. Actually watch the AI play the
   new card (or trace it through `scoring.ts` by hand) before considering the
   change done.
+- **Initiative (MTG's First Strike) resolves simultaneously when both sides
+  of a combat have it, or when neither does** — only a *sole* Initiative
+  side hits first and can deny the other side's return hit. This matches
+  MTG's own first-strike-vs-first-strike ruling and is intentional, not a
+  missed case: don't special-case "both have Initiative" to make the
+  Initiative side hit first anyway. `TurnStateMachine.executeAttack` and
+  `ai/scoring.ts`'s `scoreAttack` implement this identically — keep them in
+  sync if this logic changes.
 
 ## Gotchas & Lessons Learned
 

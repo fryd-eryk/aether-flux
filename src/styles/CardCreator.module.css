@@ -72,6 +72,72 @@
     background: #2c3c5c;
 }
 
+.filterBlock {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    background: #171d29;
+    border: 1px solid #262e3d;
+    border-radius: 4px;
+}
+
+.filterHeaderRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.filterHeaderLabel {
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #9aa7bd;
+}
+
+.filterClearButton {
+    padding: 2px 6px;
+    background: none;
+    border: 1px solid #3f5075;
+    border-radius: 3px;
+    color: #9aa7bd;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.filterClearButton:hover {
+    background: #24304a;
+    color: #e8ecf5;
+}
+
+.filterRangeRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.filterRangeLabel {
+    flex: 0 0 auto;
+    width: 20px;
+    font-size: 11px;
+    color: #9aa7bd;
+}
+
+.filterRangeRow .numberInput {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+}
+
+.filterCheckboxGroup {
+    gap: 6px 8px;
+}
+
+.filterCheckboxGroup .checkboxLabel {
+    font-size: 11px;
+}
+
 .newButton {
     width: 100%;
     padding: 7px 8px;

@@ -213,7 +213,8 @@ export function scorePlayCard(
             (definition.keywords?.includes('taunt') ? 2 : 0) +
             (definition.keywords?.includes('divineShield') ? 3 : 0) +
             (definition.keywords?.includes('veiled') ? 2 : 0) +
-            (definition.keywords?.includes('venom') ? 4 : 0);
+            (definition.keywords?.includes('venom') ? 4 : 0) +
+            (definition.keywords?.includes('initiative') ? 3 : 0);
         // Casting this minion also fires Muster on every other board minion with a matching effect.
         const musterValue = musterBoardValue(state, aiId);
         const score = stats * 2 + flatEffectValue + chosenScore + keywordBonus - overextendPenalty + musterValue;
@@ -403,8 +404,19 @@ export function scoreAttack(
 
     // Divine Shield absorbs the whole hit rather than dying/killing outright. Venom makes any
     // unshielded hit lethal regardless of the stat comparison.
-    const defenderDies = (attackerAttack >= targetHealth || hasKeyword(attacker, 'venom')) && !hasKeyword(target, 'divineShield');
-    const attackerDies = (targetAttack >= attackerHealth || hasKeyword(target, 'venom')) && !hasKeyword(attacker, 'divineShield');
+    let defenderDies = (attackerAttack >= targetHealth || hasKeyword(attacker, 'venom')) && !hasKeyword(target, 'divineShield');
+    let attackerDies = (targetAttack >= attackerHealth || hasKeyword(target, 'venom')) && !hasKeyword(attacker, 'divineShield');
+    // Initiative (First Strike): whichever side ALONE has it hits first — if that hit is lethal,
+    // the other side never swings back, so its own "dies" flag no longer applies. Mirrors
+    // TurnStateMachine.executeAttack's resolution order exactly.
+    const attackerHasInitiative = hasKeyword(attacker, 'initiative');
+    const targetHasInitiative = hasKeyword(target, 'initiative');
+    if (defenderDies && attackerHasInitiative && !targetHasInitiative) {
+        attackerDies = false;
+    }
+    if (attackerDies && targetHasInitiative && !attackerHasInitiative) {
+        defenderDies = false;
+    }
     // Mourn (onMinionDeath): the attacker's own death (if this trade kills it) also fires Mourn on
     // the rest of the AI's board — a best-effort nudge to the trade math, not full lookahead.
     const mournBonus = attackerDies ? mournBoardValue(state, aiId, attacker.instanceId) : 0;

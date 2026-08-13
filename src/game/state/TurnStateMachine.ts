@@ -181,24 +181,23 @@ export class TurnStateMachine {
         attacker.keywords.delete('veiled');
         this.triggerEffects(attacker, 'onAttack', player.id);
 
-        const attackDamage = attacker.currentAttack ?? 0;
-        const damageDealt = this.dealDamage(targetId, attackDamage);
-        if (damageDealt > 0 && hasKeyword(attacker, 'lifesteal')) {
-            this.heal(player.id, damageDealt);
-        }
-        if (damageDealt > 0 && hasKeyword(attacker, 'venom') && !this.isPlayerId(targetId)) {
-            this.forceKill(targetId);
-        }
+        const defender = !this.isPlayerId(targetId) ? this.findMinion(targetId) : undefined;
+        // Initiative (MTG's First Strike): the side that ALONE has it hits first, and the other
+        // side's return hit is skipped if that first hit is lethal. Both-or-neither falls through
+        // to the simultaneous exchange below, matching MTG's own first-strike-vs-first-strike ruling.
+        const defenderStrikesFirst = !!defender && hasKeyword(defender.instance, 'initiative') && !hasKeyword(attacker, 'initiative');
 
-        if (!this.isPlayerId(targetId)) {
-            const defender = this.findMinion(targetId);
+        if (defenderStrikesFirst && defender) {
+            this.resolveCombatHit(defender.instance, defender.owner.id, attackerInstanceId);
+            if ((attacker.currentHealth ?? 0) > 0) {
+                this.resolveCombatHit(attacker, player.id, targetId);
+            }
+        } else {
+            this.resolveCombatHit(attacker, player.id, targetId);
             if (defender) {
-                const returnDamageDealt = this.dealDamage(attackerInstanceId, defender.instance.currentAttack ?? 0);
-                if (returnDamageDealt > 0 && hasKeyword(defender.instance, 'lifesteal')) {
-                    this.heal(defender.owner.id, returnDamageDealt);
-                }
-                if (returnDamageDealt > 0 && hasKeyword(defender.instance, 'venom')) {
-                    this.forceKill(attackerInstanceId);
+                const attackerWinsInitiative = hasKeyword(attacker, 'initiative') && !hasKeyword(defender.instance, 'initiative');
+                if (!attackerWinsInitiative || (defender.instance.currentHealth ?? 0) > 0) {
+                    this.resolveCombatHit(defender.instance, defender.owner.id, attackerInstanceId);
                 }
             }
         }
@@ -206,6 +205,19 @@ export class TurnStateMachine {
         this.sweepDeaths();
         EventBus.emit('state:attack', { attackerInstanceId, targetId });
         this.finishResolving();
+    }
+
+    /** One side's combat swing (attacker's hit or defender's return hit) plus its Lifesteal/Venom
+     * follow-ups — factored out so Initiative can reorder or skip a side's hit in executeAttack
+     * without duplicating this logic. */
+    private resolveCombatHit(source: CardInstance, sourceOwnerId: PlayerId, targetId: string): void {
+        const damageDealt = this.dealDamage(targetId, source.currentAttack ?? 0);
+        if (damageDealt > 0 && hasKeyword(source, 'lifesteal')) {
+            this.heal(sourceOwnerId, damageDealt);
+        }
+        if (damageDealt > 0 && hasKeyword(source, 'venom') && !this.isPlayerId(targetId)) {
+            this.forceKill(targetId);
+        }
     }
 
     private finishResolving(): void {

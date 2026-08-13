@@ -9,4 +9,5 @@ export const KEYWORD_METADATA: Record<Keyword, { abbr: string; color: number; la
     lifesteal: { abbr: 'L', color: 0xa04fd6, label: 'Lifesteal', description: "Damage this minion deals heals its owner's hero." },
     veiled: { abbr: 'VL', color: 0x6a6fd6, label: 'Veiled', description: "Can't be attacked or targeted by spells until it attacks." },
     venom: { abbr: 'VM', color: 0x5fbf4f, label: 'Venom', description: 'Destroys any minion it damages in combat, regardless of the amount.' },
+    initiative: { abbr: 'IN', color: 0xd6544f, label: 'Initiative', description: 'Deals its combat damage before the opposing minion — if that kills it, no damage strikes back.' },
 };

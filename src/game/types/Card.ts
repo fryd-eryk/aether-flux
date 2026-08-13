@@ -9,7 +9,7 @@ import type { PlayerId } from './common';
 export type CardType = 'minion' | 'spell' | 'token';
 
 /** Static keyword abilities a minion can have. See CLAUDE.md's card game architecture notes for the full keyword roadmap. */
-export type Keyword = 'taunt' | 'charge' | 'divineShield' | 'windfury' | 'lifesteal' | 'veiled' | 'venom';
+export type Keyword = 'taunt' | 'charge' | 'divineShield' | 'windfury' | 'lifesteal' | 'veiled' | 'venom' | 'initiative';
 
 /** A minion's family tag(s) — used for tribe-scoped targeting/conditions. See tribeMetadata.ts for display labels and state/tribes.ts for the logic that reads this. Purely additive: a new tribe is just a new union member + a tribeMetadata.ts entry. */
 export type Tribe = 'human' | 'elemental' | 'nature' | 'animal' | 'cosmic' | 'holy' | 'underworld' | 'demon';

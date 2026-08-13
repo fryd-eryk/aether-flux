@@ -81,17 +81,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         tribes: ["demon"],
         rarity: "common",
     },
-    "bramble-python": {
-        id: "bramble-python",
-        name: "Bramble Python",
-        cost: 1,
-        type: "minion",
-        text: "",
-        attack: 2,
-        health: 1,
-        tribes: ["animal"],
-        rarity: "common",
-    },
     "alms-cleric": {
         id: "alms-cleric",
         name: "Alms Cleric",
@@ -220,6 +209,19 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         tribes: ["underworld"],
         rarity: "common",
         artVerticalAlign: "bottom",
+    },
+    "charging-direwolf": {
+        id: "charging-direwolf",
+        name: "Pouncing Direwolf",
+        cost: 2,
+        type: "minion",
+        text: "",
+        attack: 2,
+        health: 1,
+        keywords: ["initiative"],
+        tribes: ["animal"],
+        rarity: "common",
+        artVerticalAlign: "top",
     },
     "bog-witch": {
         id: "bog-witch",
@@ -401,7 +403,19 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Rare rarity (17) ---
+    // --- Rare rarity (18) ---
+    "bramble-python": {
+        id: "bramble-python",
+        name: "Bramble Python",
+        cost: 1,
+        type: "minion",
+        text: "",
+        attack: 1,
+        health: 1,
+        keywords: ["venom"],
+        tribes: ["nature","animal"],
+        rarity: "rare",
+    },
     "mind-lost-cultist": {
         id: "mind-lost-cultist",
         name: "Mind-lost Cultist",
@@ -797,7 +811,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "top",
     },
 
-    // --- Exotic rarity (12) ---
+    // --- Exotic rarity (11) ---
     "blood-moon-ritual": {
         id: "blood-moon-ritual",
         name: "Blood Moon Ritual",
@@ -914,7 +928,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Fortune’s Weaver",
         cost: 6,
         type: "minion",
-        text: "**Channel, Momentum(1):**Draw a card.\n**Strike, Momentum(2):**Draw a card.",
+        text: "**Momentum(1):** When you cast a spell, draw a card.\n**Momentum(2):** When Fortune's Weaver attacks, draw a card.",
         attack: 1,
         health: 5,
         tribes: ["cosmic"],
@@ -937,6 +951,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "exotic",
+        artVerticalAlign: "bottom",
     },
     "cinderplume-phoenix": {
         id: "cinderplume-phoenix",
@@ -968,19 +983,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
         artVerticalAlign: "bottom",
-    },
-    "charging-direwolf": {
-        id: "charging-direwolf",
-        name: "Charging Direwolf",
-        cost: 7,
-        type: "minion",
-        text: "",
-        attack: 4,
-        health: 4,
-        keywords: ["charge","windfury"],
-        tribes: ["animal"],
-        rarity: "exotic",
-        artVerticalAlign: "top",
     },
     "genesis-wellspring": {
         id: "genesis-wellspring",
@@ -1034,7 +1036,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Momentum(1): whenever you cast a spell, silence target minion.",
         attack: 3,
         health: 7,
-        keywords: ["windfury"],
+        keywords: ["divineShield"],
         tribes: ["elemental","holy"],
         effects: [
             {
@@ -1082,7 +1084,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Legendary rarity (5) ---
+    // --- Legendary rarity (6) ---
     "deep-fathoms-strike": {
         id: "deep-fathoms-strike",
         name: "Deep Fathoms Strike",
@@ -1121,6 +1123,30 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         keywords: ["lifesteal"],
         tribes: ["demon"],
         rarity: "legendary",
+        artVerticalAlign: "top",
+    },
+    "disallowed-prince-halaard": {
+        id: "disallowed-prince-halaard",
+        name: "Disallowed Prince Halaard",
+        cost: 7,
+        type: "minion",
+        text: "When Halaard is wounded, it deals 1 damage to you.",
+        attack: 5,
+        health: 5,
+        keywords: ["charge","windfury"],
+        tribes: ["human","animal"],
+        effects: [
+            {
+                trigger: "onDamaged",
+                action: {
+                    kind: "damage",
+                    amount: 1,
+                    target: "friendlyHero",
+                },
+            },
+        ],
+        rarity: "legendary",
+        artVerticalAlign: "bottom",
     },
     "faery-colossus": {
         id: "faery-colossus",
@@ -1202,7 +1228,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Thos, Reaper of Worlds",
         cost: 8,
         type: "minion",
-        text: "**Deathcry:** Deal 6 damage to the enemy hero.\n**Momentum(1):** When Thos attacks, draw a card.",
+        text: "**Deathcry:**Deal 6 damage to the enemy hero.\n**Momentum(1):** When Thos attacks, draw a card.",
         attack: 7,
         health: 8,
         keywords: ["veiled"],
