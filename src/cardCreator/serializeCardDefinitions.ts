@@ -49,6 +49,9 @@ function serializeEffectAction(action: EffectAction, level: number): string {
             if (action.chosenRestriction) {
                 lines.push(`${indent(level)}chosenRestriction: ${JSON.stringify(action.chosenRestriction)},`);
             }
+            if (action.tribeFilter) {
+                lines.push(`${indent(level)}tribeFilter: ${JSON.stringify(action.tribeFilter)},`);
+            }
             break;
         case 'draw':
             lines.push(`${indent(level)}count: ${serializeEffectValue(action.count)},`);
@@ -60,6 +63,9 @@ function serializeEffectAction(action: EffectAction, level: number): string {
             if (action.chosenRestriction) {
                 lines.push(`${indent(level)}chosenRestriction: ${JSON.stringify(action.chosenRestriction)},`);
             }
+            if (action.tribeFilter) {
+                lines.push(`${indent(level)}tribeFilter: ${JSON.stringify(action.tribeFilter)},`);
+            }
             break;
         case 'summon':
             lines.push(`${indent(level)}definitionId: ${JSON.stringify(action.definitionId)},`);
@@ -67,9 +73,23 @@ function serializeEffectAction(action: EffectAction, level: number): string {
             break;
         case 'freeze':
         case 'silence':
+        case 'destroy':
             lines.push(`${indent(level)}target: ${JSON.stringify(action.target)},`);
             if (action.chosenRestriction) {
                 lines.push(`${indent(level)}chosenRestriction: ${JSON.stringify(action.chosenRestriction)},`);
+            }
+            if (action.tribeFilter) {
+                lines.push(`${indent(level)}tribeFilter: ${JSON.stringify(action.tribeFilter)},`);
+            }
+            break;
+        case 'grantKeyword':
+            lines.push(`${indent(level)}keyword: ${JSON.stringify(action.keyword)},`);
+            lines.push(`${indent(level)}target: ${JSON.stringify(action.target)},`);
+            if (action.chosenRestriction) {
+                lines.push(`${indent(level)}chosenRestriction: ${JSON.stringify(action.chosenRestriction)},`);
+            }
+            if (action.tribeFilter) {
+                lines.push(`${indent(level)}tribeFilter: ${JSON.stringify(action.tribeFilter)},`);
             }
             break;
     }

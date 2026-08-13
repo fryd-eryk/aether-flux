@@ -1,30 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (24) ---
-    "stone-guardian": {
-        id: "stone-guardian",
-        name: "Stone Guardian",
-        cost: 1,
-        type: "minion",
-        text: "",
-        attack: 1,
-        health: 3,
-        tribes: ["elemental"],
-        rarity: "common",
-        artVerticalAlign: "bottom",
-    },
-    "sprout-whelp": {
-        id: "sprout-whelp",
-        name: "Sprout Whelp",
-        cost: 1,
-        type: "minion",
-        text: "",
-        attack: 1,
-        health: 2,
-        tribes: ["elemental","nature"],
-        rarity: "common",
-    },
+    // --- Common rarity (23) ---
     "rusty-shieldbearer": {
         id: "rusty-shieldbearer",
         name: "Rusty Shieldbearer",
@@ -36,19 +13,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         keywords: ["taunt"],
         tribes: ["human"],
         rarity: "common",
-    },
-    "ember-sprite": {
-        id: "ember-sprite",
-        name: "Ember Sprite",
-        cost: 1,
-        type: "minion",
-        text: "",
-        attack: 1,
-        health: 1,
-        keywords: ["charge"],
-        tribes: ["elemental"],
-        rarity: "common",
-        artVerticalAlign: "bottom",
     },
     "pocket-sand": {
         id: "pocket-sand",
@@ -80,6 +44,31 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         keywords: ["divineShield"],
         tribes: ["demon"],
         rarity: "common",
+    },
+    "cindersprite-spirit": {
+        id: "cindersprite-spirit",
+        name: "Cindersprite Spirit",
+        cost: 1,
+        type: "minion",
+        text: "",
+        attack: 1,
+        health: 1,
+        keywords: ["charge"],
+        tribes: ["elemental"],
+        rarity: "common",
+        artVerticalAlign: "bottom",
+    },
+    "stonemoss-walker": {
+        id: "stonemoss-walker",
+        name: "Stonemoss Walker",
+        cost: 2,
+        type: "minion",
+        text: "When Stonemoss Walker is wounded, summon a 1/1 Pebble Runner.",
+        attack: 0,
+        health: 3,
+        tribes: ["elemental"],
+        rarity: "common",
+        artVerticalAlign: "bottom",
     },
     "alms-cleric": {
         id: "alms-cleric",
@@ -145,7 +134,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Clockwork Tinkerer",
         cost: 2,
         type: "minion",
-        text: "Anthem: Draw a card.",
+        text: "**Anthem:** Draw a card.",
         attack: 1,
         health: 1,
         tribes: ["human"],
@@ -231,7 +220,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Wound: gains +1/+0.",
         attack: 0,
         health: 3,
-        tribes: ["demon","nature"],
+        tribes: ["nature","demon"],
         effects: [
             {
                 trigger: "onDamaged",
@@ -250,7 +239,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Anthem of the Vanguard",
         cost: 3,
         type: "spell",
-        text: "Give your minions +1/+2.",
+        text: "Target minion gets +1/+2 and **Divine Shield**.",
         effects: [
             {
                 trigger: "onPlay",
@@ -258,7 +247,17 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     kind: "buff",
                     attack: 1,
                     health: 2,
-                    target: "allFriendlyMinions",
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                },
+            },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "grantKeyword",
+                    keyword: "divineShield",
+                    target: "chosen",
+                    chosenRestriction: "minion",
                 },
             },
         ],
@@ -328,7 +327,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "Momentum(1): Draw a card.",
         attack: 1,
         health: 4,
-        tribes: ["human","cosmic"],
+        tribes: ["cosmic"],
         effects: [
             {
                 trigger: "onPlay",
@@ -403,7 +402,29 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Rare rarity (18) ---
+    // --- Rare rarity (20) ---
+    "sprout-whelp": {
+        id: "sprout-whelp",
+        name: "Sprout Whelp",
+        cost: 1,
+        type: "minion",
+        text: "At the start of your turn, Sprout Whelp heals for {X}, where X is the number of minions you control.",
+        attack: 1,
+        health: 2,
+        tribes: ["elemental","nature"],
+        effects: [
+            {
+                trigger: "startOfTurn",
+                action: {
+                    kind: "heal",
+                    amount: { counter: "friendlyMinionCount" },
+                    target: "self",
+                },
+            },
+        ],
+        rarity: "rare",
+        artVerticalAlign: "bottom",
+    },
     "bramble-python": {
         id: "bramble-python",
         name: "Bramble Python",
@@ -438,30 +459,21 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "rare",
         artVerticalAlign: "bottom",
     },
-    "warding-acolyte": {
-        id: "warding-acolyte",
-        name: "Warding Acolyte",
-        cost: 3,
+    "celestial-chaser": {
+        id: "celestial-chaser",
+        name: "Celestial Chaser",
+        cost: 2,
         type: "minion",
-        text: "Anthem: Restore 2 Health to your hero. Deal 1 damage.",
+        text: "When Celestial Chaser attacks, draw X cards where X is the number of minions the opponent controls.",
         attack: 1,
-        health: 3,
-        tribes: ["human","elemental"],
+        health: 2,
+        tribes: ["cosmic"],
         effects: [
             {
-                trigger: "onPlay",
+                trigger: "onAttack",
                 action: {
-                    kind: "heal",
-                    amount: 2,
-                    target: "friendlyHero",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 1,
-                    target: "chosen",
+                    kind: "draw",
+                    count: { counter: "enemyMinionCount" },
                 },
             },
         ],
@@ -589,6 +601,46 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "rare",
         artVerticalAlign: "top",
     },
+    "firebender-adept": {
+        id: "firebender-adept",
+        name: "Firebender Adept",
+        cost: 4,
+        type: "minion",
+        text: "**Anthem:** deal X+1 damage to all enemy minions, where X is the number of minions you control.",
+        attack: 1,
+        health: 2,
+        tribes: ["human","elemental"],
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: { counter: "friendlyMinionCount", offset: 1 },
+                    target: "allEnemyMinions",
+                },
+            },
+        ],
+        rarity: "rare",
+        artVerticalAlign: "bottom",
+    },
+    "chain-lightning": {
+        id: "chain-lightning",
+        name: "Chain Lightning",
+        cost: 4,
+        type: "spell",
+        text: "Deal 3 damage to all enemy minions.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 3,
+                    target: "allEnemyMinions",
+                },
+            },
+        ],
+        rarity: "rare",
+    },
     "squall-falconer": {
         id: "squall-falconer",
         name: "Squall Falconer",
@@ -616,7 +668,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Emberheart Shaman",
         cost: 5,
         type: "minion",
-        text: "Anthem: Deal 3 damage to a minion.",
+        text: "**Anthem:** summon a 1/2 Ember Fledgling.",
         attack: 3,
         health: 4,
         tribes: ["human","elemental"],
@@ -624,33 +676,14 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             {
                 trigger: "onPlay",
                 action: {
-                    kind: "damage",
-                    amount: 3,
-                    target: "chosen",
-                    chosenRestriction: "minion",
+                    kind: "summon",
+                    definitionId: "ember-fledgling",
+                    count: 1,
                 },
             },
         ],
         rarity: "rare",
         artVerticalAlign: "bottom",
-    },
-    "chain-lightning": {
-        id: "chain-lightning",
-        name: "Chain Lightning",
-        cost: 5,
-        type: "spell",
-        text: "Deal 3 damage to all enemy minions.",
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 3,
-                    target: "allEnemyMinions",
-                },
-            },
-        ],
-        rarity: "rare",
     },
     firebead: {
         id: "firebead",
@@ -670,6 +703,35 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
         artVerticalAlign: "bottom",
+    },
+    "warlords-rally": {
+        id: "warlords-rally",
+        name: "Warlord's Rally",
+        cost: 5,
+        type: "spell",
+        text: "All your minions get +2/+2. *Human* minions get  +3/+4 instead.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "buff",
+                    attack: 2,
+                    health: 2,
+                    target: "allFriendlyMinions",
+                },
+            },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "buff",
+                    attack: 1,
+                    health: 2,
+                    target: "allFriendlyMinions",
+                    tribeFilter: "human",
+                },
+            },
+        ],
+        rarity: "rare",
     },
     "duskbound-reaver": {
         id: "duskbound-reaver",
@@ -764,25 +826,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
     },
-    "warlords-rally": {
-        id: "warlords-rally",
-        name: "Warlord's Rally",
-        cost: 6,
-        type: "spell",
-        text: "Give your minions +2/+2.",
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "buff",
-                    attack: 2,
-                    health: 2,
-                    target: "allFriendlyMinions",
-                },
-            },
-        ],
-        rarity: "rare",
-    },
     "city-wide-riots": {
         id: "city-wide-riots",
         name: "City-wide Riots",
@@ -811,7 +854,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "top",
     },
 
-    // --- Exotic rarity (11) ---
+    // --- Exotic rarity (10) ---
     "blood-moon-ritual": {
         id: "blood-moon-ritual",
         name: "Blood Moon Ritual",
@@ -837,27 +880,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
         artVerticalAlign: "top",
-    },
-    "celestial-chaser": {
-        id: "celestial-chaser",
-        name: "Celestial Chaser",
-        cost: 2,
-        type: "minion",
-        text: "Whenever Celestial Chaser attacks, draw X cards where X is the number of minions the opponent controls.",
-        attack: 1,
-        health: 2,
-        tribes: ["cosmic"],
-        effects: [
-            {
-                trigger: "onAttack",
-                action: {
-                    kind: "draw",
-                    count: { counter: "enemyMinionCount" },
-                },
-            },
-        ],
-        rarity: "exotic",
-        artVerticalAlign: "bottom",
     },
     "forced-coronation": {
         id: "forced-coronation",
@@ -958,7 +980,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Cinderplume Phoenix",
         cost: 6,
         type: "minion",
-        text: "Anthem, Deathcry: Summon a 1/2 Ember Fledgling.",
+        text: "**Anthem, Deathcry:** Summon a 1/2 Ember Fledgling.",
         attack: 3,
         health: 4,
         keywords: ["lifesteal"],
@@ -978,6 +1000,35 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     kind: "summon",
                     definitionId: "ember-fledgling",
                     count: 1,
+                },
+            },
+        ],
+        rarity: "exotic",
+        artVerticalAlign: "bottom",
+    },
+    "world-ending-rift": {
+        id: "world-ending-rift",
+        name: "World-ending Rift",
+        cost: 6,
+        type: "spell",
+        text: "Deal 7 damage to all *Human *and *Animal *minions.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 7,
+                    target: "allMinions",
+                    tribeFilter: "human",
+                },
+            },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: 7,
+                    target: "allMinions",
+                    tribeFilter: "animal",
                 },
             },
         ],
@@ -1009,32 +1060,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
     },
-    "world-ending-rift": {
-        id: "world-ending-rift",
-        name: "World-ending Rift",
-        cost: 7,
-        type: "spell",
-        text: "Deal 6 damage to all enemy minions.",
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 6,
-                    target: "allEnemyMinions",
-                },
-            },
-        ],
-        rarity: "exotic",
-        artVerticalAlign: "bottom",
-    },
     "sky-titan": {
         id: "sky-titan",
         name: "Sky Titan",
         cost: 8,
         type: "minion",
-        text: "Momentum(1): whenever you cast a spell, silence target minion.",
-        attack: 3,
+        text: "When you cast a spell, silence target minion.",
+        attack: 4,
         health: 7,
         keywords: ["divineShield"],
         tribes: ["elemental","holy"],
@@ -1046,7 +1078,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     target: "chosen",
                     chosenRestriction: "minion",
                 },
-                condition: { type: "momentum", minCount: 1 },
             },
         ],
         rarity: "exotic",
@@ -1057,7 +1088,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Eternal Phoenix Sovereign",
         cost: 9,
         type: "minion",
-        text: "**Anthem:** your minions get +1/+2.\nWhenever you cast a minion, all your minions gain 3 Health.",
+        text: "**Anthem:** your minions get +1/+2.\nWhen you cast a minion, all your minions gain 3 Health.",
         attack: 4,
         health: 5,
         tribes: ["elemental","animal"],
@@ -1090,7 +1121,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Deep Fathoms Strike",
         cost: 5,
         type: "spell",
-        text: "Deal 2 damage to a minion and freeze all enemy minions.",
+        text: "Destroy target minion and freeze all enemy minions.",
         effects: [
             {
                 trigger: "onPlay",
@@ -1148,15 +1179,15 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "legendary",
         artVerticalAlign: "bottom",
     },
-    "faery-colossus": {
-        id: "faery-colossus",
-        name: "Faery Colossus",
-        cost: 8,
+    "protector-of-the-faery-cove": {
+        id: "protector-of-the-faery-cove",
+        name: "Protector of the Faery Cove",
+        cost: 7,
         type: "minion",
-        text: "Curfew: your minions get +0/+1.",
+        text: "At the end of your turn, your minions get +0/+1.",
         attack: 4,
-        health: 6,
-        keywords: ["venom"],
+        health: 5,
+        keywords: ["taunt"],
         tribes: ["elemental","nature"],
         effects: [
             {
@@ -1259,9 +1290,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         cost: 9,
         type: "minion",
         text: "",
-        attack: 5,
+        attack: 7,
         health: 7,
-        keywords: ["charge","divineShield","windfury","lifesteal"],
+        keywords: ["charge","divineShield","lifesteal","initiative"],
         tribes: ["holy"],
         rarity: "mythical",
         artVerticalAlign: "bottom",
@@ -1278,5 +1309,28 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         health: 2,
         tribes: ["elemental"],
         artVerticalAlign: "top",
+    },
+    "pebble-runner": {
+        id: "pebble-runner",
+        name: "Pebble Runner",
+        cost: 1,
+        type: "token",
+        text: "",
+        attack: 1,
+        health: 1,
+        tribes: ["elemental"],
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "buff",
+                    attack: 1,
+                    health: 1,
+                    target: "chosen",
+                    chosenRestriction: "human",
+                },
+            },
+        ],
+        artVerticalAlign: "bottom",
     },
 };

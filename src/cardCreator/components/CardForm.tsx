@@ -209,10 +209,10 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                         <label className={styles.fieldLabel}>Rule text</label>
                         <div className={styles.previewToolbar}>
                             <button type="button" className={styles.smallButton} style={{ fontWeight: 'bold' }} onClick={() => applyMarkdownStyle('bold')}>
-                                B
+                                Bold <code>(Ctrl+B)</code>
                             </button>
                             <button type="button" className={styles.smallButton} style={{ fontStyle: 'italic' }} onClick={() => applyMarkdownStyle('italic')}>
-                                I
+                                Italic <code>(Ctrl+I)</code>
                             </button>
                         </div>
                         <textarea
@@ -230,9 +230,7 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                         />
                         <p className={styles.fieldHint}>
                             Tip: write <code>{'{X}'}</code> where a counter-based effect value should appear — e.g. &ldquo;Restore{' '}
-                            {'{X}'} Health to your hero.&rdquo; It resolves live in a real match; the preview here shows it literally,
-                            since there&rsquo;s no board/HP to compute against outside a match. Use the B / I buttons (or Ctrl+B /
-                            Ctrl+I) to wrap the current selection in <code>**bold**</code> or <code>*italic*</code>.
+                            {'{X}'} Health to your hero.&rdquo;
                         </p>
                         {errors.text && <span className={styles.fieldError}>{errors.text}</span>}
                     </div>

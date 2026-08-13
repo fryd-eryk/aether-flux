@@ -6,24 +6,60 @@ import type {
     EffectAction,
     EffectTrigger,
     EffectValue,
+    Keyword,
     TargetSelector,
     Tribe,
 } from '@/game/types/Card';
 import { COUNTER_METADATA } from '@/game/data/counterMetadata';
+import { KEYWORD_METADATA } from '@/game/data/keywordMetadata';
 import { TRIBE_METADATA } from '@/game/data/tribeMetadata';
 import { TRIGGER_METADATA } from '@/game/data/triggerMetadata';
 import type { FieldErrors } from '../validateCardDefinition';
 import styles from '@/styles/CardCreator.module.css';
 
 const TRIGGERS = Object.keys(TRIGGER_METADATA) as EffectTrigger[];
-const ACTION_KINDS: EffectAction['kind'][] = ['damage', 'heal', 'draw', 'buff', 'summon', 'freeze', 'silence'];
+const ACTION_KINDS: EffectAction['kind'][] = ['damage', 'heal', 'draw', 'buff', 'summon', 'freeze', 'silence', 'destroy', 'grantKeyword'];
+const KEYWORDS = Object.keys(KEYWORD_METADATA) as Keyword[];
 const TARGETS: TargetSelector[] = ['self', 'enemyHero', 'friendlyHero', 'chosen', 'allEnemyMinions', 'allFriendlyMinions', 'allMinions', 'allHeroes'];
 const RESTRICTIONS: ChosenTargetRestriction[] = ['minion', 'hero', ...(Object.keys(TRIBE_METADATA) as Tribe[])];
+const TRIBES = Object.keys(TRIBE_METADATA) as Tribe[];
 const COUNTERS = Object.keys(COUNTER_METADATA) as CounterKind[];
+/** AOE minion targets a tribeFilter can narrow — hero/self/chosen targets are unaffected (a chosen target's tribe restriction is chosenRestriction instead). */
+const TRIBE_FILTERABLE_TARGETS: TargetSelector[] = ['allMinions', 'allEnemyMinions', 'allFriendlyMinions'];
 
 function restrictionLabel(restriction: ChosenTargetRestriction): string {
     if (restriction === 'minion' || restriction === 'hero') return restriction;
     return TRIBE_METADATA[restriction].label;
+}
+
+interface TribeFilterFieldProps {
+    value: Tribe | undefined;
+    onChange: (value: Tribe | undefined) => void;
+    error?: string;
+}
+
+/** "Tribe filter" listbox for an AOE minion target (allMinions/allEnemyMinions/allFriendlyMinions)
+ * — narrows the action to minions of one tribe, e.g. "Destroy all Elemental minions". Only rendered
+ * when the action's target is one of TRIBE_FILTERABLE_TARGETS (see isTribeFilterable below). */
+function TribeFilterField({ value, onChange, error }: TribeFilterFieldProps) {
+    return (
+        <div className={styles.field}>
+            <label className={styles.fieldLabel}>Tribe filter</label>
+            <select
+                className={styles.selectInput}
+                value={value ?? ''}
+                onChange={(e) => onChange(e.target.value === '' ? undefined : (e.target.value as Tribe))}
+            >
+                <option value="">— all tribes —</option>
+                {TRIBES.map((tribe) => (
+                    <option key={tribe} value={tribe}>
+                        {TRIBE_METADATA[tribe].label}
+                    </option>
+                ))}
+            </select>
+            {error && <span className={styles.fieldError}>{error}</span>}
+        </div>
+    );
 }
 
 interface EffectValueInputProps {
@@ -132,7 +168,10 @@ function defaultActionFor(kind: EffectAction['kind']): EffectAction {
             return { kind, definitionId: '', count: 1 };
         case 'freeze':
         case 'silence':
+        case 'destroy':
             return { kind, target: 'chosen', chosenRestriction: 'minion' };
+        case 'grantKeyword':
+            return { kind, keyword: 'divineShield', target: 'chosen', chosenRestriction: 'minion' };
     }
 }
 
@@ -172,6 +211,7 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                 const prefix = `effects.${index}`;
                 const action = effect.action;
                 const isChosen = 'target' in action && action.target === 'chosen';
+                const isTribeFilterable = 'target' in action && TRIBE_FILTERABLE_TARGETS.includes(action.target);
 
                 return (
                     <div key={index} className={styles.effectRow}>
@@ -274,7 +314,8 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                                 // force-clear it when target moves away from 'chosen' entirely, don't
                                                 // invent a restriction that wasn't there.
                                                 const chosenRestriction = target === 'chosen' ? action.chosenRestriction : undefined;
-                                                updateEffect(index, { ...effect, action: { ...action, target, chosenRestriction } });
+                                                const tribeFilter = TRIBE_FILTERABLE_TARGETS.includes(target) ? action.tribeFilter : undefined;
+                                                updateEffect(index, { ...effect, action: { ...action, target, chosenRestriction, tribeFilter } });
                                             }}
                                         >
                                             {TARGETS.map((target) => (
@@ -311,6 +352,13 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                                 <span className={styles.fieldError}>{errors[`${prefix}.chosenRestriction`]}</span>
                                             )}
                                         </div>
+                                    )}
+                                    {isTribeFilterable && (
+                                        <TribeFilterField
+                                            value={action.tribeFilter}
+                                            error={errors[`${prefix}.tribeFilter`]}
+                                            onChange={(tribeFilter) => updateEffect(index, { ...effect, action: { ...action, tribeFilter } })}
+                                        />
                                     )}
                                 </>
                             )}
@@ -354,7 +402,8 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                                 // force-clear it when target moves away from 'chosen' entirely, don't
                                                 // invent a restriction that wasn't there.
                                                 const chosenRestriction = target === 'chosen' ? action.chosenRestriction : undefined;
-                                                updateEffect(index, { ...effect, action: { ...action, target, chosenRestriction } });
+                                                const tribeFilter = TRIBE_FILTERABLE_TARGETS.includes(target) ? action.tribeFilter : undefined;
+                                                updateEffect(index, { ...effect, action: { ...action, target, chosenRestriction, tribeFilter } });
                                             }}
                                         >
                                             {TARGETS.map((target) => (
@@ -388,6 +437,13 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                                 ))}
                                             </select>
                                         </div>
+                                    )}
+                                    {isTribeFilterable && (
+                                        <TribeFilterField
+                                            value={action.tribeFilter}
+                                            error={errors[`${prefix}.tribeFilter`]}
+                                            onChange={(tribeFilter) => updateEffect(index, { ...effect, action: { ...action, tribeFilter } })}
+                                        />
                                     )}
                                 </>
                             )}
@@ -431,8 +487,26 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                 </>
                             )}
 
-                            {(action.kind === 'freeze' || action.kind === 'silence') && (
+                            {(action.kind === 'freeze' || action.kind === 'silence' || action.kind === 'destroy' || action.kind === 'grantKeyword') && (
                                 <>
+                                    {action.kind === 'grantKeyword' && (
+                                        <div className={styles.field}>
+                                            <label className={styles.fieldLabel}>Keyword</label>
+                                            <select
+                                                className={styles.selectInput}
+                                                value={action.keyword}
+                                                onChange={(e) =>
+                                                    updateEffect(index, { ...effect, action: { ...action, keyword: e.target.value as Keyword } })
+                                                }
+                                            >
+                                                {KEYWORDS.map((keyword) => (
+                                                    <option key={keyword} value={keyword}>
+                                                        {KEYWORD_METADATA[keyword].label}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
                                     <div className={styles.field}>
                                         <label className={styles.fieldLabel}>Target</label>
                                         <select
@@ -441,7 +515,8 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                             onChange={(e) => {
                                                 const target = e.target.value as TargetSelector;
                                                 const chosenRestriction = target === 'chosen' ? action.chosenRestriction : undefined;
-                                                updateEffect(index, { ...effect, action: { ...action, target, chosenRestriction } });
+                                                const tribeFilter = TRIBE_FILTERABLE_TARGETS.includes(target) ? action.tribeFilter : undefined;
+                                                updateEffect(index, { ...effect, action: { ...action, target, chosenRestriction, tribeFilter } });
                                             }}
                                         >
                                             {TARGETS.map((target) => (
@@ -478,6 +553,13 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                                 <span className={styles.fieldError}>{errors[`${prefix}.chosenRestriction`]}</span>
                                             )}
                                         </div>
+                                    )}
+                                    {isTribeFilterable && (
+                                        <TribeFilterField
+                                            value={action.tribeFilter}
+                                            error={errors[`${prefix}.tribeFilter`]}
+                                            onChange={(tribeFilter) => updateEffect(index, { ...effect, action: { ...action, tribeFilter } })}
+                                        />
                                     )}
                                 </>
                             )}

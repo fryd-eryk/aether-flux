@@ -1,7 +1,7 @@
 import { CARD_DEFINITIONS } from '../data/cards';
 import { createCardInstance } from '../data/cardFactory';
 import { EventBus } from '../EventBus';
-import type { CardInstance, ChosenTargetRestriction, EffectAction, EffectTrigger, TargetSelector } from '../types/Card';
+import type { CardInstance, ChosenTargetRestriction, EffectAction, EffectTrigger, Keyword, TargetSelector, Tribe } from '../types/Card';
 import type { PlayerId } from '../types/common';
 import type { GameState, PlayerState } from '../types/GameState';
 import { TurnPhase } from '../types/GameState';
@@ -370,7 +370,7 @@ export class TurnStateMachine {
                 // a large negative offset), which would silently invert dealDamage into a heal or
                 // vice versa without this floor.
                 const amount = Math.max(0, resolveEffectValue(action.amount, ownerId, this.gameState));
-                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId);
+                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId, action.tribeFilter);
                 for (const targetId of targetIds) {
                     if (action.kind === 'damage') this.dealDamage(targetId, amount);
                     else this.heal(targetId, amount);
@@ -381,7 +381,7 @@ export class TurnStateMachine {
                 // Not clamped — a negative buff (debuff) is an intentional, already-shipped case.
                 const attack = resolveEffectValue(action.attack ?? 0, ownerId, this.gameState);
                 const health = resolveEffectValue(action.health ?? 0, ownerId, this.gameState);
-                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId);
+                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId, action.tribeFilter);
                 for (const targetId of targetIds) this.buff(targetId, attack, health);
                 break;
             }
@@ -394,20 +394,31 @@ export class TurnStateMachine {
                 for (let i = 0; i < action.count; i++) this.summonMinion(action.definitionId, ownerId);
                 break;
             case 'freeze': {
-                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId);
+                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId, action.tribeFilter);
                 for (const targetId of targetIds) this.freezeMinion(targetId);
                 break;
             }
             case 'silence': {
-                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId);
+                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId, action.tribeFilter);
                 for (const targetId of targetIds) this.silenceMinion(targetId);
+                break;
+            }
+            case 'destroy': {
+                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId, action.tribeFilter);
+                for (const targetId of targetIds) this.forceKill(targetId);
+                break;
+            }
+            case 'grantKeyword': {
+                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId, action.tribeFilter);
+                for (const targetId of targetIds) this.grantKeyword(targetId, action.keyword);
                 break;
             }
         }
     }
 
-    private resolveTargetIds(selector: TargetSelector, ownerId: PlayerId, chosenTargetId?: string): string[] {
+    private resolveTargetIds(selector: TargetSelector, ownerId: PlayerId, chosenTargetId?: string, tribeFilter?: Tribe): string[] {
         const opponentId = this.opponentOf(ownerId);
+        const matchesTribe = (c: CardInstance) => !tribeFilter || minionHasTribe(CARD_DEFINITIONS[c.definitionId], tribeFilter);
         switch (selector) {
             case 'self':
             case 'friendlyHero':
@@ -417,11 +428,13 @@ export class TurnStateMachine {
             case 'chosen':
                 return chosenTargetId ? [chosenTargetId] : [];
             case 'allFriendlyMinions':
-                return this.gameState.players[ownerId].board.map((c) => c.instanceId);
+                return this.gameState.players[ownerId].board.filter(matchesTribe).map((c) => c.instanceId);
             case 'allEnemyMinions':
-                return this.gameState.players[opponentId].board.map((c) => c.instanceId);
+                return this.gameState.players[opponentId].board.filter(matchesTribe).map((c) => c.instanceId);
             case 'allMinions':
-                return [...this.gameState.players[ownerId].board, ...this.gameState.players[opponentId].board].map((c) => c.instanceId);
+                return [...this.gameState.players[ownerId].board, ...this.gameState.players[opponentId].board]
+                    .filter(matchesTribe)
+                    .map((c) => c.instanceId);
             case 'allHeroes':
                 return [ownerId, opponentId];
             default:
@@ -479,8 +492,9 @@ export class TurnStateMachine {
         return amount;
     }
 
-    /** Kills a minion outright regardless of remaining health — used by Venom, after dealDamage has
-     * already confirmed the hit actually landed (not absorbed by Divine Shield). */
+    /** Kills a minion outright regardless of remaining health, bypassing Divine Shield entirely (no
+     * keyword check at all, unlike dealDamage) — used by Venom (after dealDamage has already
+     * confirmed the hit actually landed) and by the `destroy` effect kind. */
     private forceKill(instanceId: string): void {
         const found = this.findMinion(instanceId);
         if (found) found.instance.currentHealth = 0;
@@ -522,6 +536,11 @@ export class TurnStateMachine {
             // A health buff raises the healing ceiling too, not just current health, so a later heal can restore up to the new buffed max.
             found.instance.maxHealth = (found.instance.maxHealth ?? 0) + health;
         }
+    }
+
+    private grantKeyword(targetId: string, keyword: Keyword): void {
+        const found = this.findMinion(targetId);
+        if (found) found.instance.keywords.add(keyword);
     }
 
     /** Moves dead minions to the graveyard, fires their onDeath triggers, and fires Mourn

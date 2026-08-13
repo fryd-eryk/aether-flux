@@ -32,7 +32,7 @@ export function resolveEffectValue(value: EffectValue, ownerId: PlayerId, state:
 }
 
 /** The one EffectValue an effect's action "headlines" for `{X}` substitution — damage/heal's amount,
- * buff's attack (falling back to health), draw's count. summon/freeze/silence have no single magnitude. */
+ * buff's attack (falling back to health), draw's count. summon/freeze/silence/destroy have no single magnitude. */
 function headlineValue(action: EffectAction): EffectValue | undefined {
     switch (action.kind) {
         case 'damage':

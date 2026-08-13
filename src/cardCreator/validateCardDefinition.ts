@@ -12,6 +12,9 @@ export type FieldErrors = Record<string, string>;
 
 const INVALID_ID_CHARS = /["\n\r]/;
 
+/** Targets a `tribeFilter` can narrow — see EffectAction.tribeFilter in Card.ts. */
+const TRIBE_FILTERABLE_TARGETS = ['allMinions', 'allEnemyMinions', 'allFriendlyMinions'];
+
 function validateEffect(effect: CardEffect, prefix: string, errors: FieldErrors): void {
     validateAction(effect.action, prefix, errors);
     if (effect.condition && (!Number.isInteger(effect.condition.minCount) || effect.condition.minCount < 1)) {
@@ -47,6 +50,9 @@ function validateAction(action: EffectAction, prefix: string, errors: FieldError
             if (action.target !== 'chosen' && action.chosenRestriction) {
                 errors[`${prefix}.chosenRestriction`] = 'Only meaningful when target is "chosen".';
             }
+            if (action.tribeFilter && !TRIBE_FILTERABLE_TARGETS.includes(action.target)) {
+                errors[`${prefix}.tribeFilter`] = 'Only meaningful for an "all ... minions" target.';
+            }
             break;
         case 'draw':
             validateEffectValue(action.count, prefix, 'count', errors, 1);
@@ -61,6 +67,9 @@ function validateAction(action: EffectAction, prefix: string, errors: FieldError
             if (action.target !== 'chosen' && action.chosenRestriction) {
                 errors[`${prefix}.chosenRestriction`] = 'Only meaningful when target is "chosen".';
             }
+            if (action.tribeFilter && !TRIBE_FILTERABLE_TARGETS.includes(action.target)) {
+                errors[`${prefix}.tribeFilter`] = 'Only meaningful for an "all ... minions" target.';
+            }
             break;
         case 'summon':
             if (!action.definitionId) errors[`${prefix}.definitionId`] = 'Pick a card to summon.';
@@ -68,8 +77,13 @@ function validateAction(action: EffectAction, prefix: string, errors: FieldError
             break;
         case 'freeze':
         case 'silence':
+        case 'destroy':
+        case 'grantKeyword':
             if (action.target !== 'chosen' && action.chosenRestriction) {
                 errors[`${prefix}.chosenRestriction`] = 'Only meaningful when target is "chosen".';
+            }
+            if (action.tribeFilter && !TRIBE_FILTERABLE_TARGETS.includes(action.target)) {
+                errors[`${prefix}.tribeFilter`] = 'Only meaningful for an "all ... minions" target.';
             }
             break;
     }

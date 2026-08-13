@@ -295,10 +295,14 @@ export class CardView {
 
         let cursorX = dotX + RARITY_DOT_R + 3;
         if (definition.tribes && definition.tribes.length > 0) {
-            const tribeLabel = definition.tribes.map((t) => TRIBE_METADATA[t].label).join(" / ");
+            const tribeLabel = definition.tribes.map((t) => TRIBE_METADATA[t].label).join(", ");
             const tribeText = this.scene.add.text(cursorX, footerCenterY, tribeLabel, TRIBE_LABEL_STYLE).setOrigin(0, 0.5);
             objects.push(tribeText);
             cursorX += tribeText.width + 4;
+
+            const dashText = this.scene.add.text(cursorX, footerCenterY, "—", TYPE_LABEL_STYLE).setOrigin(0, 0.5);
+            objects.push(dashText);
+            cursorX += dashText.width + 4;
         }
 
         const typeLabel = definition.type === "minion" ? "Minion" : definition.type === "spell" ? "Spell" : "Token";

@@ -57,14 +57,21 @@ export type CounterKind = 'allMinionCount' | 'friendlyMinionCount' | 'enemyMinio
  */
 export type EffectValue = number | { counter: CounterKind; multiplier?: number; offset?: number };
 
+/**
+ * Narrows an `allMinions`/`allEnemyMinions`/`allFriendlyMinions` target to minions of a
+ * specific tribe — e.g. "Deal 10 damage to all Elemental minions." Ignored for every other
+ * TargetSelector; a single `chosen` target's tribe restriction is `chosenRestriction` instead.
+ */
 export type EffectAction =
-    | { kind: 'damage'; amount: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
-    | { kind: 'heal'; amount: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
+    | { kind: 'damage'; amount: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
+    | { kind: 'heal'; amount: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
     | { kind: 'draw'; count: EffectValue }
-    | { kind: 'buff'; attack?: EffectValue; health?: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
+    | { kind: 'buff'; attack?: EffectValue; health?: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
     | { kind: 'summon'; definitionId: string; count: number }
-    | { kind: 'freeze'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction }
-    | { kind: 'silence'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction };
+    | { kind: 'freeze'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
+    | { kind: 'silence'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
+    | { kind: 'destroy'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
+    | { kind: 'grantKeyword'; keyword: Keyword; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe };
 
 /**
  * Gates whether a CardEffect fires beyond its trigger alone. 'momentum' is "Momentum(N):" —
