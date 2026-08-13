@@ -19,6 +19,7 @@ import {
     CENTER_X,
     CENTER_Y,
     coverFit,
+    COST_BADGE_R_FULL,
     DECK_PILE_H,
     DECK_PILE_W,
     GAME_HEIGHT,
@@ -492,7 +493,8 @@ export class CardGame extends Scene
         }
 
         if (action.kind === 'playCard') this.machine.playCard(action.instanceId);
-        else this.machine.declareAttack(action.attackerInstanceId);
+        else if (action.kind === 'attack') this.machine.declareAttack(action.attackerInstanceId);
+        else this.machine.activateAbility(action.instanceId, action.abilityIndex);
 
         if (this.machine.state.phase === TurnPhase.AwaitingTarget)
         {
@@ -1114,8 +1116,13 @@ export class CardGame extends Scene
             // enemy minion frozen by e.g. Glacial Grasp can't attack either, and the player needs
             // to see that.
             const isFrozen = instance.frozen;
+            const definition = CARD_DEFINITIONS[instance.definitionId];
+            // Computed off this board's own owner's mana (not necessarily 'player') so an enemy
+            // minion's badge still shows correctly-dimmed cost — separate from canActivateAbilities
+            // below, which additionally gates whether it's actually clickable right now.
+            const abilityAffordability = definition?.paidAbilities?.map((ability) => playerState.mana >= ability.cost);
 
-            const container = this.cardView.createCardContainer(instance, 'simplified', undefined, isSummoningSick, isFrozen, resolveCardText(instance, state));
+            const container = this.cardView.createCardContainer(instance, 'simplified', undefined, isSummoningSick, isFrozen, resolveCardText(instance, state), abilityAffordability);
             container.setPosition(startX + index * spacing, y);
             this.renderedObjects.push(container);
             this.instanceContainers.set(instance.instanceId, container);
@@ -1158,6 +1165,32 @@ export class CardGame extends Scene
                 // minion can't act needs its own cue, not just the first one checked.
                 if (isSummoningSick) this.addStaticOutline(container, CARD_W, CARD_H, OUTLINE_COLOR_SICK);
                 if (isFrozen) this.addStaticOutline(container, CARD_W, CARD_H, OUTLINE_COLOR_FROZEN, isSummoningSick ? 10 : 5);
+            }
+
+            // Paid-ability badges: a separate clickable Zone per badge, independent from the card
+            // body's own click handling above (attack/select-target) — not blocked by summoning
+            // sickness/frozen (see PaidAbility's doc comment, Card.ts), only by whose turn/phase it
+            // is and whether it's affordable right now.
+            if (definition?.paidAbilities && definition.paidAbilities.length > 0)
+            {
+                const canActivateAbilities =
+                    state.phase === TurnPhase.MainIdle &&
+                    ownerId === 'player' &&
+                    state.activePlayer === 'player';
+
+                this.cardView.abilityBadgeLayout(definition).forEach((pos, abilityIndex) =>
+                {
+                    const ability = definition.paidAbilities![abilityIndex];
+                    const affordable = playerState.mana >= ability.cost;
+                    const zone = this.add.zone(container.x + pos.x, container.y + pos.y, COST_BADGE_R_FULL * 2, COST_BADGE_R_FULL * 2);
+                    this.renderedObjects.push(zone);
+
+                    if (canActivateAbilities && affordable)
+                    {
+                        zone.setInteractive({ useHandCursor: true });
+                        zone.on('pointerup', this.guarded(() => this.machine.activateAbility(instance.instanceId, abilityIndex)));
+                    }
+                });
             }
         });
     }

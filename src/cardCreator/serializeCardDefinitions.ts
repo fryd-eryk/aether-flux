@@ -1,4 +1,4 @@
-import type { CardDefinition, CardEffect, CardRarity, EffectAction, EffectValue } from '../game/types/Card';
+import type { CardDefinition, CardEffect, CardRarity, EffectAction, EffectValue, PaidAbility } from '../game/types/Card';
 
 /**
  * Regenerates `src/game/data/cards.ts`'s source text from an in-memory
@@ -111,6 +111,12 @@ function serializeEffect(effect: CardEffect, level: number): string {
     return lines.join('\n');
 }
 
+function serializePaidAbility(ability: PaidAbility, level: number): string {
+    const actionSrc = serializeEffectAction(ability.action, level + 2);
+    const lines = [`${indent(level)}{`, `${indent(level + 1)}cost: ${ability.cost},`, `${indent(level + 1)}action: ${actionSrc},`, `${indent(level)}}`];
+    return lines.join('\n');
+}
+
 function serializeCardDefinition(def: CardDefinition, level: number): string {
     const lines: string[] = [];
     lines.push(`${indent(level)}id: ${JSON.stringify(def.id)},`);
@@ -129,6 +135,10 @@ function serializeCardDefinition(def: CardDefinition, level: number): string {
     if (def.effects && def.effects.length > 0) {
         const effectsSrc = def.effects.map((effect) => serializeEffect(effect, level + 1)).join(',\n');
         lines.push(`${indent(level)}effects: [\n${effectsSrc},\n${indent(level)}],`);
+    }
+    if (def.paidAbilities && def.paidAbilities.length > 0) {
+        const abilitiesSrc = def.paidAbilities.map((ability) => serializePaidAbility(ability, level + 1)).join(',\n');
+        lines.push(`${indent(level)}paidAbilities: [\n${abilitiesSrc},\n${indent(level)}],`);
     }
     if (def.rarity) lines.push(`${indent(level)}rarity: ${JSON.stringify(def.rarity)},`);
     if (def.artVerticalAlign) lines.push(`${indent(level)}artVerticalAlign: ${JSON.stringify(def.artVerticalAlign)},`);

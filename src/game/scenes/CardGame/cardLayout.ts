@@ -333,6 +333,17 @@ export const COST_BADGE_DARK = 0x1a4fa0;
 export const COST_BADGE_STROKE_COLOR = 0x000000;
 export const COST_BADGE_STROKE_WIDTH = 1.5;
 
+// 'simplified' mode's paid-ability badge(s) (CardView.abilityBadgeLayout/createAbilityBadges) —
+// 'simplified' mode renders no mana-cost badge at all, so the top-right corner COST_BADGE_R_FULL
+// otherwise occupies in 'full' mode is free; reusing that exact radius/position/gradient recipe
+// there reads as "the same kind of badge" without inventing new visual language. A minion with more
+// than one paid ability stacks additional badges downward along the right edge, this gap apart.
+export const ABILITY_BADGE_GAP = 4;
+// Applied to an unaffordable ability badge (both on-card and its matching click zone in renderBoard,
+// which must independently gate interactivity — a minion's own paidAbilities check silently no-ops
+// on insufficient mana, same as every other silent-rejection case CLAUDE.md documents).
+export const ABILITY_BADGE_DIM_ALPHA = 0.4;
+
 /** The two off-board card zones that get a pile visual and a click-to-inspect overlay. */
 export type PileZone = 'deck' | 'graveyard';
 

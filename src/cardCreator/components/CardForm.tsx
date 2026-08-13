@@ -5,6 +5,7 @@ import { TRIBE_METADATA } from '@/game/data/tribeMetadata';
 import type { FieldErrors } from '../validateCardDefinition';
 import { toggleMarkdownStyle, type MarkdownStyle } from '../markdownTextEditing';
 import { EffectsEditor } from './EffectsEditor';
+import { PaidAbilitiesEditor } from './PaidAbilitiesEditor';
 import styles from '@/styles/CardCreator.module.css';
 
 const KEYWORDS = Object.keys(KEYWORD_METADATA) as Keyword[];
@@ -58,7 +59,7 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                 onChange(next);
             }
         } else {
-            const { attack: _attack, health: _health, tribes: _tribes, ...rest } = draft;
+            const { attack: _attack, health: _health, tribes: _tribes, paidAbilities: _paidAbilities, ...rest } = draft;
             onChange({ ...rest, type });
         }
     }
@@ -280,6 +281,18 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                     allCards={allCards}
                 />
             </section>
+
+            {(draft.type === 'minion' || draft.type === 'token') && (
+                <section className={styles.formSection}>
+                    <h3 className={styles.formSectionTitle}>Paid Abilities</h3>
+                    <PaidAbilitiesEditor
+                        abilities={draft.paidAbilities ?? []}
+                        onChange={(paidAbilities) => onChange({ ...draft, paidAbilities: paidAbilities.length > 0 ? paidAbilities : undefined })}
+                        errors={errors}
+                        allCards={allCards}
+                    />
+                </section>
+            )}
         </div>
     );
 }

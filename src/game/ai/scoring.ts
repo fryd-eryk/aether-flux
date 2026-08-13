@@ -2,7 +2,7 @@ import { CARD_DEFINITIONS } from '../data/cards';
 import { resolveEffectValue } from '../state/counters';
 import { canDeclareAttack, hasKeyword, isTargetable } from '../state/keywordRules';
 import { minionHasTribe, restrictionTribe, restrictsToMinion } from '../state/tribes';
-import type { CardDefinition, CardInstance, ChosenTargetRestriction, EffectAction, Keyword, Tribe } from '../types/Card';
+import type { CardDefinition, CardInstance, ChosenTargetRestriction, EffectAction, Keyword, PaidAbility, Tribe } from '../types/Card';
 import type { PlayerId } from '../types/common';
 import type { GameState } from '../types/GameState';
 
@@ -65,6 +65,20 @@ export function computePotentialFaceDamage(state: GameState, aiId: PlayerId): nu
         } else if (definition.keywords?.includes('charge')) {
             // A Charge minion could be played and swung at face for lethal in the same turn.
             total += definition.attack ?? 0;
+        }
+    }
+
+    for (const minion of ai.board) {
+        if (minion.silenced) continue; // a silenced minion's paid abilities are blocked, see TurnStateMachine.activateAbility
+        const definition = CARD_DEFINITIONS[minion.definitionId];
+        for (const ability of definition?.paidAbilities ?? []) {
+            if (ai.mana < ability.cost) continue;
+            const action = ability.action;
+            // Same minion-restricted/tribe-restricted exclusion as the hand-spell branch above —
+            // neither can ever hit face, see TurnStateMachine.computeValidTargets.
+            if (action.kind === 'damage' && action.target === 'chosen' && !restrictsToMinion(action.chosenRestriction)) {
+                total += resolveEffectValue(action.amount, aiId, state);
+            }
         }
     }
 
@@ -274,6 +288,19 @@ export function scorePlayCard(
     const channelValue = channelBoardValue(state, aiId);
     if (onPlayEffects.length === 0 && channelValue === 0) return { score: 0 };
     return { score: flatEffectValue + chosenScore + channelValue, targetId: chosenTarget?.targetId };
+}
+
+/** Scores activating a board minion's paid ability (see PaidAbility, Card.ts), resolving the best
+ * target along the way if it needs one — mirrors scorePlayCard's chosen-target dispatch, just for
+ * an already-in-play minion's own ability instead of a hand card's onPlay effect. Target-picking
+ * itself is fully shared via scoreChosenTarget/estimateEffectValue below, neither of which cares
+ * what triggered the action. */
+export function scorePaidAbility(state: GameState, aiId: PlayerId, ability: PaidAbility, lethalAvailable: boolean): ScoredTarget {
+    const action = ability.action;
+    if ('target' in action && action.target === 'chosen') {
+        return scoreChosenTarget(state, aiId, action, lethalAvailable);
+    }
+    return { score: estimateEffectValue(action, state, aiId) };
 }
 
 function scoreDamageSpell(

@@ -87,6 +87,20 @@ export interface CardEffect {
     condition?: EffectCondition;
 }
 
+/**
+ * A minion/token's activated ability: pay `cost` mana any time during the controller's turn to
+ * resolve `action` (prompting for a target first if `action.target === 'chosen'`). Unlike
+ * CardEffect, this isn't trigger-driven — it's a player-initiated, repeatable action gated purely
+ * by available mana (no 'once per turn' limiter, and not blocked by summoning sickness, since
+ * activating one isn't a combat action — see TurnStateMachine.activateAbility). Card text
+ * convention: a `(<cost>):` prefix, e.g. "(2): Deal 1 damage to a minion." — see SPEC.md's "Card
+ * design conventions".
+ */
+export interface PaidAbility {
+    cost: number;
+    action: EffectAction;
+}
+
 /** A card's power-level bucket, used by deckGenerator.ts to build proportionate random decks. Ascending rarity/power order. */
 export type CardRarity = 'common' | 'rare' | 'exotic' | 'legendary' | 'mythical';
 
@@ -100,6 +114,8 @@ export interface CardDefinition {
     attack?: number;
     health?: number;
     effects?: CardEffect[];
+    /** Minion/token-only activated abilities — see PaidAbility's doc comment. */
+    paidAbilities?: PaidAbility[];
     keywords?: Keyword[];
     /** Minion-only family tag(s). Rendered only in 'full' card mode's footer (Rarity Dot -> Tribe -> Type) — never in 'simplified' mode. */
     tribes?: Tribe[];

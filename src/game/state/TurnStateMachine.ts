@@ -11,7 +11,8 @@ import { minionHasTribe, restrictionTribe } from './tribes';
 
 type PendingAction =
     | { type: 'playCard'; instanceId: string }
-    | { type: 'attack'; attackerInstanceId: string };
+    | { type: 'attack'; attackerInstanceId: string }
+    | { type: 'ability'; instanceId: string; abilityIndex: number };
 
 /**
  * Pure game-state driver, no Phaser dependency. A Scene forwards player input into
@@ -73,6 +74,29 @@ export class TurnStateMachine {
         this.beginTargeting({ type: 'attack', attackerInstanceId }, player.id);
     }
 
+    /** Pays a board minion's paid-ability mana cost and resolves its action — see PaidAbility's
+     * doc comment (Card.ts) for why this is deliberately unrestricted by summoning sickness/attack
+     * state, unlike declareAttack. Silenced minions can't activate (their own text is suppressed,
+     * same principle as CardInstance.silenced already applies to trigger effects). */
+    activateAbility(instanceId: string, abilityIndex: number): void {
+        if (this.gameState.phase !== TurnPhase.MainIdle) return;
+
+        const player = this.gameState.players[this.gameState.activePlayer];
+        const card = player.board.find((c) => c.instanceId === instanceId);
+        if (!card || card.silenced) return;
+
+        const definition = CARD_DEFINITIONS[card.definitionId];
+        const ability = definition?.paidAbilities?.[abilityIndex];
+        if (!ability || player.mana < ability.cost) return;
+
+        if (this.needsChosenTarget([{ action: ability.action }])) {
+            this.beginTargeting({ type: 'ability', instanceId, abilityIndex }, player.id);
+            return;
+        }
+
+        this.executeAbility(instanceId, abilityIndex);
+    }
+
     selectTarget(targetId: string): void {
         if (this.gameState.phase !== TurnPhase.AwaitingTarget || !this.pendingAction) return;
         if (!this.gameState.pendingTarget?.validTargetIds.includes(targetId)) return;
@@ -80,8 +104,10 @@ export class TurnStateMachine {
         const action = this.pendingAction;
         if (action.type === 'playCard') {
             this.executePlayCard(action.instanceId, targetId);
-        } else {
+        } else if (action.type === 'attack') {
             this.executeAttack(action.attackerInstanceId, targetId);
+        } else {
+            this.executeAbility(action.instanceId, action.abilityIndex, targetId);
         }
     }
 
@@ -165,6 +191,29 @@ export class TurnStateMachine {
             this.sweepDeaths();
         }
         EventBus.emit('state:card-played', { instanceId, playerId: player.id });
+        this.finishResolving();
+    }
+
+    /** Resolves an already-affordability-checked paid ability. Mana is deducted here (not in
+     * activateAbility), matching executePlayCard's pattern so cancelTarget() stays free while a
+     * target is still being chosen. Doesn't touch cardsPlayedThisTurn (not "playing a card", so it
+     * shouldn't feed Momentum) and doesn't call triggerEffects (no onPlay/Channel/Muster — those
+     * are for cards entering play, not an already-in-play minion's activated ability). */
+    private executeAbility(instanceId: string, abilityIndex: number, chosenTargetId?: string): void {
+        const player = this.gameState.players[this.gameState.activePlayer];
+        const card = player.board.find((c) => c.instanceId === instanceId);
+        if (!card) return;
+
+        const definition = CARD_DEFINITIONS[card.definitionId];
+        const ability = definition?.paidAbilities?.[abilityIndex];
+        if (!ability) return;
+
+        player.mana -= ability.cost;
+
+        this.setPhase(TurnPhase.Resolving);
+        this.applyEffectAction(ability.action, player.id, chosenTargetId);
+        this.sweepDeaths();
+        EventBus.emit('state:ability-activated', { instanceId, abilityIndex, playerId: player.id });
         this.finishResolving();
     }
 
@@ -285,12 +334,13 @@ export class TurnStateMachine {
     private beginTargeting(action: PendingAction, ownerId: PlayerId): void {
         this.pendingAction = action;
         this.gameState.pendingTarget = {
-            sourceInstanceId: action.type === 'playCard' ? action.instanceId : action.attackerInstanceId,
+            sourceInstanceId: action.type === 'attack' ? action.attackerInstanceId : action.instanceId,
             validTargetIds: this.computeValidTargets(action, ownerId),
         };
         // A card pulled out of hand gets held at the Scene's spotlight while the player picks a
         // target (see CardGame's targetBeginHandler) — an attacker choosing its target never left
-        // the board, so it's excluded here.
+        // the board, and neither does a board minion activating a paid ability, so both are
+        // excluded here.
         if (action.type === 'playCard') {
             EventBus.emit('state:target-begin', { instanceId: action.instanceId, playerId: ownerId });
         }
@@ -313,7 +363,7 @@ export class TurnStateMachine {
         const enemyMinions = this.gameState.players[opponentId].board.filter(isTargetable);
         const allMinions = [...friendlyMinions, ...enemyMinions];
 
-        const restriction = this.chosenTargetRestriction(action.instanceId, ownerId);
+        const restriction = this.chosenTargetRestriction(action as Exclude<PendingAction, { type: 'attack' }>, ownerId);
         const tribe = restrictionTribe(restriction);
         if (tribe) return allMinions.filter((c) => minionHasTribe(CARD_DEFINITIONS[c.definitionId], tribe)).map((c) => c.instanceId);
         if (restriction === 'minion') return allMinions.map((c) => c.instanceId);
@@ -321,9 +371,18 @@ export class TurnStateMachine {
         return [ownerId, opponentId, ...allMinions.map((c) => c.instanceId)];
     }
 
-    /** The chosenRestriction (if any) of the onPlay effect that's about to prompt targeting for this hand card — see needsChosenTarget, which only enters AwaitingTarget for a card that has exactly one such effect. */
-    private chosenTargetRestriction(instanceId: string, ownerId: PlayerId): ChosenTargetRestriction | undefined {
-        const card = this.gameState.players[ownerId].hand.find((c) => c.instanceId === instanceId);
+    /** The chosenRestriction (if any) of the effect/ability that's about to prompt targeting —
+     * see needsChosenTarget, which only enters AwaitingTarget for a source that has exactly one
+     * chosen-target action. A 'playCard' action looks at the hand card's onPlay effects; an
+     * 'ability' action looks at the board minion's own paidAbilities entry instead. */
+    private chosenTargetRestriction(action: Exclude<PendingAction, { type: 'attack' }>, ownerId: PlayerId): ChosenTargetRestriction | undefined {
+        if (action.type === 'ability') {
+            const card = this.gameState.players[ownerId].board.find((c) => c.instanceId === action.instanceId);
+            const definition = card ? CARD_DEFINITIONS[card.definitionId] : undefined;
+            const ability = definition?.paidAbilities?.[action.abilityIndex];
+            return ability && 'chosenRestriction' in ability.action ? ability.action.chosenRestriction : undefined;
+        }
+        const card = this.gameState.players[ownerId].hand.find((c) => c.instanceId === action.instanceId);
         const definition = card ? CARD_DEFINITIONS[card.definitionId] : undefined;
         const chosenEffect = definition?.effects?.find(
             (e) => e.trigger === 'onPlay' && 'target' in e.action && e.action.target === 'chosen'

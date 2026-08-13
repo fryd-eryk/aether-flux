@@ -2,7 +2,7 @@ import { CARD_DEFINITIONS } from '../data/cards';
 import { canDeclareAttack, hasKeyword, tauntRestrictedTargets } from '../state/keywordRules';
 import type { PlayerId } from '../types/common';
 import type { GameState } from '../types/GameState';
-import { computePotentialFaceDamage, scoreAttack, scorePlayCard } from './scoring';
+import { computePotentialFaceDamage, scoreAttack, scorePaidAbility, scorePlayCard } from './scoring';
 import type { AIAction } from './types';
 
 const PASS_THRESHOLD = 0;
@@ -65,6 +65,23 @@ export function decideOpponentAction(state: GameState): AIAction | null {
                 best = { score, action: { kind: 'attack', attackerInstanceId: attacker.instanceId, targetId: defender.instanceId } };
             }
         }
+    }
+
+    // Board minions' paid abilities — unlike playCard/attack, not gated by summoning sickness (see
+    // PaidAbility's doc comment, Card.ts) or an attack-count budget, only by mana. Re-scored every
+    // time this function is called (once per MainIdle re-entry, per the doc comment above), so an
+    // ability the AI activates now naturally gets re-evaluated for another activation, another
+    // card play, or an attack afterward — no separate "extra action" bookkeeping needed.
+    for (const minion of ai.board) {
+        if (minion.silenced) continue; // mirrors TurnStateMachine.activateAbility's own guard
+        const definition = CARD_DEFINITIONS[minion.definitionId];
+        (definition?.paidAbilities ?? []).forEach((ability, abilityIndex) => {
+            if (ai.mana < ability.cost) return; // mirrors TurnStateMachine.activateAbility's own guard
+            const { score, targetId } = scorePaidAbility(state, aiId, ability, lethalAvailable);
+            if (!best || score > best.score) {
+                best = { score, action: { kind: 'activateAbility', instanceId: minion.instanceId, abilityIndex, targetId } };
+            }
+        });
     }
 
     if (!best || best.score <= PASS_THRESHOLD) return null;

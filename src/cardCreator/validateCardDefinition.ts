@@ -1,4 +1,4 @@
-import type { CardDefinition, CardEffect, EffectAction, EffectValue } from '../game/types/Card';
+import type { CardDefinition, CardEffect, EffectAction, EffectValue, PaidAbility } from '../game/types/Card';
 import { hasDanglingMarkdownMarker } from '../game/scenes/CardGame/richTextParser';
 
 /**
@@ -20,6 +20,13 @@ function validateEffect(effect: CardEffect, prefix: string, errors: FieldErrors)
     if (effect.condition && (!Number.isInteger(effect.condition.minCount) || effect.condition.minCount < 1)) {
         errors[`${prefix}.condition`] = 'Momentum count must be a positive integer.';
     }
+}
+
+function validatePaidAbility(ability: PaidAbility, prefix: string, errors: FieldErrors): void {
+    if (!Number.isInteger(ability.cost) || ability.cost < 1) {
+        errors[`${prefix}.cost`] = 'Cost must be a positive integer.';
+    }
+    validateAction(ability.action, prefix, errors);
 }
 
 /**
@@ -121,6 +128,7 @@ export function validateCardDefinition(
         if (def.attack !== undefined) errors.attack = 'Spells cannot have attack.';
         if (def.health !== undefined) errors.health = 'Spells cannot have health.';
         if (def.tribes && def.tribes.length > 0) errors.tribes = 'Only minions can have tribes.';
+        if (def.paidAbilities && def.paidAbilities.length > 0) errors.paidAbilities = 'Only minions can have paid abilities.';
     }
 
     if (def.type === 'token') {
@@ -131,6 +139,10 @@ export function validateCardDefinition(
 
     (def.effects ?? []).forEach((effect, index) => {
         validateEffect(effect, `effects.${index}`, errors);
+    });
+
+    (def.paidAbilities ?? []).forEach((ability, index) => {
+        validatePaidAbility(ability, `paidAbilities.${index}`, errors);
     });
 
     // {X} is resolved live by counters.ts's resolveCardText from the card's own effects — a card

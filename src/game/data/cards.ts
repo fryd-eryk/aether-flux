@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (23) ---
+    // --- Common rarity (24) ---
     "rusty-shieldbearer": {
         id: "rusty-shieldbearer",
         name: "Rusty Shieldbearer",
@@ -91,6 +91,27 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "common",
         artVerticalAlign: "bottom",
+    },
+    "ember-tinkerer": {
+        id: "ember-tinkerer",
+        name: "Ember Tinkerer",
+        cost: 2,
+        type: "minion",
+        text: "(2): Deal 1 damage to a minion.",
+        attack: 2,
+        health: 2,
+        paidAbilities: [
+            {
+                cost: 2,
+                action: {
+                    kind: "damage",
+                    amount: 1,
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                },
+            },
+        ],
+        rarity: "common",
     },
     "glacial-grasp": {
         id: "glacial-grasp",

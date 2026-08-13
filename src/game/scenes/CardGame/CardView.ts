@@ -7,6 +7,8 @@ import { distinctTriggers, TRIGGER_METADATA } from "../../data/triggerMetadata";
 import { TRIBE_METADATA } from "../../data/tribeMetadata";
 import type { CardDefinition, CardInstance } from "../../types/Card";
 import {
+    ABILITY_BADGE_DIM_ALPHA,
+    ABILITY_BADGE_GAP,
     ATKHP_BADGE_COLOR,
     ATKHP_BADGE_CENTER_X,
     ATKHP_BADGE_CENTER_Y,
@@ -55,7 +57,7 @@ import {
     TRIBE_LABEL_STYLE,
     TYPE_LABEL_STYLE,
 } from "./cardLayout";
-import { layoutRichText } from "./richText";
+import { layoutRichText, type RichTextLayoutResult } from "./richText";
 
 /**
  * Builds a card's visual container in one of CardDisplayMode's three layouts — see the doc
@@ -66,7 +68,7 @@ import { layoutRichText } from "./richText";
 export class CardView {
     constructor(private scene: Scene) {}
 
-    createCardContainer(instance: CardInstance, mode: CardDisplayMode, definitionOverride?: CardDefinition, grayscaleArt = false, frozenOverlay = false, resolvedText?: string): Phaser.GameObjects.Container {
+    createCardContainer(instance: CardInstance, mode: CardDisplayMode, definitionOverride?: CardDefinition, grayscaleArt = false, frozenOverlay = false, resolvedText?: string, abilityAffordability?: boolean[]): Phaser.GameObjects.Container {
         const container = this.scene.add.container(0, 0);
         const bg = this.scene.add.rectangle(0, 0, CARD_W, CARD_H, 0x000000).setStrokeStyle(2, 0x000000);
         container.add(bg);
@@ -112,6 +114,9 @@ export class CardView {
             // 'full' mode's footer uses (createStatBadge), just a size larger (b1).
             container.add(this.createStatBadge(instance, definition, ATKHP_BADGE_R_SIMPLIFIED, CARD_W / 2, CARD_H / 2));
             container.add(this.createStatusPills(instance, definition));
+            if (definition.paidAbilities && definition.paidAbilities.length > 0) {
+                container.add(this.createAbilityBadges(definition, abilityAffordability));
+            }
 
             container.setSize(CARD_W, CARD_H);
             return container;
@@ -190,6 +195,49 @@ export class CardView {
         return objects;
     }
 
+    /** Local (container-space) center of each of `definition`'s paidAbilities' badges — one entry
+     * per ability, in order. Pure position math, no GameObjects, so renderBoard (index.ts) can call
+     * this too and place its click zones at exactly the coordinates createAbilityBadges actually
+     * draws to, without duplicating the placement algorithm. 'simplified' mode renders no mana-cost
+     * badge of its own, so the first ability reuses that exact top-right-corner overflow position/
+     * radius (COST_BADGE_R_FULL) — reading as "the same kind of badge" rather than new visual
+     * language; a second/third (rare) stacks downward along the right edge instead of colliding with
+     * it. */
+    abilityBadgeLayout(definition: CardDefinition): { x: number; y: number }[] {
+        return (definition.paidAbilities ?? []).map((_, index) => ({
+            x: CARD_W / 2,
+            y: -CARD_H / 2 + index * (COST_BADGE_R_FULL * 2 + ABILITY_BADGE_GAP),
+        }));
+    }
+
+    /** 'simplified' mode's paid-ability badges — one gradient-circle-plus-cost-number per
+     * definition.paidAbilities entry, at the positions abilityBadgeLayout computes, dimmed
+     * (ABILITY_BADGE_DIM_ALPHA) when `affordability[index] === false`. Purely visual — no
+     * interactivity here; renderBoard (index.ts) layers its own click Zone over each badge's
+     * position separately, since this file only ever builds passive visuals (see the doc comment at
+     * the top of this class). */
+    private createAbilityBadges(definition: CardDefinition, affordability?: boolean[]): Phaser.GameObjects.GameObject[] {
+        const objects: Phaser.GameObjects.GameObject[] = [];
+        const positions = this.abilityBadgeLayout(definition);
+
+        (definition.paidAbilities ?? []).forEach((ability, index) => {
+            const { x, y } = positions[index];
+            const alpha = affordability?.[index] === false ? ABILITY_BADGE_DIM_ALPHA : 1;
+
+            const badge = this.scene.add.graphics().setAlpha(alpha);
+            badge.fillGradientStyle(COST_BADGE_LIGHT, COST_BADGE_LIGHT, COST_BADGE_DARK, COST_BADGE_DARK, 1, 1, 1, 1);
+            badge.fillCircle(x, y, COST_BADGE_R_FULL);
+            badge.lineStyle(COST_BADGE_STROKE_WIDTH, COST_BADGE_STROKE_COLOR, 1);
+            badge.strokeCircle(x, y, COST_BADGE_R_FULL);
+            objects.push(badge);
+
+            const costText = this.scene.add.text(x, y, `${ability.cost}`, COST_TEXT_STYLE).setOrigin(0.5).setAlpha(alpha);
+            objects.push(costText);
+        });
+
+        return objects;
+    }
+
     /**
      * 'full' mode's description box: keyword line (if any) then rule text, same content/order as
      * before, inside a black-@-75%-opacity rounded box that floats over the art. The box's *content*
@@ -217,7 +265,7 @@ export class CardView {
         // purely to measure how tall each piece of content actually is, since neither the keyword
         // block's row count nor the rule text's wrapped line count is a fixed constant.
         const keywords = hasKeywords ? this.createKeywordLabels(instance) : { objects: [], lineCount: 0 };
-        let ruleText: { objects: Phaser.GameObjects.Text[]; height: number } | null = null;
+        let ruleText: RichTextLayoutResult | null = null;
         let contentHeight = keywords.lineCount * DESC_BOX_KEYWORD_LINE_H;
 
         if (hasText) {
