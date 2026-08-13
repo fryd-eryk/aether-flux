@@ -1,7 +1,9 @@
+import { useLayoutEffect, useRef } from 'react';
 import type { CardDefinition, CardRarity, CardType, Keyword, Tribe } from '@/game/types/Card';
 import { KEYWORD_METADATA } from '@/game/data/keywordMetadata';
 import { TRIBE_METADATA } from '@/game/data/tribeMetadata';
 import type { FieldErrors } from '../validateCardDefinition';
+import { toggleMarkdownStyle, type MarkdownStyle } from '../markdownTextEditing';
 import { EffectsEditor } from './EffectsEditor';
 import styles from '@/styles/CardCreator.module.css';
 
@@ -19,6 +21,29 @@ interface CardFormProps {
 export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
     function set<K extends keyof CardDefinition>(key: K, value: CardDefinition[K]) {
         onChange({ ...draft, [key]: value });
+    }
+
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null);
+
+    // Restores the selection after a programmatic markdown-wrap edit — must happen after React
+    // commits the new textarea value, since setSelectionRange in the same synchronous handler
+    // that changes `.value` doesn't reliably survive the re-render.
+    useLayoutEffect(() => {
+        if (pendingSelectionRef.current && textareaRef.current) {
+            const { start, end } = pendingSelectionRef.current;
+            textareaRef.current.setSelectionRange(start, end);
+            pendingSelectionRef.current = null;
+        }
+    });
+
+    function applyMarkdownStyle(style: MarkdownStyle) {
+        const el = textareaRef.current;
+        if (!el) return;
+        const { value, start, end } = toggleMarkdownStyle(draft.text, el.selectionStart, el.selectionEnd, style);
+        pendingSelectionRef.current = { start, end };
+        set('text', value);
+        el.focus();
     }
 
     function setType(type: CardType) {
@@ -182,11 +207,32 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                 <div className={styles.fieldRow}>
                     <div className={styles.fieldWide}>
                         <label className={styles.fieldLabel}>Rule text</label>
-                        <textarea className={styles.textArea} value={draft.text} onChange={(e) => set('text', e.target.value)} />
+                        <div className={styles.previewToolbar}>
+                            <button type="button" className={styles.smallButton} style={{ fontWeight: 'bold' }} onClick={() => applyMarkdownStyle('bold')}>
+                                B
+                            </button>
+                            <button type="button" className={styles.smallButton} style={{ fontStyle: 'italic' }} onClick={() => applyMarkdownStyle('italic')}>
+                                I
+                            </button>
+                        </div>
+                        <textarea
+                            ref={textareaRef}
+                            className={styles.textArea}
+                            value={draft.text}
+                            onChange={(e) => set('text', e.target.value)}
+                            onKeyDown={(e) => {
+                                const key = e.key.toLowerCase();
+                                if ((e.ctrlKey || e.metaKey) && (key === 'b' || key === 'i')) {
+                                    e.preventDefault();
+                                    applyMarkdownStyle(key === 'b' ? 'bold' : 'italic');
+                                }
+                            }}
+                        />
                         <p className={styles.fieldHint}>
                             Tip: write <code>{'{X}'}</code> where a counter-based effect value should appear — e.g. &ldquo;Restore{' '}
                             {'{X}'} Health to your hero.&rdquo; It resolves live in a real match; the preview here shows it literally,
-                            since there&rsquo;s no board/HP to compute against outside a match.
+                            since there&rsquo;s no board/HP to compute against outside a match. Use the B / I buttons (or Ctrl+B /
+                            Ctrl+I) to wrap the current selection in <code>**bold**</code> or <code>*italic*</code>.
                         </p>
                         {errors.text && <span className={styles.fieldError}>{errors.text}</span>}
                     </div>

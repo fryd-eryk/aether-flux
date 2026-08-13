@@ -22,6 +22,7 @@ import {
     TOOLTIP_TRIBE_PAD_X,
     TRIBE_TAG_TEXT_STYLE,
 } from './cardLayout';
+import { layoutRichText } from './richText';
 
 /**
  * The card-anchored keyword/rule-text/mana-cost tooltip shown on hover for hand, board, and pile
@@ -115,16 +116,18 @@ export class HelpBoxController
 
         if (text !== '')
         {
-            const helpText = this.scene.add.text(margin, cursorY, text, {
-                fontFamily: 'Arial', fontSize: '15px', color: '#ffffff',
-                wordWrap: { width: maxWidth },
-            }).setOrigin(0, 0);
+            const { objects: ruleTextObjects, height } = layoutRichText(this.scene, text, {
+                x: margin,
+                y: cursorY,
+                maxWidth,
+                style: { fontFamily: 'Arial', fontSize: '15px', color: '#ffffff' },
+            });
 
-            this.helpBox.add(helpText);
-            this.helpBoxLines.push(helpText);
+            this.helpBox.add(ruleTextObjects);
+            this.helpBoxLines.push(...ruleTextObjects);
 
-            maxRight = Math.max(maxRight, helpText.x + helpText.width);
-            cursorY += helpText.height + 14;
+            maxRight = ruleTextObjects.reduce((max, obj) => Math.max(max, obj.x + obj.width), maxRight);
+            cursorY += height + 14;
         }
 
         for (const keyword of instance.keywords)

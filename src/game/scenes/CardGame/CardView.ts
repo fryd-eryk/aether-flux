@@ -48,12 +48,14 @@ import {
     PILL_ROW_GAP,
     RARITY_DOT_INSET,
     RARITY_DOT_R,
+    RULE_TEXT_LINE_SPACING,
     RULE_TEXT_STYLE,
     STAT_FUSED_LIGHT_STYLE,
     STAT_FUSED_LIGHT_WOUNDED_STYLE,
     TRIBE_LABEL_STYLE,
     TYPE_LABEL_STYLE,
 } from "./cardLayout";
+import { layoutRichText } from "./richText";
 
 /**
  * Builds a card's visual container in one of CardDisplayMode's three layouts — see the doc
@@ -215,14 +217,17 @@ export class CardView {
         // purely to measure how tall each piece of content actually is, since neither the keyword
         // block's row count nor the rule text's wrapped line count is a fixed constant.
         const keywords = hasKeywords ? this.createKeywordLabels(instance) : { objects: [], lineCount: 0 };
-        let ruleText: Phaser.GameObjects.Text | null = null;
+        let ruleText: { objects: Phaser.GameObjects.Text[]; height: number } | null = null;
         let contentHeight = keywords.lineCount * DESC_BOX_KEYWORD_LINE_H;
 
         if (hasText) {
-            ruleText = this.scene.add
-                .text(-CARD_W / 2 + 8, 0, text, RULE_TEXT_STYLE)
-                .setOrigin(0, 0)
-                .setWordWrapWidth(CARD_W - 16, true);
+            ruleText = layoutRichText(this.scene, text, {
+                x: -CARD_W / 2 + 8,
+                y: 0,
+                maxWidth: CARD_W - 16,
+                style: RULE_TEXT_STYLE,
+                lineSpacing: RULE_TEXT_LINE_SPACING,
+            });
             contentHeight += (hasKeywords ? DESC_BOX_LINE_GAP : 0) + ruleText.height;
         }
 
@@ -246,7 +251,7 @@ export class CardView {
         // wouldn't cover that), hence borderHeight pulls the stroke's bottom in by half the border
         // width. Left/right/top edges have plenty of clearance (DESC_BOX_INSET_X) and need no
         // equivalent adjustment.
-        const { light, dark } = definition.type === "token" ? TOKEN_RARITY_COLOR : RARITY_METADATA[definition.rarity!];
+        const { light, dark } = definition.type === "token" || !definition.rarity ? TOKEN_RARITY_COLOR : RARITY_METADATA[definition.rarity];
         const borderHeight = boxBottomHeight - DESC_BOX_BORDER_WIDTH / 2;
         box.lineGradientStyle(DESC_BOX_BORDER_WIDTH, light, light, dark, dark, 1);
         box.strokeRoundedRect(boxX, boxTop, boxWidth, borderHeight, DESC_BOX_RADIUS);
@@ -261,8 +266,8 @@ export class CardView {
         }
 
         if (ruleText) {
-            ruleText.setY(cursorY);
-            objects.push(ruleText);
+            ruleText.objects.forEach((obj) => { obj.y += cursorY; });
+            objects.push(...ruleText.objects);
         }
 
         return objects;
@@ -282,7 +287,7 @@ export class CardView {
         }
 
         const dotX = -CARD_W / 2 + RARITY_DOT_INSET;
-        const { light, dark } = definition.type === "token" ? TOKEN_RARITY_COLOR : RARITY_METADATA[definition.rarity!];
+        const { light, dark } = definition.type === "token" || !definition.rarity ? TOKEN_RARITY_COLOR : RARITY_METADATA[definition.rarity];
         const dot = this.scene.add.graphics();
         dot.fillGradientStyle(light, light, dark, dark, 1, 1, 1, 1);
         dot.fillCircle(dotX, footerCenterY, RARITY_DOT_R);
@@ -447,23 +452,35 @@ export class CardView {
         let cursorX = startX;
         let row = 0;
 
+        // Every stroked Text object's own .width reserves strokeThickness as padding around its
+        // ink so the stroke halo never gets clipped (see GetTextSize.js) — subtracted back out of
+        // the cursor advance below so a label's trailing comma sits flush against it instead of
+        // visibly floating a couple px off (see richText.ts's layoutRichText for the same fix,
+        // same root cause: separate stroked Text objects each pay this padding once).
+        const labelStroke = typeof KEYWORD_LABEL_BASE_STYLE.strokeThickness === "number" ? KEYWORD_LABEL_BASE_STYLE.strokeThickness : 0;
+        const separatorStroke = typeof KEYWORD_SEPARATOR_STYLE.strokeThickness === "number" ? KEYWORD_SEPARATOR_STYLE.strokeThickness : 0;
+
         keywords.forEach((keyword, index) => {
             const meta = KEYWORD_METADATA[keyword];
             const hex = `#${meta.color.toString(16).padStart(6, "0")}`;
             const label = this.scene.add.text(0, 0, meta.label, { ...KEYWORD_LABEL_BASE_STYLE, color: hex }).setOrigin(0, 0);
+            const labelWidth = label.width - labelStroke;
 
-            if (cursorX + label.width > maxX && cursorX > startX) {
+            if (cursorX + labelWidth > maxX && cursorX > startX) {
                 row += 1;
                 cursorX = startX;
             }
             label.setPosition(cursorX, row * DESC_BOX_KEYWORD_LINE_H);
             objects.push(label);
-            cursorX += label.width;
+            cursorX += labelWidth;
 
             if (index < keywords.length - 1) {
-                const separator = this.scene.add.text(cursorX, row * DESC_BOX_KEYWORD_LINE_H, ",", KEYWORD_SEPARATOR_STYLE).setOrigin(0, 0);
+                // The trailing space is load-bearing, not decorative — a bare "," has no gap
+                // after it once the stroke-padding fix above stops that gap coming from stroke
+                // overhead by accident (see the comment above labelStroke/separatorStroke).
+                const separator = this.scene.add.text(cursorX, row * DESC_BOX_KEYWORD_LINE_H, ", ", KEYWORD_SEPARATOR_STYLE).setOrigin(0, 0);
                 objects.push(separator);
-                cursorX += separator.width;
+                cursorX += separator.width - separatorStroke;
             }
         });
 

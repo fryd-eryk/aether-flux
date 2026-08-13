@@ -171,7 +171,7 @@ export const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ 
 // (definition.text) — edit this to tighten/loosen its line-height. Independent of DESC_BOX_LINE_GAP
 // (the gap between the keyword line and the start of the rule text, a different measurement).
 export const RULE_TEXT_LINE_SPACING = -3;
-export const RULE_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '10px', color: '#e8ecf5', fontStyle: 'italic', align: 'left', lineSpacing: RULE_TEXT_LINE_SPACING }, 2);
+export const RULE_TEXT_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '10px', color: '#e8ecf5', align: 'left', lineSpacing: RULE_TEXT_LINE_SPACING }, 2);
 export const SMALL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff' };
 // Hero circle's HP readout — bold + stroked (unlike statStyle's HUD text) since it sits directly
 // over the circle's solid fill rather than the plain background the HUD corner text sits on.

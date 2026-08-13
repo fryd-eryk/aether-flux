@@ -97,7 +97,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Alms Cleric",
         cost: 2,
         type: "minion",
-        text: "Anthem: Restore 2 Health to your hero.",
+        text: "**Anthem:** Restore 2 Health to your hero.",
         attack: 1,
         health: 1,
         tribes: ["human"],
@@ -223,19 +223,21 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     },
     "bog-witch": {
         id: "bog-witch",
-        name: "Bog Witch",
+        name: "Sad Bog Witch",
         cost: 3,
         type: "minion",
-        text: "Anthem: Draw a card.",
-        attack: 2,
-        health: 2,
+        text: "Wound: gains +1/+0.",
+        attack: 0,
+        health: 3,
         tribes: ["demon","nature"],
         effects: [
             {
-                trigger: "onPlay",
+                trigger: "onDamaged",
                 action: {
-                    kind: "draw",
-                    count: 1,
+                    kind: "buff",
+                    attack: 1,
+                    health: 0,
+                    target: "self",
                 },
             },
         ],
@@ -508,9 +510,10 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Vampiric Doomcaller",
         cost: 4,
         type: "minion",
-        text: "Anthem: Deal 3 damage to the enemy hero. Deathcry: Deal 3 damage to your hero.",
-        attack: 4,
-        health: 4,
+        text: "**Anthem:** Deal 3 damage to the enemy hero. **Deathcry:** Deal 3 damage to your hero.",
+        attack: 2,
+        health: 3,
+        keywords: ["lifesteal"],
         tribes: ["demon"],
         effects: [
             {
@@ -680,19 +683,19 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Windroc Sky-Marshal",
         cost: 6,
         type: "minion",
-        text: "Anthem: Give your minions +1/+1.",
+        text: "Muster: gains +1/+1.",
         attack: 2,
         health: 4,
         keywords: ["windfury"],
         tribes: ["human","animal"],
         effects: [
             {
-                trigger: "onPlay",
+                trigger: "onMinionCast",
                 action: {
                     kind: "buff",
                     attack: 1,
                     health: 1,
-                    target: "allFriendlyMinions",
+                    target: "self",
                 },
             },
         ],
@@ -794,7 +797,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "top",
     },
 
-    // --- Exotic rarity (11) ---
+    // --- Exotic rarity (12) ---
     "blood-moon-ritual": {
         id: "blood-moon-ritual",
         name: "Blood Moon Ritual",
@@ -874,9 +877,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     "soulgorger-hound": {
         id: "soulgorger-hound",
         name: "Soulgorger Hound",
-        cost: 4,
+        cost: 3,
         type: "minion",
-        text: "Mourn: gain +1/+0.",
+        text: "Mourn: gains +1/+0.",
         attack: 1,
         health: 4,
         tribes: ["underworld"],
@@ -904,6 +907,35 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         health: 5,
         keywords: ["taunt","divineShield"],
         tribes: ["human"],
+        rarity: "exotic",
+    },
+    "fortunes-weaver": {
+        id: "fortunes-weaver",
+        name: "Fortune’s Weaver",
+        cost: 6,
+        type: "minion",
+        text: "**Channel, Momentum(1):**Draw a card.\n**Strike, Momentum(2):**Draw a card.",
+        attack: 1,
+        health: 5,
+        tribes: ["cosmic"],
+        effects: [
+            {
+                trigger: "onSpellCast",
+                action: {
+                    kind: "draw",
+                    count: 1,
+                },
+                condition: { type: "momentum", minCount: 1 },
+            },
+            {
+                trigger: "onAttack",
+                action: {
+                    kind: "draw",
+                    count: 1,
+                },
+                condition: { type: "momentum", minCount: 2 },
+            },
+        ],
         rarity: "exotic",
     },
     "cinderplume-phoenix": {
@@ -1023,7 +1055,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Eternal Phoenix Sovereign",
         cost: 9,
         type: "minion",
-        text: "Anthem: your minions get +1/+2.\nWhenever you cast a minion, minions you control gain 3 life.",
+        text: "**Anthem:** your minions get +1/+2.\nWhenever you cast a minion, all your minions gain 3 Health.",
         attack: 4,
         health: 5,
         tribes: ["elemental","animal"],
@@ -1050,7 +1082,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Legendary rarity (4) ---
+    // --- Legendary rarity (5) ---
     "deep-fathoms-strike": {
         id: "deep-fathoms-strike",
         name: "Deep Fathoms Strike",
@@ -1077,6 +1109,18 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "legendary",
         artVerticalAlign: "bottom",
+    },
+    "atraxalys-rampant-agony": {
+        id: "atraxalys-rampant-agony",
+        name: "Atraxalys, Rampant Agony",
+        cost: 7,
+        type: "minion",
+        text: "",
+        attack: 6,
+        health: 6,
+        keywords: ["lifesteal"],
+        tribes: ["demon"],
+        rarity: "legendary",
     },
     "faery-colossus": {
         id: "faery-colossus",
@@ -1124,12 +1168,12 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "legendary",
         artVerticalAlign: "bottom",
     },
-    "doom-fissure": {
-        id: "doom-fissure",
-        name: "Doom Fissure",
+    "doomscar-fissure": {
+        id: "doomscar-fissure",
+        name: "Doomscar Fissure",
         cost: 9,
         type: "spell",
-        text: "Deal 5 damage to all minions. Summon a Vampiric Doomcaller.",
+        text: "Deal 5 damage to all minions. Summon a **Vampiric Doomcaller**.",
         effects: [
             {
                 trigger: "onPlay",
@@ -1158,7 +1202,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Thos, Reaper of Worlds",
         cost: 8,
         type: "minion",
-        text: "Deathcry: Deal 6 damage to the enemy hero.\nMomentum(1): When Thos attacks, draw a card.",
+        text: "**Deathcry:** Deal 6 damage to the enemy hero.\n**Momentum(1):** When Thos attacks, draw a card.",
         attack: 7,
         health: 8,
         keywords: ["veiled"],

@@ -1,4 +1,5 @@
 import type { CardDefinition, CardEffect, EffectAction, EffectValue } from '../game/types/Card';
+import { hasDanglingMarkdownMarker } from '../game/scenes/CardGame/richTextParser';
 
 /**
  * Per-field error messages for a `CardDefinition` draft, keyed by field name (or
@@ -122,6 +123,8 @@ export function validateCardDefinition(
     // with no effects has nothing to supply a value, so the placeholder would render literally.
     if (def.text.includes('{X}') && (def.effects ?? []).length === 0) {
         errors.text = 'Rule text uses {X} but this card has no effects to supply a value.';
+    } else if (hasDanglingMarkdownMarker(def.text)) {
+        errors.text = 'Rule text has an unmatched * or ** marker.';
     }
 
     return errors;
