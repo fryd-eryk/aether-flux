@@ -35,6 +35,7 @@ function serializeEffectValue(value: EffectValue): string {
     const parts = [`counter: ${JSON.stringify(value.counter)}`];
     if (value.multiplier !== undefined && value.multiplier !== 1) parts.push(`multiplier: ${value.multiplier}`);
     if (value.offset !== undefined && value.offset !== 0) parts.push(`offset: ${value.offset}`);
+    if (value.tribe !== undefined) parts.push(`tribe: ${JSON.stringify(value.tribe)}`);
     return `{ ${parts.join(', ')} }`;
 }
 

@@ -102,16 +102,22 @@ Two items remain from the original growth-the-vocabulary proposal this section u
 A `CardEffect`'s numeric magnitude doesn't have to be a flat, hand-authored
 number — `damage`/`heal`'s `amount`, `draw`'s `count`, and `buff`'s
 `attack`/`health` are typed as `EffectValue = number | { counter: CounterKind;
-multiplier?: number; offset?: number }` (`Card.ts`). `CounterKind` covers five
-live readouts: `allMinionCount`/`friendlyMinionCount`/`enemyMinionCount` and
-`friendlyHeroHealth`/`enemyHeroHealth`. `summon.count` deliberately stays a
-plain `number` — a board-count-scaled summon count wasn't a requested use
-case and would be an unusual design; trivial to extend later if needed.
+multiplier?: number; offset?: number; tribe?: Tribe }` (`Card.ts`).
+`CounterKind` covers six live readouts: `allMinionCount`/
+`friendlyMinionCount`/`enemyMinionCount`, `friendlyHeroHealth`/
+`enemyHeroHealth`, and `allTribeMinionCount` (a chosen tribe's minion count
+across both boards — the only kind that reads the `tribe` field, and the only
+one requiring a Card Creator sub-choice beyond the kind itself).
+`summon.count` deliberately stays a plain `number` — a board-count-scaled
+summon count wasn't a requested use case and would be an unusual design;
+trivial to extend later if needed.
 
 `src/game/state/counters.ts` is the pure resolver (no Phaser dependency,
-same shape as `keywordRules.ts`): `resolveCounter(counter, ownerId, state)`
-reads the live value off `GameState`; `resolveEffectValue(value, ownerId,
-state)` passes a plain number through as-is, or computes
+same shape as `keywordRules.ts`): `resolveCounter(value, ownerId, state)`
+(takes the full counter object, not just its `CounterKind`, since
+`allTribeMinionCount` also needs `value.tribe`) reads the live value off
+`GameState`; `resolveEffectValue(value, ownerId, state)` passes a plain
+number through as-is, or computes
 `resolveCounter(...) * (multiplier ?? 1) + (offset ?? 0)` for a counter
 reference. `TurnStateMachine.applyEffectAction` resolves a `EffectValue`
 **once per action invocation**, before its per-target loop — not once per

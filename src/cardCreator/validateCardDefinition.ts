@@ -43,6 +43,8 @@ function validateEffectValue(value: EffectValue, prefix: string, field: string, 
         errors[`${prefix}.${field}`] = 'Multiplier must be a number.';
     } else if (value.offset !== undefined && !Number.isFinite(value.offset)) {
         errors[`${prefix}.${field}`] = 'Offset must be a number.';
+    } else if (value.counter === 'allTribeMinionCount' && !value.tribe) {
+        errors[`${prefix}.${field}`] = 'Choose a tribe for this counter.';
     }
 }
 

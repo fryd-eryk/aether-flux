@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (24) ---
+    // --- Common rarity (22) ---
     "rusty-shieldbearer": {
         id: "rusty-shieldbearer",
         name: "Rusty Shieldbearer",
@@ -102,27 +102,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "bottom",
     },
-    "ember-tinkerer": {
-        id: "ember-tinkerer",
-        name: "Ember Tinkerer",
-        cost: 2,
-        type: "minion",
-        text: "(2): Deal 1 damage to a minion.",
-        attack: 2,
-        health: 2,
-        paidAbilities: [
-            {
-                cost: 4,
-                action: {
-                    kind: "damage",
-                    amount: 1,
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
-            },
-        ],
-        rarity: "common",
-    },
     "glacial-grasp": {
         id: "glacial-grasp",
         name: "Glacial Grasp",
@@ -175,34 +154,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 action: {
                     kind: "draw",
                     count: 1,
-                },
-            },
-        ],
-        rarity: "common",
-    },
-    "dark-energy-spear": {
-        id: "dark-energy-spear",
-        name: "Dark Energy Spear",
-        cost: 2,
-        type: "spell",
-        text: "Deal 3 damage to a minion. If it is a *Cosmic* minion, it gains 3 Health instead.",
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 3,
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "heal",
-                    amount: 3,
-                    target: "chosen",
-                    chosenRestriction: "cosmic",
                 },
             },
         ],
@@ -373,9 +324,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Starbound Seer",
         cost: 3,
         type: "minion",
-        text: "Momentum(1): Draw a card.",
+        text: "**Anthem:** Draw a card.",
         attack: 1,
-        health: 4,
+        health: 3,
         tribes: ["cosmic"],
         effects: [
             {
@@ -384,7 +335,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     kind: "draw",
                     count: 1,
                 },
-                condition: { type: "momentum", minCount: 1 },
             },
         ],
         rarity: "common",
@@ -451,7 +401,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Rare rarity (20) ---
+    // --- Rare rarity (22) ---
     "sprout-whelp": {
         id: "sprout-whelp",
         name: "Sprout Whelp",
@@ -523,6 +473,26 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     kind: "damage",
                     amount: 2,
                     target: "enemyHero",
+                },
+            },
+        ],
+        rarity: "rare",
+        artVerticalAlign: "bottom",
+    },
+    "dark-star-spear": {
+        id: "dark-star-spear",
+        name: "Dark Star Spear",
+        cost: 3,
+        type: "spell",
+        text: "Deal X damage to a minion, where X is the number of *Cosmic* minions you control.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: { counter: "allTribeMinionCount", tribe: "cosmic" },
+                    target: "chosen",
+                    chosenRestriction: "minion",
                 },
             },
         ],
@@ -685,6 +655,28 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     kind: "damage",
                     amount: 3,
                     target: "allEnemyMinions",
+                },
+            },
+        ],
+        rarity: "rare",
+    },
+    "starthief-sniper": {
+        id: "starthief-sniper",
+        name: "Starthief Sniper",
+        cost: 4,
+        type: "minion",
+        text: "(4): Deal 1 damage to a minion.",
+        attack: 1,
+        health: 3,
+        tribes: ["cosmic"],
+        paidAbilities: [
+            {
+                cost: 4,
+                action: {
+                    kind: "damage",
+                    amount: { counter: "enemyMinionCount" },
+                    target: "chosen",
+                    chosenRestriction: "minion",
                 },
             },
         ],
@@ -997,11 +989,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     "fortunes-weaver": {
         id: "fortunes-weaver",
         name: "Fortune’s Weaver",
-        cost: 6,
+        cost: 5,
         type: "minion",
-        text: "**Momentum(1):** When you cast a spell, draw a card.\n**Momentum(2):** When Fortune's Weaver attacks, draw a card.",
+        text: "When you cast a spell or play a minion, draw a card.",
         attack: 1,
-        health: 5,
+        health: 4,
         tribes: ["cosmic"],
         effects: [
             {
@@ -1010,15 +1002,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     kind: "draw",
                     count: 1,
                 },
-                condition: { type: "momentum", minCount: 1 },
             },
             {
-                trigger: "onAttack",
+                trigger: "onMinionCast",
                 action: {
                     kind: "draw",
                     count: 1,
                 },
-                condition: { type: "momentum", minCount: 2 },
             },
         ],
         rarity: "exotic",
@@ -1313,7 +1303,29 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Mythical rarity (2) ---
+    // --- Mythical rarity (3) ---
+    "the-hollow-sovereign": {
+        id: "the-hollow-sovereign",
+        name: "The Hollow Sovereign",
+        cost: 7,
+        type: "minion",
+        text: "(10): Destroy all minions.",
+        attack: 3,
+        health: 8,
+        keywords: ["veiled"],
+        tribes: ["cosmic"],
+        paidAbilities: [
+            {
+                cost: 10,
+                action: {
+                    kind: "destroy",
+                    target: "allMinions",
+                },
+            },
+        ],
+        rarity: "mythical",
+        artVerticalAlign: "bottom",
+    },
     "thos-reaper-of-worlds": {
         id: "thos-reaper-of-worlds",
         name: "Thos, Reaper of Worlds",

@@ -1,17 +1,18 @@
 import { CARD_DEFINITIONS } from '../data/cards';
-import type { CardInstance, CounterKind, EffectAction, EffectValue } from '../types/Card';
+import type { CardInstance, EffectAction, EffectValue } from '../types/Card';
 import type { PlayerId } from '../types/common';
 import type { GameState } from '../types/GameState';
+import { minionHasTribe } from './tribes';
 
 function opponentOf(id: PlayerId): PlayerId {
     return id === 'player' ? 'opponent' : 'player';
 }
 
 /** Reads a live game-state readout for `ownerId` — see CounterKind's doc comment for the full list. */
-export function resolveCounter(counter: CounterKind, ownerId: PlayerId, state: GameState): number {
+export function resolveCounter(value: Exclude<EffectValue, number>, ownerId: PlayerId, state: GameState): number {
     const owner = state.players[ownerId];
     const enemy = state.players[opponentOf(ownerId)];
-    switch (counter) {
+    switch (value.counter) {
         case 'allMinionCount':
             return owner.board.length + enemy.board.length;
         case 'friendlyMinionCount':
@@ -22,13 +23,19 @@ export function resolveCounter(counter: CounterKind, ownerId: PlayerId, state: G
             return owner.health;
         case 'enemyHeroHealth':
             return enemy.health;
+        case 'allTribeMinionCount': {
+            if (!value.tribe) return 0;
+            const tribe = value.tribe;
+            const matchesTribe = (c: CardInstance) => minionHasTribe(CARD_DEFINITIONS[c.definitionId], tribe);
+            return owner.board.filter(matchesTribe).length + enemy.board.filter(matchesTribe).length;
+        }
     }
 }
 
 /** Resolves a flat number as-is, or a counter reference to `resolveCounter(...) * multiplier + offset`. */
 export function resolveEffectValue(value: EffectValue, ownerId: PlayerId, state: GameState): number {
     if (typeof value === 'number') return value;
-    return resolveCounter(value.counter, ownerId, state) * (value.multiplier ?? 1) + (value.offset ?? 0);
+    return resolveCounter(value, ownerId, state) * (value.multiplier ?? 1) + (value.offset ?? 0);
 }
 
 /** The one EffectValue an effect's action "headlines" for `{X}` substitution — damage/heal's amount,

@@ -43,7 +43,7 @@ export const BOARD_ZONE_W = 1600;
 // generous gap between the two boards — the freed space's biggest single beneficiary, giving the
 // battlefield itself more visual weight instead of the two rows sitting seam-to-seam.
 export const OPPONENT_HERO_Y = 37;
-export const OPPONENT_HAND_Y = 0; // poked flush against the top edge — always, see above
+export const OPPONENT_HAND_Y = 50;
 export const OPPONENT_BOARD_Y = 265;
 export const PLAYER_BOARD_Y = 600;
 export const PLAYER_HAND_POKE_Y = GAME_HEIGHT - CARD_H / 2; // poked flush against the bottom edge

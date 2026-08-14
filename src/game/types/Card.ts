@@ -44,8 +44,9 @@ export type TargetSelector =
  */
 export type ChosenTargetRestriction = 'minion' | 'hero' | Tribe;
 
-/** Live game-state readouts an EffectValue can scale off — see counters.ts's resolveCounter. */
-export type CounterKind = 'allMinionCount' | 'friendlyMinionCount' | 'enemyMinionCount' | 'friendlyHeroHealth' | 'enemyHeroHealth';
+/** Live game-state readouts an EffectValue can scale off — see counters.ts's resolveCounter.
+ * 'allTribeMinionCount' counts a chosen tribe across both boards — see EffectValue's `tribe` field. */
+export type CounterKind = 'allMinionCount' | 'friendlyMinionCount' | 'enemyMinionCount' | 'friendlyHeroHealth' | 'enemyHeroHealth' | 'allTribeMinionCount';
 
 /**
  * Either a flat authored number, or a magnitude computed live from game state when the effect
@@ -53,9 +54,10 @@ export type CounterKind = 'allMinionCount' | 'friendlyMinionCount' | 'enemyMinio
  * counters.ts. No automatic text substitution happens in the Card Creator (it has no live game
  * state to compute against) — an author writes the literal placeholder `{X}` in a card's `text`
  * by hand, and only the real game's renderer (resolveCardText, also in counters.ts) substitutes
- * it with the live-resolved value when the card is actually shown in a match.
+ * it with the live-resolved value when the card is actually shown in a match. `tribe` is only
+ * meaningful (and required) when `counter` is `'allTribeMinionCount'`.
  */
-export type EffectValue = number | { counter: CounterKind; multiplier?: number; offset?: number };
+export type EffectValue = number | { counter: CounterKind; multiplier?: number; offset?: number; tribe?: Tribe };
 
 /**
  * Narrows an `allMinions`/`allEnemyMinions`/`allFriendlyMinions` target to minions of a

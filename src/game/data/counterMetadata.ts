@@ -7,4 +7,5 @@ export const COUNTER_METADATA: Record<CounterKind, { label: string }> = {
     enemyMinionCount: { label: 'Enemy minions' },
     friendlyHeroHealth: { label: 'Your Health' },
     enemyHeroHealth: { label: "Enemy's Health" },
+    allTribeMinionCount: { label: 'Minions of a tribe' },
 };

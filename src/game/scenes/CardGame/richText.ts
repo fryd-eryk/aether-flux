@@ -1,6 +1,6 @@
 import type { Scene } from "phaser";
 
-import { COST_BADGE_DARK, COST_BADGE_LIGHT, COST_BADGE_STROKE_COLOR, COST_BADGE_STROKE_WIDTH } from "./cardLayout";
+import { COST_BADGE_DARK, COST_BADGE_LIGHT, COST_BADGE_STROKE_COLOR, COST_BADGE_STROKE_WIDTH, withStroke } from "./cardLayout";
 import { parseRichText } from "./richTextParser";
 
 export interface RichTextLayoutOptions {
@@ -147,8 +147,12 @@ function createPipBadge(scene: Scene, topLeftX: number, topLeftY: number, cost: 
     badge.lineStyle(COST_BADGE_STROKE_WIDTH, COST_BADGE_STROKE_COLOR, 1);
     badge.strokeCircle(radius, radius, radius);
 
+    // withStroke both adds the black border and switches this Text to CARD_TEXT_RESOLUTION's
+    // higher-density rasterization — without it, a small on-card/tooltip font like this renders
+    // from a genuinely tiny source bitmap and blurs when the card is displayed above native size
+    // (see cardLayout.ts's CARD_TEXT_RESOLUTION comment for the full explanation).
     const text = scene.add
-        .text(radius, radius, `${cost}`, { fontFamily: "Arial Black", fontSize: `${Math.max(8, Math.round(diameter * 0.55))}px`, color: "#ffffff" })
+        .text(radius, radius, `${cost}`, withStroke({ fontFamily: "Arial Black", fontSize: `${Math.max(8, Math.round(diameter * 0.55))}px`, color: "#ffffff" }, 1.5))
         .setOrigin(0.5);
 
     const container = scene.add.container(topLeftX, topLeftY, [badge, text]);

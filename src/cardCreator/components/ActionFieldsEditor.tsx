@@ -125,7 +125,11 @@ export function EffectValueInput({ label, value, onChange, min, allowUnset, erro
                         <select
                             className={styles.selectInput}
                             value={value.counter}
-                            onChange={(e) => onChange({ ...value, counter: e.target.value as CounterKind })}
+                            onChange={(e) => {
+                                const counter = e.target.value as CounterKind;
+                                const tribe = counter === 'allTribeMinionCount' ? (value.tribe ?? TRIBES[0]) : undefined;
+                                onChange({ ...value, counter, tribe });
+                            }}
                         >
                             {COUNTERS.map((counter) => (
                                 <option key={counter} value={counter}>
@@ -133,6 +137,19 @@ export function EffectValueInput({ label, value, onChange, min, allowUnset, erro
                                 </option>
                             ))}
                         </select>
+                        {value.counter === 'allTribeMinionCount' && (
+                            <select
+                                className={styles.selectInput}
+                                value={value.tribe ?? ''}
+                                onChange={(e) => onChange({ ...value, tribe: e.target.value as Tribe })}
+                            >
+                                {TRIBES.map((tribe) => (
+                                    <option key={tribe} value={tribe}>
+                                        {TRIBE_METADATA[tribe].label}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
                         <input
                             type="number"
                             step={1}
