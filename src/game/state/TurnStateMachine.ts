@@ -670,7 +670,7 @@ export class TurnStateMachine {
                 for (const card of dead) {
                     console.log('[TurnStateMachine] card died', { instanceId: card.instanceId, definitionId: card.definitionId, ownerId: player.id });
                     this.moveToGraveyard(card, player);
-                    EventBus.emit('state:card-died', { instanceId: card.instanceId });
+                    EventBus.emit('state:card-died', { instanceId: card.instanceId, playerId: player.id });
                     this.triggerEffects(card, 'onDeath', player.id);
                     this.triggerBoardWide('onMinionDeath', player.id, player.board);
                 }

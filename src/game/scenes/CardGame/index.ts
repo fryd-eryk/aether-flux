@@ -69,6 +69,7 @@ import {
     SPOTLIGHT_X,
     statStyle,
 } from './cardLayout';
+import { beginFlightTilt, endFlightTilt, type FlightTiltHandle, updateFlightTilt, updateFlightTiltFromPointer } from './cardFlightTilt';
 import { CardView } from './CardView';
 import { HelpBoxController } from './HelpBoxController';
 import { PileViewController } from './PileViewController';
@@ -158,12 +159,17 @@ export class CardGame extends Scene
     // eased position and the drag's direct one every frame.
     private draggedContainer: Phaser.GameObjects.Container | null = null;
 
+    // The dragged card's flight-tilt handle, if any (see wireDragEvents) — keyed by container
+    // rather than a single field since a fast cancel-then-redrag could in principle overlap a
+    // not-yet-cleaned-up handle from the previous drag.
+    private flightTiltHandles = new Map<Phaser.GameObjects.Container, FlightTiltHandle>();
+
     // --- animation orchestration --------------------------------------------------
 
     private animQueue: Array<() => Promise<void>> = [];
     private isAnimating = false;
     private renderQueued = false;
-    private pendingDeathIds: string[] = [];
+    private pendingDeathIds: { instanceId: string; playerId: PlayerId }[] = [];
     private pendingDamageIds: string[] = [];
     private pendingHealIds: string[] = [];
     // Buffered like pendingDeathIds/pendingDamageIds/pendingHealIds rather than enqueued straight
@@ -201,9 +207,9 @@ export class CardGame extends Scene
         this.enqueueAnimation(() => this.playAttackAnimation(attackerInstanceId, targetId));
     };
 
-    private cardDiedHandler = ({ instanceId }: { instanceId: string }): void =>
+    private cardDiedHandler = ({ instanceId, playerId }: { instanceId: string; playerId: PlayerId }): void =>
     {
-        this.pendingDeathIds.push(instanceId);
+        this.pendingDeathIds.push({ instanceId, playerId });
     };
 
     private damagedHandler = ({ targetId }: { targetId: string }): void =>
@@ -305,6 +311,11 @@ export class CardGame extends Scene
         return { x: PILE_X, y: playerId === 'opponent' ? OPPONENT_DECK_Y : PLAYER_DECK_Y };
     }
 
+    private graveyardPilePosition (playerId: PlayerId): { x: number; y: number }
+    {
+        return { x: PILE_X, y: playerId === 'opponent' ? OPPONENT_GRAVEYARD_Y : PLAYER_GRAVEYARD_Y };
+    }
+
     private resolveTargetContainer (targetId: string): Phaser.GameObjects.Container | undefined
     {
         return targetId === 'player' || targetId === 'opponent'
@@ -312,18 +323,31 @@ export class CardGame extends Scene
             : this.instanceContainers.get(targetId);
     }
 
-    /** Fades out and clears every instanceId queued up by cardDiedHandler since the last flush — a 500ms death fade, per card. */
+    /** Flies every card queued up by cardDiedHandler since the last flush to its own owner's
+     * graveyard pile, fading out en route — 500ms per card, all in parallel (each can belong to a
+     * different player, e.g. a board-wipe hitting both sides at once, so unlike playPendingDraws
+     * these don't share a single destination and don't need to be serialized). */
     private async playPendingDeaths (): Promise<void>
     {
         if (this.pendingDeathIds.length === 0) return;
 
-        const ids = this.pendingDeathIds.splice(0, this.pendingDeathIds.length);
-        const containers = ids
-            .map((id) => this.instanceContainers.get(id))
-            .filter((c): c is Phaser.GameObjects.Container => !!c);
-        if (containers.length === 0) return;
+        const dying = this.pendingDeathIds.splice(0, this.pendingDeathIds.length);
+        await Promise.all(dying.map(async ({ instanceId, playerId }) =>
+        {
+            const container = this.instanceContainers.get(instanceId);
+            if (!container) return;
 
-        await this.tweenPromise({ targets: containers, alpha: 0, duration: 500, ease: 'Linear' });
+            const dest = this.graveyardPilePosition(playerId);
+            const origin = { x: container.x, y: container.y };
+            const handle = beginFlightTilt(this, container);
+
+            await this.tweenPromise({
+                targets: container, x: dest.x, y: dest.y, alpha: 0, duration: 500, ease: 'Cubic.easeIn',
+                onUpdate: (tween) => updateFlightTilt(handle, dest.x - origin.x, dest.y - origin.y, Math.sin(tween.progress * Math.PI)),
+            });
+
+            endFlightTilt(handle);
+        }));
     }
 
     /** Plays every draw queued up by cardDrawnHandler since the last flush, one at a time — see
@@ -442,16 +466,30 @@ export class CardGame extends Scene
 
         container.setDepth(2500);
 
-        await this.tweenPromise({ targets: container, x: SPOTLIGHT_X, y: CENTER_Y, scale: 1.25, duration: 350, ease: 'Cubic.easeOut' });
+        // One continuous flight across both legs (hand→spotlight, then spotlight→board) — scale
+        // is tween-driven throughout (1.25 at the spotlight, back to 1 on landing), rotation isn't
+        // touched by either leg so it stays owned by the handle's fixed (0) base.
+        const spotlightOrigin = { x: container.x, y: container.y };
+        const handle = beginFlightTilt(this, container, { scaleDriven: true });
+        await this.tweenPromise({
+            targets: container, x: SPOTLIGHT_X, y: CENTER_Y, scale: 1.25, duration: 350, ease: 'Cubic.easeOut',
+            onUpdate: (tween) => updateFlightTilt(handle, SPOTLIGHT_X - spotlightOrigin.x, CENTER_Y - spotlightOrigin.y, Math.sin(tween.progress * Math.PI)),
+        });
         await this.delay(550);
 
         const destination = this.computePlayedCardDestination(instanceId, playerId);
         if (destination)
         {
-            await this.tweenPromise({ targets: container, x: destination.x, y: destination.y, scale: 1, duration: 350, ease: 'Cubic.easeIn' });
+            const boardOrigin = { x: container.x, y: container.y };
+            await this.tweenPromise({
+                targets: container, x: destination.x, y: destination.y, scale: 1, duration: 350, ease: 'Cubic.easeIn',
+                onUpdate: (tween) => updateFlightTilt(handle, destination.x - boardOrigin.x, destination.y - boardOrigin.y, Math.sin(tween.progress * Math.PI)),
+            });
+            endFlightTilt(handle);
         }
         else
         {
+            endFlightTilt(handle);
             await this.tweenPromise({ targets: container, alpha: 0, duration: 300, ease: 'Linear' });
         }
 
@@ -513,7 +551,15 @@ export class CardGame extends Scene
         flying.setDepth(3000);
         flying.setScale(0.6);
 
-        await this.tweenPromise({ targets: flying, x: destSlot.x, y: destSlot.y, rotation: destSlot.rotation, scale: destSlot.scale, duration: 400, ease: 'Cubic.easeOut' });
+        // rotation/scale are both already tween-driven below (destSlot.rotation/scale), so the
+        // handle reads their live tween-interpolated values as its base each frame instead of a
+        // fixed one — see cardFlightTilt.ts's doc comment for why that's safe.
+        const handle = beginFlightTilt(this, flying, { rotationDriven: true, scaleDriven: true });
+        await this.tweenPromise({
+            targets: flying, x: destSlot.x, y: destSlot.y, rotation: destSlot.rotation, scale: destSlot.scale, duration: 400, ease: 'Cubic.easeOut',
+            onUpdate: (tween) => updateFlightTilt(handle, destSlot.x - origin.x, destSlot.y - origin.y, Math.sin(tween.progress * Math.PI)),
+        });
+        endFlightTilt(handle);
 
         flying.setDepth(destSlot.depth);
         this.renderedObjects.push(flying);
@@ -733,6 +779,11 @@ export class CardGame extends Scene
             container.setDepth(1000);
             this.draggedContainer = container;
 
+            // Nothing else touches rotation/scale while the pointer is dragging it (position is
+            // set directly below, not via tween), so the handle owns both against their fixed
+            // (just-reset) base until dragend switches it into a tween-driven snap-back, if any.
+            this.flightTiltHandles.set(container, beginFlightTilt(this, container));
+
             // The keyword tooltip that was showing for this card (hovering it is how the drag
             // started) would otherwise linger for the whole drag — pointerout never fires for the
             // dragged object since it stays centered under the pointer throughout.
@@ -741,16 +792,27 @@ export class CardGame extends Scene
 
         this.input.on('drag', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dragX: number, dragY: number) =>
         {
-            (gameObject as Phaser.GameObjects.Container).setPosition(dragX, dragY);
+            const container = gameObject as Phaser.GameObjects.Container;
+            container.setPosition(dragX, dragY);
+            const handle = this.flightTiltHandles.get(container);
+            if (handle) updateFlightTiltFromPointer(handle, dragX, dragY);
         });
 
         this.input.on('dragend', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dropped: boolean) =>
         {
             const container = gameObject as Phaser.GameObjects.Container;
             if (this.draggedContainer === container) this.draggedContainer = null;
-            if (!container.active) return; // already destroyed by a re-render triggered from playCard below
 
-            if (this.isAnimating) return;
+            const handle = this.flightTiltHandles.get(container);
+            const endHandle = (): void =>
+            {
+                if (!handle) return;
+                endFlightTilt(handle);
+                this.flightTiltHandles.delete(container);
+            };
+
+            if (!container.active) { endHandle(); return; } // already destroyed by a re-render triggered from playCard below
+            if (this.isAnimating) { endHandle(); return; }
 
             if (!dropped)
             {
@@ -759,6 +821,7 @@ export class CardGame extends Scene
                 // the cast. If this needs a target, playCard synchronously drives the state machine
                 // into AwaitingTarget, which re-renders (destroying `container`) before this call
                 // returns — nothing below touches it again, so that's safe.
+                endHandle();
                 const instanceId = this.cardInstanceByContainer.get(container);
                 if (instanceId) this.machine.playCard(instanceId);
                 return;
@@ -768,8 +831,20 @@ export class CardGame extends Scene
             const slot = this.handSlots.get(container);
             if (slot)
             {
-                this.tweens.add({ targets: container, x: slot.x, y: slot.y, rotation: slot.rotation, duration: 200, ease: 'Cubic.easeOut' });
+                // The snap-back tween now drives rotation itself, so hand tilt ownership of that
+                // property over to it (see cardFlightTilt.ts's rotationDriven doc comment) — tilt
+                // simply decays to flat (target intensity 0) over the tween's real-time duration.
+                if (handle) handle.rotationDriven = true;
+                this.tweens.add({
+                    targets: container, x: slot.x, y: slot.y, rotation: slot.rotation, duration: 200, ease: 'Cubic.easeOut',
+                    onUpdate: () => { if (handle) updateFlightTilt(handle, 0, 0, 0); },
+                    onComplete: endHandle,
+                });
                 container.setDepth(slot.depth);
+            }
+            else
+            {
+                endHandle();
             }
         });
     }

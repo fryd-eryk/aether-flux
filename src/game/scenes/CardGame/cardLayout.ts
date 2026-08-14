@@ -237,6 +237,18 @@ export const SHIMMER_BAND_WIDTH = 40; // falloff radius (px, along the diagonal)
 export const SHIMMER_SWEEP_MS = 650; // duration of a single bottom-left → top-right sweep
 export const SHIMMER_PAUSE_MS = 2000; // pause after the 2 sweeps before the cycle repeats
 
+// Flight-tilt tuning (cardFlightTilt.ts) — the fake-3D lean/squash/shadow applied to a card while
+// it's mid-drag or mid-zone-transition (draw/play/death/snap-back). Kept small throughout since
+// this is meant to read as a slight lift, not a cartoonish wobble.
+export const FLIGHT_TILT_MAX_ROTATION_RAD = 0.08; // ~4.6°, added on top of a flight's own rotation
+export const FLIGHT_TILT_MAX_SQUASH = 0.06; // up to 6% non-uniform scale, foreshortening cue
+export const FLIGHT_TILT_SHADOW_MAX_ALPHA = 0.35; // trailing elevation shadow, peaks at max tilt
+export const FLIGHT_TILT_SHADOW_OFFSET = 14; // px the shadow trails behind the tilt direction
+export const FLIGHT_TILT_SMOOTHING = 0.3; // per-update lerp factor toward the new target tilt
+// Pointer speed (px/ms) treated as "full" tilt intensity during live drag — above this the tilt
+// is clamped at its max rather than growing further.
+export const FLIGHT_TILT_DRAG_MAX_SPEED_REF = 1.6;
+
 /** Blends `color` toward white by `amount` (0-1) — derives the shimmer's brighter tint from
  * whatever border color it's sweeping across, so a new color variant needs no separate lookup. */
 export function lightenColor(color: number, amount: number): number {
