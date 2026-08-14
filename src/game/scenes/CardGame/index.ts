@@ -20,8 +20,11 @@ import {
     CENTER_Y,
     coverFit,
     COST_BADGE_R_FULL,
+    DAMAGE_FLASH_COLOR,
     DECK_PILE_H,
     DECK_PILE_W,
+    FLASH_IN_MS,
+    FLASH_OUT_MS,
     GAME_HEIGHT,
     GAME_WIDTH,
     getPileCards,
@@ -33,6 +36,7 @@ import {
     HAND_MIN_SPACING,
     HAND_PEEK_DEPTH,
     HAND_PEEK_HOVER_MARGIN,
+    HEAL_FLASH_COLOR,
     HERO_DEPTH,
     HERO_HP_STYLE,
     HERO_RADIUS,
@@ -95,6 +99,18 @@ type HandPeekZone = { left: number; right: number; top: number; bottom: number; 
  * is always the correct "before" picture for a move/fade/fly tween — and only once the queue
  * drains does the deferred renderNow() finally paint the true final state.
  *
+ * Because a trigger effect (Anthem/Deathcry/Channel/Muster/Mourn) resolves synchronously as part
+ * of the very same TurnStateMachine call, its own events ('state:card-drawn', 'state:damaged',
+ * 'state:healed', 'state:card-died') always fire *before* the action's own wrapping event
+ * ('state:card-played'/'state:attack'). Playing them in that raw firing order would show the
+ * trigger's animation (e.g. a Deathcry draw) before the card has even finished visibly moving.
+ * So — other than the death fade, which is genuinely reused mid-sequence by playAttackAnimation —
+ * card-drawn/damaged/healed/died handlers only buffer into pendingDrawIds/pendingDamageIds/
+ * pendingHealIds/pendingDeathIds; playCardPlayedAnimation/playAttackAnimation explicitly flush
+ * those buffers themselves once their own displacement (and any resulting death fade) has fully
+ * played out, and requestRender() flushes them the same way for actions with no displacement
+ * animation of their own (turn-start Vigil draws, paid abilities, the debug draw cheat).
+ *
  * Card visuals are built by CardView, the hover tooltip by HelpBoxController, and the
  * deck/graveyard inspect overlay by PileViewController — see those files for the display
  * layouts. This class owns the render pass that places their output (renderHero/renderPile/
@@ -148,6 +164,16 @@ export class CardGame extends Scene
     private isAnimating = false;
     private renderQueued = false;
     private pendingDeathIds: string[] = [];
+    private pendingDamageIds: string[] = [];
+    private pendingHealIds: string[] = [];
+    // Buffered like pendingDeathIds/pendingDamageIds/pendingHealIds rather than enqueued straight
+    // off cardDrawnHandler — a trigger effect (Anthem/Deathcry/Channel/Muster/Mourn draw) resolves
+    // and emits 'state:card-drawn' *before* the action's own wrapping event ('state:card-played'/
+    // 'state:attack'), since TurnStateMachine runs mutation+effects synchronously start to finish.
+    // Buffering lets playCardPlayedAnimation/playAttackAnimation flush it themselves once their own
+    // displacement (and any resulting death fade) animation has fully played out, instead of the
+    // draw animation jumping the queue and playing first — see playPendingDraws.
+    private pendingDrawIds: { playerId: PlayerId; instanceId: string }[] = [];
 
     private phaseChangeHandler = (phase: TurnPhase): void =>
     {
@@ -162,7 +188,7 @@ export class CardGame extends Scene
 
     private cardDrawnHandler = ({ playerId, instanceId }: { playerId: PlayerId; instanceId: string }): void =>
     {
-        this.enqueueAnimation(() => this.playDrawAnimation(playerId, instanceId));
+        this.pendingDrawIds.push({ playerId, instanceId });
     };
 
     private cardPlayedHandler = ({ instanceId, playerId }: { instanceId: string; playerId: PlayerId }): void =>
@@ -178,6 +204,16 @@ export class CardGame extends Scene
     private cardDiedHandler = ({ instanceId }: { instanceId: string }): void =>
     {
         this.pendingDeathIds.push(instanceId);
+    };
+
+    private damagedHandler = ({ targetId }: { targetId: string }): void =>
+    {
+        if (!this.pendingDamageIds.includes(targetId)) this.pendingDamageIds.push(targetId);
+    };
+
+    private healedHandler = ({ targetId }: { targetId: string }): void =>
+    {
+        if (!this.pendingHealIds.includes(targetId)) this.pendingHealIds.push(targetId);
     };
 
     // Only the human player's own hand cards get the held-at-spotlight treatment — see renderHand's
@@ -221,9 +257,21 @@ export class CardGame extends Scene
     /** Renders immediately unless an animation is in flight, in which case the render is deferred until it drains. */
     private requestRender (): void
     {
+        if (this.pendingDamageIds.length > 0 && !this.isAnimating)
+        {
+            this.enqueueAnimation(() => this.playPendingDamageFlashes());
+        }
+        if (this.pendingHealIds.length > 0 && !this.isAnimating)
+        {
+            this.enqueueAnimation(() => this.playPendingHealFlashes());
+        }
         if (this.pendingDeathIds.length > 0 && !this.isAnimating)
         {
             this.enqueueAnimation(() => this.playPendingDeaths());
+        }
+        if (this.pendingDrawIds.length > 0 && !this.isAnimating)
+        {
+            this.enqueueAnimation(() => this.playPendingDraws());
         }
         if (this.isAnimating)
         {
@@ -278,7 +326,57 @@ export class CardGame extends Scene
         await this.tweenPromise({ targets: containers, alpha: 0, duration: 500, ease: 'Linear' });
     }
 
-    /** Attacker lunges at its target (easing in — slow start, speed ramping up) then returns to its original spot, before any resulting deaths fade. */
+    /** Plays every draw queued up by cardDrawnHandler since the last flush, one at a time — see
+     * pendingDrawIds' doc comment for why these are buffered instead of animated immediately.
+     * Sequential rather than parallel since each draw reflows the whole hand row (playDrawAnimation
+     * re-tweens every sibling to its new slot), so overlapping draws would fight over positions. */
+    private async playPendingDraws (): Promise<void>
+    {
+        if (this.pendingDrawIds.length === 0) return;
+
+        const draws = this.pendingDrawIds.splice(0, this.pendingDrawIds.length);
+        for (const { playerId, instanceId } of draws)
+        {
+            await this.playDrawAnimation(playerId, instanceId);
+        }
+    }
+
+    /** Briefly overlays `color` on every target id's container (minion instanceId or hero PlayerId) — a full-card rectangle for a minion, a circle matching the avatar for a hero — run in parallel across every id given. Shared by the damage (red) and heal (green) flash flushers below. */
+    private async flashOverlay (ids: string[], color: number): Promise<void>
+    {
+        await Promise.all(ids.map(async (id) =>
+        {
+            const container = this.resolveTargetContainer(id);
+            if (!container) return;
+
+            const isHero = id === 'player' || id === 'opponent';
+            const overlay = isHero
+                ? this.add.circle(0, 0, HERO_RADIUS, color).setAlpha(0)
+                : this.add.rectangle(0, 0, CARD_W, CARD_H, color).setAlpha(0);
+            container.add(overlay);
+            await this.tweenPromise({ targets: overlay, alpha: 0.6, duration: FLASH_IN_MS, ease: 'Linear' });
+            await this.tweenPromise({ targets: overlay, alpha: 0, duration: FLASH_OUT_MS, ease: 'Linear' });
+            overlay.destroy();
+        }));
+    }
+
+    /** Flashes every target id queued up by damagedHandler since the last flush — a brief red overlay. */
+    private async playPendingDamageFlashes (): Promise<void>
+    {
+        if (this.pendingDamageIds.length === 0) return;
+        const ids = this.pendingDamageIds.splice(0, this.pendingDamageIds.length);
+        await this.flashOverlay(ids, DAMAGE_FLASH_COLOR);
+    }
+
+    /** Flashes every target id queued up by healedHandler since the last flush — a brief green overlay. */
+    private async playPendingHealFlashes (): Promise<void>
+    {
+        if (this.pendingHealIds.length === 0) return;
+        const ids = this.pendingHealIds.splice(0, this.pendingHealIds.length);
+        await this.flashOverlay(ids, HEAL_FLASH_COLOR);
+    }
+
+    /** Attacker lunges at its target (easing in — slow start, speed ramping up), flashes any resulting damage, then returns to its original spot, before any resulting deaths fade and any resulting draws (e.g. Grave Warden's Deathcry) play — see pendingDrawIds. */
     private async playAttackAnimation (attackerInstanceId: string, targetId: string): Promise<void>
     {
         const attacker = this.instanceContainers.get(attackerInstanceId);
@@ -290,17 +388,21 @@ export class CardGame extends Scene
             attacker.setDepth(1500);
 
             await this.tweenPromise({ targets: attacker, x: target.x, y: target.y, duration: 260, ease: 'Cubic.easeIn' });
+            void this.playPendingDamageFlashes();
+            void this.playPendingHealFlashes();
             await this.tweenPromise({ targets: attacker, x: origin.x, y: origin.y, duration: 200, ease: 'Cubic.easeOut' });
         }
 
         await this.playPendingDeaths();
+        await this.playPendingDraws();
     }
 
     /**
      * Spotlights a just-played card at the screen's left-center so the player can register what
      * was played, then — without waiting on any input — flies it out to its resting place: its
      * computed board slot for a minion that was actually summoned, or a fade-out for a spell or a
-     * minion discarded to a full board.
+     * minion discarded to a full board. Only once that's fully settled (and any resulting deaths
+     * have faded) does any Anthem/Channel/Muster draw play — see pendingDrawIds.
      */
     private async playCardPlayedAnimation (instanceId: string, playerId: PlayerId): Promise<void>
     {
@@ -308,6 +410,7 @@ export class CardGame extends Scene
         if (!container)
         {
             await this.playPendingDeaths();
+            await this.playPendingDraws();
             return;
         }
 
@@ -352,7 +455,10 @@ export class CardGame extends Scene
             await this.tweenPromise({ targets: container, alpha: 0, duration: 300, ease: 'Linear' });
         }
 
+        void this.playPendingDamageFlashes();
+        void this.playPendingHealFlashes();
         await this.playPendingDeaths();
+        await this.playPendingDraws();
     }
 
     /** Board slot the just-played card settled into, using the same row-layout math as renderBoard — or undefined if it never made it to the board (spell, or a full-board discard). */
@@ -488,10 +594,12 @@ export class CardGame extends Scene
         const action = decideOpponentAction(state);
         if (!action)
         {
+            console.log('[CardGame] opponent passes, ending turn');
             this.machine.endTurn();
             return;
         }
 
+        console.log('[CardGame] opponent action', action);
         if (action.kind === 'playCard') this.machine.playCard(action.instanceId);
         else if (action.kind === 'attack') this.machine.declareAttack(action.attackerInstanceId);
         else this.machine.activateAbility(action.instanceId, action.abilityIndex);
@@ -520,9 +628,10 @@ export class CardGame extends Scene
         // other TurnStateMachine call the player can trigger, debugDrawCard fires no
         // 'state:phase-change' (it isn't part of the normal turn flow), so nothing would otherwise
         // schedule the renderNow() that re-lays the hand fan and rewires the new card's
-        // interactivity — requestRender() here queues that rebuild for once the draw animation
-        // (already enqueued synchronously by debugDrawCard's 'state:card-drawn' emit) drains,
-        // exactly like a real draw gets via its own eventual phase change.
+        // interactivity — requestRender() here both enqueues the draw animation itself (see its
+        // pendingDrawIds check, fed synchronously by debugDrawCard's 'state:card-drawn' emit) and
+        // queues that rebuild for once it drains, exactly like a real draw gets via its own
+        // eventual phase change.
         this.pileView = new PileViewController(this, this.cardView, this.helpBoxController,
             (playerId, instanceId) =>
             {
@@ -582,6 +691,8 @@ export class CardGame extends Scene
         EventBus.on('state:card-died', this.cardDiedHandler);
         EventBus.on('state:target-begin', this.targetBeginHandler);
         EventBus.on('state:target-cancelled', this.targetCancelledHandler);
+        EventBus.on('state:damaged', this.damagedHandler);
+        EventBus.on('state:healed', this.healedHandler);
         this.events.once('shutdown', () =>
         {
             EventBus.removeListener('state:phase-change', this.phaseChangeHandler);
@@ -591,6 +702,8 @@ export class CardGame extends Scene
             EventBus.removeListener('state:target-begin', this.targetBeginHandler);
             EventBus.removeListener('state:target-cancelled', this.targetCancelledHandler);
             EventBus.removeListener('state:card-died', this.cardDiedHandler);
+            EventBus.removeListener('state:damaged', this.damagedHandler);
+            EventBus.removeListener('state:healed', this.healedHandler);
         });
 
         this.machine = new TurnStateMachine(createInitialState(generateDeck(), generateDeck()));

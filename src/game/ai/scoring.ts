@@ -113,12 +113,28 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
             const amount = resolveEffectValue(action.amount, aiId, state);
             const aiCount = tribeFilteredCount(ai.board, action.tribeFilter);
             const enemyCount = tribeFilteredCount(enemy.board, action.tribeFilter);
+            // Wound (onDamaged): every minion this actually hits (amount > 0, unshielded) that has
+            // its own Wound effect also fires it — summed signed from the AI's perspective (see
+            // woundValue) alongside the raw damage math below.
+            const hitWoundValue = (board: CardInstance[]) =>
+                amount > 0
+                    ? board
+                          .filter((c) => !action.tribeFilter || minionHasTribe(CARD_DEFINITIONS[c.definitionId], action.tribeFilter))
+                          .filter((c) => !hasKeyword(c, 'divineShield'))
+                          .reduce((sum, c) => sum + woundValue(state, aiId, c), 0)
+                    : 0;
+            const enemyMinionsHit = action.target === 'allEnemyMinions';
+            const friendlyMinionsHit = action.target === 'allFriendlyMinions';
             // allMinions/allHeroes hit both sides — net the boards against each other (and halve a
             // mutual face hit) rather than a flat per-target count, so the AI disfavors nuking a
             // board/face split that actually favors the enemy. See CLAUDE.md's Apocalypse precedent.
-            if (action.target === 'allMinions') return amount * (enemyCount - aiCount);
+            if (action.target === 'allMinions') return amount * (enemyCount - aiCount) + hitWoundValue(ai.board) + hitWoundValue(enemy.board);
             if (action.target === 'allHeroes') return amount * 0.5;
-            return amount * (action.target === 'allEnemyMinions' ? Math.max(1, enemyCount) : 1);
+            return (
+                amount * (enemyMinionsHit ? Math.max(1, enemyCount) : 1) +
+                (enemyMinionsHit ? hitWoundValue(enemy.board) : 0) +
+                (friendlyMinionsHit ? hitWoundValue(ai.board) : 0)
+            );
         }
         case 'heal': {
             if (action.target === 'chosen') return 0;
@@ -129,6 +145,7 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
             return amount * (action.target === 'allFriendlyMinions' ? Math.max(1, aiCount) : 1) * 0.5;
         }
         case 'buff': {
+            if (action.target === 'chosen') return 0;
             const magnitude = resolveEffectValue(action.attack ?? 0, aiId, state) + resolveEffectValue(action.health ?? 0, aiId, state);
             const aiCount = tribeFilteredCount(ai.board, action.tribeFilter);
             const enemyCount = tribeFilteredCount(enemy.board, action.tribeFilter);
@@ -182,6 +199,15 @@ function scoreChosenTarget(state: GameState, aiId: PlayerId, action: EffectActio
         return scoreDamageSpell(state, aiId, resolveEffectValue(action.amount, aiId, state), lethalAvailable, action.chosenRestriction);
     }
     if (action.kind === 'heal') return scoreHealSpell(state, aiId, resolveEffectValue(action.amount, aiId, state), action.chosenRestriction);
+    if (action.kind === 'buff') {
+        return scoreBuffSpell(
+            state,
+            aiId,
+            resolveEffectValue(action.attack ?? 0, aiId, state),
+            resolveEffectValue(action.health ?? 0, aiId, state),
+            action.chosenRestriction
+        );
+    }
     if (action.kind === 'freeze') return scoreFreezeSpell(state, aiId, action.chosenRestriction);
     if (action.kind === 'silence') return scoreSilenceSpell(state, aiId, action.chosenRestriction);
     if (action.kind === 'destroy') return scoreDestroySpell(state, aiId, action.chosenRestriction);
@@ -247,6 +273,30 @@ function mournBoardValue(state: GameState, aiId: PlayerId, excludeInstanceId: st
             mournEffects.reduce((s, e) => (momentumSatisfied(e, ai) ? s + estimateEffectValue(e.action, state, aiId) : s), 0)
         );
     }, 0);
+}
+
+/**
+ * Value of `minion`'s own Wound (onDamaged) effect(s) firing, signed from `aiId`'s perspective —
+ * positive when `minion` belongs to the AI (a friendly minion's Wound benefits the AI), negative
+ * when it belongs to the enemy (the AI is about to hand the enemy whatever its Wound effect
+ * grants). Unlike mournBoardValue/channelBoardValue/musterBoardValue (a whole-board reaction to
+ * someone else's event), Wound is the damaged instance's own trigger, so this only looks at the
+ * one minion actually being hit — callers are responsible for only calling this when a hit that
+ * minion actually lands (see scoreAttack's Initiative-aware landing flags, and the divineShield
+ * gate everywhere this is called, since dealDamage never fires Wound on an absorbed hit).
+ */
+function woundValue(state: GameState, aiId: PlayerId, minion: CardInstance): number {
+    if (minion.silenced) return 0;
+    const definition = CARD_DEFINITIONS[minion.definitionId];
+    const woundEffects = definition?.effects?.filter((e) => e.trigger === 'onDamaged') ?? [];
+    if (woundEffects.length === 0) return 0;
+    const ownerId = minion.owner;
+    const owner = state.players[ownerId];
+    const value = woundEffects.reduce(
+        (sum, e) => (momentumSatisfied(e, owner) ? sum + estimateEffectValue(e.action, state, ownerId) : sum),
+        0
+    );
+    return ownerId === aiId ? value : -value;
 }
 
 /** Scores playing `card` from hand, resolving the best target for chosen-target effects along the way. */
@@ -327,7 +377,9 @@ function scoreDamageSpell(
     for (const minion of enemy.board.filter(isTargetable).filter(matchesTribe)) {
         const health = minion.currentHealth ?? 0;
         const value = (minion.currentAttack ?? 0) + health;
-        const score = amount >= health ? value * 3 : amount * 0.5;
+        // Wound (onDamaged): a shielded hit never lands, so it never fires.
+        const wound = amount > 0 && !hasKeyword(minion, 'divineShield') ? woundValue(state, aiId, minion) : 0;
+        const score = (amount >= health ? value * 3 : amount * 0.5) + wound;
         if (score > best.score) best = { score, targetId: minion.instanceId };
     }
 
@@ -346,7 +398,8 @@ function scoreDamageSpell(
         for (const minion of ai.board.filter(isTargetable).filter(matchesTribe)) {
             const health = minion.currentHealth ?? 0;
             const value = (minion.currentAttack ?? 0) + health;
-            const score = amount >= health ? -value * 3 : -amount * 0.5;
+            const wound = amount > 0 && !hasKeyword(minion, 'divineShield') ? woundValue(state, aiId, minion) : 0;
+            const score = (amount >= health ? -value * 3 : -amount * 0.5) + wound;
             if (score > best.score) best = { score, targetId: minion.instanceId };
         }
     }
@@ -390,6 +443,45 @@ function scoreHealSpell(state: GameState, aiId: PlayerId, amount: number, restri
     if (restrictsToMinion(restriction) && best.targetId === undefined) {
         for (const minion of [...ai.board, ...state.players[opponentOf(aiId)].board].filter(isTargetable).filter(matchesTribe)) {
             const score = -1;
+            if (score > best.score) best = { score, targetId: minion.instanceId };
+        }
+    }
+
+    return best;
+}
+
+/**
+ * Scores + picks a target for a `buff` effect with a chosen target: like scoreGrantKeywordSpell,
+ * a buff benefits whoever receives it, so this prefers the AI's own biggest surviving minion —
+ * magnitude (attack+health) weighted the same way as estimateEffectValue's own non-chosen buff
+ * case, plus the same stats*0.2 tiebreaker scoreGrantKeywordSpell uses to favor an already-bigger
+ * minion. Same -Infinity sentinel + enemy-board fallback as scoreGrantKeywordSpell, so a card
+ * whose own value (e.g. Forced Coronation's paired silence) is still worth playing doesn't
+ * soft-lock AwaitingTarget when the AI's board is empty.
+ */
+function scoreBuffSpell(
+    state: GameState,
+    aiId: PlayerId,
+    attack: number,
+    health: number,
+    restriction?: ChosenTargetRestriction
+): ScoredTarget {
+    const enemy = state.players[opponentOf(aiId)];
+    const ai = state.players[aiId];
+    const tribe = restrictionTribe(restriction);
+    const matchesTribe = (minion: CardInstance) => !tribe || minionHasTribe(CARD_DEFINITIONS[minion.definitionId], tribe);
+    const magnitude = attack + health;
+
+    let best: ScoredTarget = { score: -Infinity };
+    for (const minion of ai.board.filter(isTargetable).filter(matchesTribe)) {
+        const stats = (minion.currentAttack ?? 0) + (minion.currentHealth ?? 0);
+        const score = magnitude * 2 + stats * 0.2;
+        if (score > best.score) best = { score, targetId: minion.instanceId };
+    }
+
+    if (restrictsToMinion(restriction) && best.targetId === undefined) {
+        for (const minion of enemy.board.filter(isTargetable).filter(matchesTribe)) {
+            const score = -magnitude; // buffing the enemy is a genuine cost, not a freebie
             if (score > best.score) best = { score, targetId: minion.instanceId };
         }
     }
@@ -547,6 +639,11 @@ export function scoreAttack(
     // unshielded hit lethal regardless of the stat comparison.
     let defenderDies = (attackerAttack >= targetHealth || hasKeyword(attacker, 'venom')) && !hasKeyword(target, 'divineShield');
     let attackerDies = (targetAttack >= attackerHealth || hasKeyword(target, 'venom')) && !hasKeyword(attacker, 'divineShield');
+    // Raw (pre-Initiative-skip) lethality, captured before the mutations below — used only to work
+    // out which swings actually land (see attackerTakesHit/targetTakesHit), independent of whether
+    // a landed swing proves lethal.
+    const rawDefenderDies = defenderDies;
+    const rawAttackerDies = attackerDies;
     // Initiative (First Strike): whichever side ALONE has it hits first — if that hit is lethal,
     // the other side never swings back, so its own "dies" flag no longer applies. Mirrors
     // TurnStateMachine.executeAttack's resolution order exactly.
@@ -562,11 +659,24 @@ export function scoreAttack(
     // the rest of the AI's board — a best-effort nudge to the trade math, not full lookahead.
     const mournBonus = attackerDies ? mournBoardValue(state, aiId, attacker.instanceId) : 0;
 
+    // Wound (onDamaged) fires pre-death on any landed, unshielded hit — including a lethal one —
+    // so it's evaluated off whether each swing actually lands, not off the dies flags above (an
+    // Initiative-skipped swing never lands at all, but a landed non-lethal or lethal swing both
+    // fire it). Mirrors TurnStateMachine.executeAttack's exact resolution order: attackerTakesHit
+    // is target's return swing landing on attacker (skipped only when attacker alone has Initiative
+    // and its hit was raw-lethal); targetTakesHit is attacker's own swing landing on target
+    // (skipped only when target alone has Initiative and its first hit was raw-lethal).
+    const attackerTakesHit = !(rawDefenderDies && attackerHasInitiative && !targetHasInitiative);
+    const targetTakesHit = !(rawAttackerDies && targetHasInitiative && !attackerHasInitiative);
+    const targetWounded = targetTakesHit && attackerAttack > 0 && !hasKeyword(target, 'divineShield');
+    const attackerWounded = attackerTakesHit && targetAttack > 0 && !hasKeyword(attacker, 'divineShield');
+    const woundBonus = (targetWounded ? woundValue(state, aiId, target) : 0) + (attackerWounded ? woundValue(state, aiId, attacker) : 0);
+
     const attackerValue = attackerAttack + attackerHealth;
     const targetValue = targetAttack + targetHealth;
 
-    if (defenderDies && !attackerDies) return targetValue * 3 + lifestealBonus; // clean kill, keep the attacker
-    if (defenderDies && attackerDies) return targetValue - attackerValue + 5 + lifestealBonus + mournBonus; // even trade, favor when the defender was worth more
-    if (!defenderDies && !attackerDies) return -2; // pointless chip damage (or a Divine Shield pop with no other upside)
-    return -10 + mournBonus; // suicidal — attacker dies for nothing (partially offset if it Mourns)
+    if (defenderDies && !attackerDies) return targetValue * 3 + lifestealBonus + woundBonus; // clean kill, keep the attacker
+    if (defenderDies && attackerDies) return targetValue - attackerValue + 5 + lifestealBonus + mournBonus + woundBonus; // even trade, favor when the defender was worth more
+    if (!defenderDies && !attackerDies) return -2 + woundBonus; // pointless chip damage (or a Divine Shield pop with no other upside)
+    return -10 + mournBonus + woundBonus; // suicidal — attacker dies for nothing (partially offset if it Mourns)
 }

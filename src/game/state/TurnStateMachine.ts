@@ -47,30 +47,48 @@ export class TurnStateMachine {
     }
 
     playCard(instanceId: string): void {
-        if (this.gameState.phase !== TurnPhase.MainIdle) return;
+        if (this.gameState.phase !== TurnPhase.MainIdle) {
+            console.log(`[TurnStateMachine] playCard rejected: wrong phase (${this.gameState.phase})`, { instanceId });
+            return;
+        }
 
         const player = this.gameState.players[this.gameState.activePlayer];
         const card = player.hand.find((c) => c.instanceId === instanceId);
-        if (!card) return;
+        if (!card) {
+            console.log('[TurnStateMachine] playCard rejected: card not in hand', { instanceId, playerId: player.id });
+            return;
+        }
 
         const definition = CARD_DEFINITIONS[card.definitionId];
-        if (!definition || player.mana < definition.cost) return;
+        if (!definition || player.mana < definition.cost) {
+            console.log('[TurnStateMachine] playCard rejected: unaffordable', { instanceId, definitionId: card.definitionId, cost: definition?.cost, mana: player.mana });
+            return;
+        }
 
         if (this.needsChosenTarget(definition.effects?.filter((e) => e.trigger === 'onPlay'))) {
+            console.log('[TurnStateMachine] playCard needs target, entering AwaitingTarget', { instanceId, definitionId: card.definitionId });
             this.beginTargeting({ type: 'playCard', instanceId }, player.id);
             return;
         }
 
+        console.log('[TurnStateMachine] playCard', { instanceId, definitionId: card.definitionId, playerId: player.id, cost: definition.cost, mana: player.mana });
         this.executePlayCard(instanceId);
     }
 
     declareAttack(attackerInstanceId: string): void {
-        if (this.gameState.phase !== TurnPhase.MainIdle) return;
+        if (this.gameState.phase !== TurnPhase.MainIdle) {
+            console.log(`[TurnStateMachine] declareAttack rejected: wrong phase (${this.gameState.phase})`, { attackerInstanceId });
+            return;
+        }
 
         const player = this.gameState.players[this.gameState.activePlayer];
         const attacker = player.board.find((c) => c.instanceId === attackerInstanceId);
-        if (!attacker || !canDeclareAttack(attacker)) return;
+        if (!attacker || !canDeclareAttack(attacker)) {
+            console.log('[TurnStateMachine] declareAttack rejected: not eligible to attack', { attackerInstanceId, found: !!attacker });
+            return;
+        }
 
+        console.log('[TurnStateMachine] declareAttack, entering AwaitingTarget', { attackerInstanceId, playerId: player.id });
         this.beginTargeting({ type: 'attack', attackerInstanceId }, player.id);
     }
 
@@ -79,28 +97,46 @@ export class TurnStateMachine {
      * state, unlike declareAttack. Silenced minions can't activate (their own text is suppressed,
      * same principle as CardInstance.silenced already applies to trigger effects). */
     activateAbility(instanceId: string, abilityIndex: number): void {
-        if (this.gameState.phase !== TurnPhase.MainIdle) return;
+        if (this.gameState.phase !== TurnPhase.MainIdle) {
+            console.log(`[TurnStateMachine] activateAbility rejected: wrong phase (${this.gameState.phase})`, { instanceId, abilityIndex });
+            return;
+        }
 
         const player = this.gameState.players[this.gameState.activePlayer];
         const card = player.board.find((c) => c.instanceId === instanceId);
-        if (!card || card.silenced) return;
+        if (!card || card.silenced) {
+            console.log('[TurnStateMachine] activateAbility rejected: not found or silenced', { instanceId, abilityIndex, found: !!card, silenced: card?.silenced });
+            return;
+        }
 
         const definition = CARD_DEFINITIONS[card.definitionId];
         const ability = definition?.paidAbilities?.[abilityIndex];
-        if (!ability || player.mana < ability.cost) return;
+        if (!ability || player.mana < ability.cost) {
+            console.log('[TurnStateMachine] activateAbility rejected: unaffordable or missing', { instanceId, abilityIndex, cost: ability?.cost, mana: player.mana });
+            return;
+        }
 
         if (this.needsChosenTarget([{ action: ability.action }])) {
+            console.log('[TurnStateMachine] activateAbility needs target, entering AwaitingTarget', { instanceId, abilityIndex });
             this.beginTargeting({ type: 'ability', instanceId, abilityIndex }, player.id);
             return;
         }
 
+        console.log('[TurnStateMachine] activateAbility', { instanceId, abilityIndex, playerId: player.id, cost: ability.cost, mana: player.mana });
         this.executeAbility(instanceId, abilityIndex);
     }
 
     selectTarget(targetId: string): void {
-        if (this.gameState.phase !== TurnPhase.AwaitingTarget || !this.pendingAction) return;
-        if (!this.gameState.pendingTarget?.validTargetIds.includes(targetId)) return;
+        if (this.gameState.phase !== TurnPhase.AwaitingTarget || !this.pendingAction) {
+            console.log(`[TurnStateMachine] selectTarget rejected: not awaiting target (phase ${this.gameState.phase})`, { targetId });
+            return;
+        }
+        if (!this.gameState.pendingTarget?.validTargetIds.includes(targetId)) {
+            console.log('[TurnStateMachine] selectTarget rejected: not a valid target', { targetId, validTargetIds: this.gameState.pendingTarget?.validTargetIds });
+            return;
+        }
 
+        console.log('[TurnStateMachine] selectTarget', { targetId, pendingAction: this.pendingAction });
         const action = this.pendingAction;
         if (action.type === 'playCard') {
             this.executePlayCard(action.instanceId, targetId);
@@ -115,6 +151,7 @@ export class TurnStateMachine {
         if (this.gameState.phase !== TurnPhase.AwaitingTarget) return;
         const pendingAction = this.pendingAction;
         const activePlayerId = this.gameState.activePlayer;
+        console.log('[TurnStateMachine] cancelTarget', { pendingAction });
         this.pendingAction = undefined;
         this.gameState.pendingTarget = undefined;
         // Only a card pulled out of hand (not an attacker choosing its target) gets the Scene's
@@ -126,8 +163,12 @@ export class TurnStateMachine {
     }
 
     endTurn(): void {
-        if (this.gameState.phase !== TurnPhase.MainIdle) return;
+        if (this.gameState.phase !== TurnPhase.MainIdle) {
+            console.log(`[TurnStateMachine] endTurn rejected: wrong phase (${this.gameState.phase})`);
+            return;
+        }
         const player = this.gameState.players[this.gameState.activePlayer];
+        console.log('[TurnStateMachine] endTurn', { playerId: player.id, turnNumber: this.gameState.turnNumber });
 
         this.setPhase(TurnPhase.TurnEnd);
         for (const card of player.board) {
@@ -222,6 +263,7 @@ export class TurnStateMachine {
         const attacker = player.board.find((c) => c.instanceId === attackerInstanceId);
         if (!attacker) return;
 
+        console.log('[TurnStateMachine] executeAttack', { attackerInstanceId, targetId, attack: attacker.currentAttack, health: attacker.currentHealth });
         this.setPhase(TurnPhase.Resolving);
         attacker.attacksThisTurn += 1;
         // Veiled is lost the instant this minion attacks, mirroring how divineShield is consumed
@@ -280,6 +322,7 @@ export class TurnStateMachine {
     private startTurn(playerId: PlayerId): void {
         this.setPhase(TurnPhase.TurnStart);
         const player = this.gameState.players[playerId];
+        console.log('[TurnStateMachine] startTurn', { playerId, turnNumber: this.gameState.turnNumber, maxMana: Math.min(TurnStateMachine.MAX_MANA, player.maxMana + 1) });
 
         player.maxMana = Math.min(TurnStateMachine.MAX_MANA, player.maxMana + 1);
         player.mana = player.maxMana;
@@ -532,7 +575,9 @@ export class TurnStateMachine {
             const player = this.gameState.players[targetId];
             const before = player.health;
             player.health = Math.max(0, player.health - amount);
-            return before - player.health;
+            const applied = before - player.health;
+            if (applied > 0) EventBus.emit('state:damaged', { targetId });
+            return applied;
         }
         const found = this.findMinion(targetId);
         if (!found) return 0;
@@ -543,10 +588,12 @@ export class TurnStateMachine {
         }
         found.instance.currentHealth = (found.instance.currentHealth ?? 0) - amount;
         // Wound (onDamaged) — a single choke point covering combat and spell damage alike. Fires
-        // on "survived the raw damage amount", independent of any follow-up like Venom retroactively
+        // pre-death: any damage that lands triggers it, even lethal damage that's about to send
+        // this minion to sweepDeaths — independent of any follow-up like Venom retroactively
         // killing the same minion afterward (see executeAttack).
-        if (amount > 0 && found.instance.currentHealth > 0) {
+        if (amount > 0) {
             this.triggerEffects(found.instance, 'onDamaged', found.owner.id);
+            EventBus.emit('state:damaged', { targetId });
         }
         return amount;
     }
@@ -577,13 +624,17 @@ export class TurnStateMachine {
     private heal(targetId: string, amount: number): void {
         if (this.isPlayerId(targetId)) {
             const player = this.gameState.players[targetId];
+            const before = player.health;
             player.health = player.health + amount;
+            if (player.health - before > 0) EventBus.emit('state:healed', { targetId });
             return;
         }
         const found = this.findMinion(targetId);
         if (found) {
             const cap = found.instance.maxHealth ?? found.instance.currentHealth ?? 0;
-            found.instance.currentHealth = Math.min(cap, (found.instance.currentHealth ?? 0) + amount);
+            const before = found.instance.currentHealth ?? 0;
+            found.instance.currentHealth = Math.min(cap, before + amount);
+            if ((found.instance.currentHealth ?? 0) - before > 0) EventBus.emit('state:healed', { targetId });
         }
     }
 
@@ -617,6 +668,7 @@ export class TurnStateMachine {
                 sweptAny = true;
                 player.board = player.board.filter((c) => (c.currentHealth ?? 0) > 0);
                 for (const card of dead) {
+                    console.log('[TurnStateMachine] card died', { instanceId: card.instanceId, definitionId: card.definitionId, ownerId: player.id });
                     this.moveToGraveyard(card, player);
                     EventBus.emit('state:card-died', { instanceId: card.instanceId });
                     this.triggerEffects(card, 'onDeath', player.id);
@@ -631,6 +683,7 @@ export class TurnStateMachine {
         if (!dead) return false;
 
         this.gameState.winner = this.opponentOf(dead.id);
+        console.log('[TurnStateMachine] game over', { winner: this.gameState.winner, loserHealth: dead.health });
         this.setPhase(TurnPhase.GameOver);
         EventBus.emit('state:game-over', { winner: this.gameState.winner });
         return true;

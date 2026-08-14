@@ -222,6 +222,13 @@ export const OUTLINE_COLOR_HOVER = 0x4fc3f7; // deck/graveyard pile hover
 export const OUTLINE_COLOR_SICK = 0x888888; // summoning-sickness border (renderBoard) — static, not shimmered like the above: it's a passive status, not an actionable prompt
 export const OUTLINE_COLOR_FROZEN = 0x6e95ac; // frozen-status border (renderBoard) — average RGB of textures/frozen-texture.jpg (via sharp .stats()), also static
 
+// Brief colored overlay flashed on a minion's card or hero's avatar the instant it takes damage or
+// is healed — same in/out timing for both, only the color (and target shape) differs.
+export const DAMAGE_FLASH_COLOR = 0xff2b2b;
+export const HEAL_FLASH_COLOR = 0x3ddc84;
+export const FLASH_IN_MS = 80; // quick punch-in
+export const FLASH_OUT_MS = 220; // slightly slower fade-out
+
 // Shimmer sweep tuning (addShimmeringOutline in index.ts) — the border is repainted every tick as
 // a light→bright→light gradient along the bottom-left→top-right diagonal, with a bright band that
 // sweeps that diagonal twice in quick succession, then pauses, then repeats.

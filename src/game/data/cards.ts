@@ -67,6 +67,16 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 0,
         health: 3,
         tribes: ["elemental"],
+        effects: [
+            {
+                trigger: "onDamaged",
+                action: {
+                    kind: "summon",
+                    definitionId: "pebble-runner",
+                    count: 1,
+                },
+            },
+        ],
         rarity: "common",
         artVerticalAlign: "bottom",
     },
@@ -102,7 +112,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         health: 2,
         paidAbilities: [
             {
-                cost: 2,
+                cost: 4,
                 action: {
                     kind: "damage",
                     amount: 1,
@@ -175,7 +185,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Dark Energy Spear",
         cost: 2,
         type: "spell",
-        text: "Deal 3 damage to a minion.",
+        text: "Deal 3 damage to a minion. If it is a *Cosmic* minion, it gains 3 Health instead.",
         effects: [
             {
                 trigger: "onPlay",
@@ -184,6 +194,15 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     amount: 3,
                     target: "chosen",
                     chosenRestriction: "minion",
+                },
+            },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "heal",
+                    amount: 3,
+                    target: "chosen",
+                    chosenRestriction: "cosmic",
                 },
             },
         ],
@@ -425,7 +444,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         type: "minion",
         text: "",
         attack: 2,
-        health: 7,
+        health: 5,
         keywords: ["taunt"],
         tribes: ["human"],
         rarity: "common",
@@ -438,7 +457,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Sprout Whelp",
         cost: 1,
         type: "minion",
-        text: "At the start of your turn, Sprout Whelp heals for {X}, where X is the number of minions you control.",
+        text: "At the start of your turn, Sprout Whelp heals for X, where X is the number of minions you control.",
         attack: 1,
         health: 2,
         tribes: ["elemental","nature"],
@@ -1360,18 +1379,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 1,
         health: 1,
         tribes: ["elemental"],
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "buff",
-                    attack: 1,
-                    health: 1,
-                    target: "chosen",
-                    chosenRestriction: "human",
-                },
-            },
-        ],
         artVerticalAlign: "bottom",
     },
 };

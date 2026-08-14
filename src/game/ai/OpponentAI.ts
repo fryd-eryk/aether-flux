@@ -84,6 +84,10 @@ export function decideOpponentAction(state: GameState): AIAction | null {
         });
     }
 
-    if (!best || best.score <= PASS_THRESHOLD) return null;
+    if (!best || best.score <= PASS_THRESHOLD) {
+        console.log('[OpponentAI] passing', { aiId, bestScore: best?.score });
+        return null;
+    }
+    console.log('[OpponentAI] decided action', { aiId, score: best.score, action: best.action });
     return best.action;
 }
