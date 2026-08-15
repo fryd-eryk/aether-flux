@@ -129,7 +129,7 @@ export class CardView {
         // of any of this — set once at the bottom of this method.
         container.add(this.createHeaderFull(definition));
 
-        const nameText = this.scene.add.text(-CARD_W / 2 + 3, -CARD_H / 2 - 1, definition.name, NAME_STYLE).setOrigin(0, 0);
+        const nameText = this.scene.add.text(-CARD_W / 2 + 3, -CARD_H / 2 + HEADER_FOOTER_CONTENT_H / 2, definition.name, NAME_STYLE).setOrigin(0, 0.5);
         this.fitCardName(nameText, CARD_W - 23);
         container.add(nameText);
 
@@ -416,18 +416,22 @@ export class CardView {
      * `-CARD_H/2 + HEADER_FOOTER_CONTENT_H` — exactly the header PNG's opaque flat
      * bar's bottom edge, not the full tapering image (see that constant's comment
      * in cardLayout.ts) — by shrinking height to `CARD_H - HEADER_FOOTER_CONTENT_H`
-     * and recentering. 'bottom' mirrors this against the footer's flat bar. Zero
-     * overflow, but coverFit necessarily crops a bit more of the source art to fit
-     * the smaller box — an expected side effect, not a bug.
+     * and recentering. 'bottom' mirrors this against the footer's flat bar, and is
+     * also the default (undefined align) — matches most authored art better than a
+     * true center crop, which stays available as the explicit 'center' option
+     * (full CARD_H box, no crop toward either bar). Zero overflow, but coverFit
+     * necessarily crops a bit more of the source art to fit the smaller 'top'/
+     * 'bottom' box — an expected side effect, not a bug.
      */
     private artBoxFor(align: CardDefinition["artVerticalAlign"]): { height: number; centerY: number } {
         switch (align) {
             case "top":
                 return { height: CARD_H - HEADER_FOOTER_CONTENT_H, centerY: HEADER_FOOTER_CONTENT_H / 2 };
-            case "bottom":
-                return { height: CARD_H - HEADER_FOOTER_CONTENT_H, centerY: -HEADER_FOOTER_CONTENT_H / 2 };
-            default:
+            case "center":
                 return { height: CARD_H, centerY: 0 };
+            case "bottom":
+            default:
+                return { height: CARD_H - HEADER_FOOTER_CONTENT_H, centerY: -HEADER_FOOTER_CONTENT_H / 2 };
         }
     }
 

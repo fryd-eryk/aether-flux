@@ -78,7 +78,7 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
             const { artVerticalAlign: _artVerticalAlign, ...rest } = draft;
             onChange(rest);
         } else {
-            onChange({ ...draft, artVerticalAlign: value as 'top' | 'bottom' });
+            onChange({ ...draft, artVerticalAlign: value as 'top' | 'bottom' | 'center' });
         }
     }
 
@@ -171,9 +171,9 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                             value={draft.artVerticalAlign ?? ''}
                             onChange={(e) => setArtVerticalAlign(e.target.value)}
                         >
-                            <option value="">Center</option>
+                            <option value="">Bottom (default)</option>
+                            <option value="center">Center</option>
                             <option value="top">Top</option>
-                            <option value="bottom">Bottom</option>
                         </select>
                     </div>
                 </div>

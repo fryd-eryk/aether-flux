@@ -144,8 +144,8 @@ export interface CardDefinition {
     tribes?: Tribe[];
     /** Absent for `type: 'token'` cards (e.g. summon-effect targets) — deckGenerator.ts excludes tokens from generated decks by `type`, not by rarity presence. Required in practice for 'minion'/'spell' cards (the Card Creator enforces this), even though the field itself stays optional. */
     rarity?: CardRarity;
-    /** 'full' mode only — nudges art to butt against the header/footer's opaque flat bar instead of centering under their tapered/transparent edges. Absent = centered (current behavior). No effect in 'simplified' mode, which has no header/footer bar to align against. */
-    artVerticalAlign?: 'top' | 'bottom';
+    /** 'full' mode only — nudges art to butt against the header/footer's opaque flat bar instead of centering under their tapered/transparent edges. Absent = 'bottom' (default); 'center' must be set explicitly to opt back into the old centered crop. No effect in 'simplified' mode, which has no header/footer bar to align against. */
+    artVerticalAlign?: 'top' | 'bottom' | 'center';
 }
 
 /** Runtime state for one physical copy of a card as it moves through zones. */

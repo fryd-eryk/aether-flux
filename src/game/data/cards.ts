@@ -97,30 +97,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "bottom",
     },
-    "alms-cleric": {
-        id: "alms-cleric",
-        name: "Alms Cleric",
-        cost: 2,
-        type: "minion",
-        text: "**Anthem:** Restore 2 Health to you.",
-        attack: 1,
-        health: 1,
-        tribes: ["human"],
-        effects: [
-            {
-                trigger: "onPlay",
-                actions: [
-                    {
-                        kind: "heal",
-                        amount: 2,
-                        target: "friendlyHero",
-                    },
-                ],
-            },
-        ],
-        rarity: "common",
-        artVerticalAlign: "bottom",
-    },
     "glacial-grasp": {
         id: "glacial-grasp",
         name: "Glacial Grasp",
@@ -217,19 +193,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "bottom",
     },
-    "charging-direwolf": {
-        id: "charging-direwolf",
-        name: "Pouncing Direwolf",
-        cost: 2,
-        type: "minion",
-        text: "",
-        attack: 2,
-        health: 1,
-        keywords: ["initiative"],
-        tribes: ["animal"],
-        rarity: "common",
-        artVerticalAlign: "top",
-    },
     "infectious-imp": {
         id: "infectious-imp",
         name: "Infectious Imp",
@@ -254,29 +217,23 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "common",
     },
-    "anthem-of-the-vanguard": {
-        id: "anthem-of-the-vanguard",
-        name: "Anthem of the Vanguard",
-        cost: 3,
-        type: "spell",
-        text: "Target minion gets +1/+2 and **Divine Shield**.",
+    "townfolk-helper": {
+        id: "townfolk-helper",
+        name: "Townfolk Helper",
+        cost: 2,
+        type: "minion",
+        text: "**Anthem:** Restore 2 Health to you.",
+        attack: 1,
+        health: 1,
+        tribes: ["human"],
         effects: [
             {
                 trigger: "onPlay",
                 actions: [
                     {
-                        kind: "buff",
-                        attack: 1,
-                        health: 2,
-                        target: "chosen",
-                        chosenRestriction: "minion",
-                    },
-                    {
-                        kind: "grantKeyword",
-                        keyword: "divineShield",
-                        target: "chosen",
-                        chosenRestriction: "minion",
-                        reuseTarget: true,
+                        kind: "heal",
+                        amount: 2,
+                        target: "friendlyHero",
                     },
                 ],
             },
@@ -284,17 +241,18 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "bottom",
     },
-    "ashfall-raven": {
-        id: "ashfall-raven",
-        name: "Ashfall Raven",
-        cost: 3,
+    "pouncing-direwolf": {
+        id: "pouncing-direwolf",
+        name: "Pouncing Direwolf",
+        cost: 2,
         type: "minion",
         text: "",
-        attack: 3,
-        health: 2,
-        keywords: ["charge"],
+        attack: 2,
+        health: 1,
+        keywords: ["initiative"],
         tribes: ["animal"],
         rarity: "common",
+        artVerticalAlign: "top",
     },
     "ashfang-assassin": {
         id: "ashfang-assassin",
@@ -334,7 +292,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 actions: [
                     {
                         kind: "draw",
-                        count: 1,
+                        count: { counter: "enemyMinionCount" },
                     },
                 ],
             },
@@ -374,6 +332,59 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "bottom",
     },
+    "seekers-cult-fanatic": {
+        id: "seekers-cult-fanatic",
+        name: "Seekers Cult Fanatic",
+        cost: 3,
+        type: "minion",
+        text: "",
+        attack: 3,
+        health: 3,
+        tribes: ["human"],
+        rarity: "common",
+    },
+    "survivors-anthem": {
+        id: "survivors-anthem",
+        name: "Survivor's Anthem",
+        cost: 3,
+        type: "spell",
+        text: "Target minion gets +1/+2 and **Divine Shield**.",
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: 1,
+                        health: 2,
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                    {
+                        kind: "grantKeyword",
+                        keyword: "divineShield",
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                        reuseTarget: true,
+                    },
+                ],
+            },
+        ],
+        rarity: "common",
+        artVerticalAlign: "bottom",
+    },
+    "solar-plains-raven": {
+        id: "solar-plains-raven",
+        name: "Solar Plains Raven",
+        cost: 3,
+        type: "minion",
+        text: "",
+        attack: 3,
+        health: 2,
+        keywords: ["charge"],
+        tribes: ["animal"],
+        rarity: "common",
+    },
     "wandering-cleric": {
         id: "wandering-cleric",
         name: "Wandering Cleric",
@@ -412,18 +423,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "bottom",
     },
-    "emberclad-berserker": {
-        id: "emberclad-berserker",
-        name: "Emberclad Berserker",
-        cost: 5,
-        type: "minion",
-        text: "",
-        attack: 5,
-        health: 4,
-        tribes: ["human"],
-        rarity: "common",
-        artVerticalAlign: "top",
-    },
     "bastion-sentinel": {
         id: "bastion-sentinel",
         name: "Bastion Sentinel",
@@ -439,12 +438,12 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     },
 
     // --- Rare rarity (23) ---
-    "sprout-whelp": {
-        id: "sprout-whelp",
-        name: "Sprout Whelp",
+    "whelp-of-eloki-woods": {
+        id: "whelp-of-eloki-woods",
+        name: "Whelp of Eloki Woods",
         cost: 1,
         type: "minion",
-        text: "At the start of your turn, Sprout Whelp heals for X, where X is the number of minions you control.",
+        text: "**Vigil:** Whelp of Eloki Woods heals for X, where X is the number of minions you control.",
         attack: 1,
         health: 2,
         tribes: ["elemental","nature"],
@@ -506,6 +505,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "rare",
+        artVerticalAlign: "bottom",
     },
     "bog-witch": {
         id: "bog-witch",
@@ -543,7 +543,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         cost: 3,
         type: "minion",
         text: "**Deathcry:** Deal 2 damage to the enemy player.",
-        attack: 2,
+        attack: 1,
         health: 3,
         tribes: ["human","demon"],
         effects: [
@@ -775,7 +775,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "rare",
-        artVerticalAlign: "bottom",
     },
     "squall-falconer": {
         id: "squall-falconer",
@@ -1295,7 +1294,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Legendary rarity (6) ---
+    // --- Legendary rarity (5) ---
     "deep-fathoms-strike": {
         id: "deep-fathoms-strike",
         name: "Deep Fathoms Strike",
@@ -1347,9 +1346,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "legendary",
         artVerticalAlign: "bottom",
     },
-    "protector-of-the-faery-cove": {
-        id: "protector-of-the-faery-cove",
-        name: "Protector of the Faery Cove",
+    "protector-of-the-mana-forest": {
+        id: "protector-of-the-mana-forest",
+        name: "Protector of the Mana Forest",
         cost: 7,
         type: "minion",
         text: "At the end of your turn, your minions get +0/+1.",
@@ -1385,31 +1384,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "legendary",
         artVerticalAlign: "top",
     },
-    "martheus-the-last-bastion": {
-        id: "martheus-the-last-bastion",
-        name: "Martheus, The Last Bastion",
-        cost: 9,
-        type: "minion",
-        text: "**Vigil:** Restore 3 Health to you.",
-        attack: 4,
-        health: 8,
-        keywords: ["taunt","divineShield"],
-        tribes: ["human","holy"],
-        effects: [
-            {
-                trigger: "startOfTurn",
-                actions: [
-                    {
-                        kind: "heal",
-                        amount: 4,
-                        target: "friendlyHero",
-                    },
-                ],
-            },
-        ],
-        rarity: "legendary",
-        artVerticalAlign: "bottom",
-    },
     "doomscar-fissure": {
         id: "doomscar-fissure",
         name: "Doomscar Fissure",
@@ -1437,10 +1411,10 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Mythical rarity (3) ---
-    "the-hollow-sovereign": {
-        id: "the-hollow-sovereign",
-        name: "The Hollow Sovereign",
+    // --- Mythical rarity (4) ---
+    "eldonnyr-hollow-sovereign": {
+        id: "eldonnyr-hollow-sovereign",
+        name: "Eldonnyr, Hollow Sovereign",
         cost: 7,
         type: "minion",
         text: "(9): Destroy all minions.",
@@ -1509,6 +1483,41 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "mythical",
         artVerticalAlign: "bottom",
     },
+    "theredas-farorias-last-hope": {
+        id: "theredas-farorias-last-hope",
+        name: "Theredas, Faroria's Last Hope",
+        cost: 9,
+        type: "minion",
+        text: "**Curfew:** Restore 3 Health to you.\n**Deathcry:** Summon Theredas, the Plaguewoven.",
+        attack: 4,
+        health: 6,
+        keywords: ["taunt","divineShield"],
+        tribes: ["human","holy"],
+        effects: [
+            {
+                trigger: "endOfTurn",
+                actions: [
+                    {
+                        kind: "heal",
+                        amount: 4,
+                        target: "friendlyHero",
+                    },
+                ],
+            },
+            {
+                trigger: "onDeath",
+                actions: [
+                    {
+                        kind: "summon",
+                        definitionId: "ashfall-raven",
+                        count: 1,
+                    },
+                ],
+            },
+        ],
+        rarity: "mythical",
+        artVerticalAlign: "bottom",
+    },
 
     // --- Tokens (not collectible — `type: "token"`, so deckGenerator.ts never draws them) ---
     "ember-fledgling": {
@@ -1531,6 +1540,30 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 1,
         health: 1,
         tribes: ["elemental"],
+        artVerticalAlign: "bottom",
+    },
+    "theredas-the-plaguewoven": {
+        id: "theredas-the-plaguewoven",
+        name: "Theredas, the Plaguewoven",
+        cost: 1,
+        type: "token",
+        text: "When Theredas is wounded, it deals 1 damage to all minions",
+        attack: 6,
+        health: 4,
+        keywords: ["venom"],
+        tribes: ["underworld"],
+        effects: [
+            {
+                trigger: "onDamaged",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 1,
+                        target: "allMinions",
+                    },
+                ],
+            },
+        ],
         artVerticalAlign: "bottom",
     },
 };
