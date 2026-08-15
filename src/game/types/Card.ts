@@ -68,12 +68,24 @@ export type EffectAction =
     | { kind: 'damage'; amount: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
     | { kind: 'heal'; amount: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
     | { kind: 'draw'; count: EffectValue }
-    | { kind: 'buff'; attack?: EffectValue; health?: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
+    /** `duration` (in turns) makes this a temporary buff — absent means permanent. See TemporaryEffect / TurnStateMachine.tickTemporaryEffects. */
+    | { kind: 'buff'; attack?: EffectValue; health?: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe; duration?: number }
     | { kind: 'summon'; definitionId: string; count: number }
     | { kind: 'freeze'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
     | { kind: 'silence'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
     | { kind: 'destroy'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
-    | { kind: 'grantKeyword'; keyword: Keyword; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe };
+    /** `duration` (in turns) makes this a temporary grant — absent means permanent. See TemporaryEffect / TurnStateMachine.tickTemporaryEffects. */
+    | { kind: 'grantKeyword'; keyword: Keyword; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe; duration?: number };
+
+/**
+ * A time-limited keyword grant or stat buff riding on a CardInstance, decremented once per
+ * endTurn() call (either player's) and reversed/removed at zero — see
+ * TurnStateMachine.tickTemporaryEffects. `turnsRemaining: 1` reads as "until end of turn": it
+ * expires at the end of the very turn it was granted on.
+ */
+export type TemporaryEffect =
+    | { kind: 'keyword'; keyword: Keyword; turnsRemaining: number }
+    | { kind: 'buff'; attack: number; health: number; turnsRemaining: number };
 
 /**
  * Gates whether a CardEffect fires beyond its trigger alone. 'momentum' is "Momentum(N):" —
@@ -146,4 +158,6 @@ export interface CardInstance {
     frozen: boolean;
     /** Set by a `silence` effect (which also clears `keywords`); permanently suppresses this instance's own trigger effects going forward — see TurnStateMachine.triggerEffects. */
     silenced: boolean;
+    /** Time-limited keyword grants/buffs still counting down — see TemporaryEffect and TurnStateMachine.tickTemporaryEffects. */
+    temporaryEffects: TemporaryEffect[];
 }

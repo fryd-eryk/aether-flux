@@ -232,10 +232,10 @@ export const FLASH_OUT_MS = 220; // slightly slower fade-out
 // Shimmer sweep tuning (addShimmeringOutline in index.ts) — the border is repainted every tick as
 // a light→bright→light gradient along the bottom-left→top-right diagonal, with a bright band that
 // sweeps that diagonal twice in quick succession, then pauses, then repeats.
-export const SHIMMER_BRIGHTEN_AMOUNT = 0.7; // color lerp at the sweep's peak — 0 = unchanged border color, 1 = white
-export const SHIMMER_BAND_WIDTH = 40; // falloff radius (px, along the diagonal) of the bright band around its peak
-export const SHIMMER_SWEEP_MS = 650; // duration of a single bottom-left → top-right sweep
-export const SHIMMER_PAUSE_MS = 2000; // pause after the 2 sweeps before the cycle repeats
+export const SHIMMER_BRIGHTEN_AMOUNT = 0.95; // color lerp at the sweep's peak — 0 = unchanged border color, 1 = white
+export const SHIMMER_BAND_WIDTH = 45; // falloff radius (px, along the diagonal) of the bright band around its peak
+export const SHIMMER_SWEEP_MS = 900; // duration of a single bottom-left → top-right sweep
+export const SHIMMER_PAUSE_MS = 1000; // pause after the 2 sweeps before the cycle repeats
 
 // Flight-tilt tuning (cardFlightTilt.ts) — the fake-3D lean/squash/shadow applied to a card while
 // it's mid-drag or mid-zone-transition (draw/play/death/snap-back). Kept small throughout since

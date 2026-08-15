@@ -225,37 +225,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "common",
     },
-    "bog-witch": {
-        id: "bog-witch",
-        name: "Sad Bog Witch",
-        cost: 3,
-        type: "minion",
-        text: "When a minion dies, Sad Bog Witch deals 1 damage to you and gains +1/+0.",
-        attack: 0,
-        health: 3,
-        tribes: ["nature","demon"],
-        effects: [
-            {
-                trigger: "onMinionDeath",
-                action: {
-                    kind: "buff",
-                    attack: 1,
-                    health: 0,
-                    target: "self",
-                },
-            },
-            {
-                trigger: "onMinionDeath",
-                action: {
-                    kind: "damage",
-                    amount: 1,
-                    target: "friendlyHero",
-                },
-            },
-        ],
-        rarity: "common",
-        artVerticalAlign: "bottom",
-    },
     "anthem-of-the-vanguard": {
         id: "anthem-of-the-vanguard",
         name: "Anthem of the Vanguard",
@@ -285,6 +254,37 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "common",
         artVerticalAlign: "bottom",
+    },
+    "flash-of-initiative": {
+        id: "flash-of-initiative",
+        name: "Flash of Initiative",
+        cost: 3,
+        type: "spell",
+        text: "Target minion gets +2/-1 and **Initiative** until end of turn.",
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "buff",
+                    attack: 2,
+                    health: -1,
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                    duration: 1,
+                },
+            },
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "grantKeyword",
+                    keyword: "initiative",
+                    target: "chosen",
+                    chosenRestriction: "minion",
+                    duration: 1,
+                },
+            },
+        ],
+        rarity: "common",
     },
     "ashfall-raven": {
         id: "ashfall-raven",
@@ -345,7 +345,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Wandering Cleric",
         cost: 4,
         type: "minion",
-        text: "Anthem: Restore 3 Health to your hero.",
+        text: "**Anthem:** Restore 3 Health to target minion.",
         attack: 2,
         health: 3,
         tribes: ["human","holy"],
@@ -355,7 +355,8 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 action: {
                     kind: "heal",
                     amount: 3,
-                    target: "friendlyHero",
+                    target: "chosen",
+                    chosenRestriction: "minion",
                 },
             },
         ],
@@ -457,6 +458,37 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "rare",
         artVerticalAlign: "bottom",
     },
+    "bog-witch": {
+        id: "bog-witch",
+        name: "Sad Bog Witch",
+        cost: 3,
+        type: "minion",
+        text: "When one of your minions dies, Sad Bog Witch deals 1 damage to you and gains +1/+0.",
+        attack: 0,
+        health: 3,
+        tribes: ["nature","demon"],
+        effects: [
+            {
+                trigger: "onMinionDeath",
+                action: {
+                    kind: "buff",
+                    attack: 1,
+                    health: 0,
+                    target: "self",
+                },
+            },
+            {
+                trigger: "onMinionDeath",
+                action: {
+                    kind: "damage",
+                    amount: 1,
+                    target: "friendlyHero",
+                },
+            },
+        ],
+        rarity: "rare",
+        artVerticalAlign: "bottom",
+    },
     "mind-lost-cultist": {
         id: "mind-lost-cultist",
         name: "Mind-lost Cultist",
@@ -484,7 +516,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Dark Star Spear",
         cost: 3,
         type: "spell",
-        text: "Deal X damage to a minion, where X is the number of *Cosmic* minions you control.",
+        text: "Deal X damage to a minion, where X is the number of *Cosmic* minions.",
         effects: [
             {
                 trigger: "onPlay",
@@ -620,28 +652,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "rare",
         artVerticalAlign: "top",
     },
-    "firebender-adept": {
-        id: "firebender-adept",
-        name: "Firebender Adept",
-        cost: 4,
-        type: "minion",
-        text: "**Anthem:** deal X+1 damage to all enemy minions, where X is the number of minions you control.",
-        attack: 1,
-        health: 2,
-        tribes: ["human","elemental"],
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: { counter: "friendlyMinionCount", offset: 1 },
-                    target: "allEnemyMinions",
-                },
-            },
-        ],
-        rarity: "rare",
-        artVerticalAlign: "bottom",
-    },
     "chain-lightning": {
         id: "chain-lightning",
         name: "Chain Lightning",
@@ -665,7 +675,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Starthief Sniper",
         cost: 4,
         type: "minion",
-        text: "(4): Deal 1 damage to a minion.",
+        text: "(4): Deal X damage to a minion, where X is the number of minion you control.",
         attack: 1,
         health: 3,
         tribes: ["cosmic"],
@@ -674,13 +684,14 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 cost: 4,
                 action: {
                     kind: "damage",
-                    amount: { counter: "enemyMinionCount" },
+                    amount: { counter: "friendlyMinionCount" },
                     target: "chosen",
                     chosenRestriction: "minion",
                 },
             },
         ],
         rarity: "rare",
+        artVerticalAlign: "bottom",
     },
     "squall-falconer": {
         id: "squall-falconer",
@@ -800,7 +811,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Windroc Sky-Marshal",
         cost: 6,
         type: "minion",
-        text: "Muster: gains +1/+1.",
+        text: "**Muster:** Windroc Sky-Marshal gains +1/+1 until end of turn.",
         attack: 2,
         health: 4,
         keywords: ["windfury"],
@@ -813,6 +824,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     attack: 1,
                     health: 1,
                     target: "self",
+                    duration: 1,
                 },
             },
         ],
@@ -850,9 +862,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Gravebind Priest",
         cost: 6,
         type: "minion",
-        text: "Anthem: Restore 8 Health to your hero.",
-        attack: 3,
-        health: 5,
+        text: "Anthem: Restore 5 Health to your hero.",
+        attack: 2,
+        health: 4,
         keywords: ["taunt"],
         tribes: ["human","holy"],
         effects: [
@@ -860,7 +872,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 trigger: "onPlay",
                 action: {
                     kind: "heal",
-                    amount: 8,
+                    amount: 5,
                     target: "friendlyHero",
                 },
             },
@@ -895,7 +907,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "top",
     },
 
-    // --- Exotic rarity (10) ---
+    // --- Exotic rarity (11) ---
     "blood-moon-ritual": {
         id: "blood-moon-ritual",
         name: "Blood Moon Ritual",
@@ -968,6 +980,28 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     attack: 1,
                     health: 0,
                     target: "self",
+                },
+            },
+        ],
+        rarity: "exotic",
+        artVerticalAlign: "bottom",
+    },
+    "firebender-adept": {
+        id: "firebender-adept",
+        name: "Firebender Adept",
+        cost: 4,
+        type: "minion",
+        text: "**Anthem:** deal X damage to all enemy minions, where X is the number of *Elemental* you control.",
+        attack: 1,
+        health: 2,
+        tribes: ["human","elemental"],
+        effects: [
+            {
+                trigger: "onPlay",
+                action: {
+                    kind: "damage",
+                    amount: { counter: "allTribeMinionCount", tribe: "elemental" },
+                    target: "allEnemyMinions",
                 },
             },
         ],
@@ -1107,7 +1141,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "When you cast a spell, silence target minion.",
         attack: 4,
         health: 7,
-        keywords: ["divineShield"],
         tribes: ["elemental","holy"],
         effects: [
             {
@@ -1187,22 +1220,11 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Atraxalys, Rampant Agony",
         cost: 7,
         type: "minion",
-        text: "",
+        text: "TODO",
         attack: 6,
         health: 6,
         keywords: ["lifesteal"],
         tribes: ["demon"],
-        effects: [
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 1,
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
-            },
-        ],
         rarity: "legendary",
         artVerticalAlign: "top",
     },
@@ -1255,10 +1277,10 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     "martheus-the-last-bastion": {
         id: "martheus-the-last-bastion",
         name: "Martheus, The Last Bastion",
-        cost: 8,
+        cost: 9,
         type: "minion",
         text: "Vigil: Restore 4 Health to your hero.",
-        attack: 5,
+        attack: 4,
         health: 9,
         keywords: ["taunt","divineShield"],
         tribes: ["human","holy"],

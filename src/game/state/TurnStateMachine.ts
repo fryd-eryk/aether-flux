@@ -177,6 +177,7 @@ export class TurnStateMachine {
             // turn (the one it was blocked for) is ending — see keywordRules.canDeclareAttack.
             card.frozen = false;
         }
+        this.tickTemporaryEffects();
         this.sweepDeaths();
 
         this.gameState.activePlayer = this.opponentOf(player.id);
@@ -252,7 +253,7 @@ export class TurnStateMachine {
         player.mana -= ability.cost;
 
         this.setPhase(TurnPhase.Resolving);
-        this.applyEffectAction(ability.action, player.id, chosenTargetId);
+        this.applyEffectAction(ability.action, player.id, card.instanceId, chosenTargetId);
         this.sweepDeaths();
         EventBus.emit('state:ability-activated', { instanceId, abilityIndex, playerId: player.id });
         this.finishResolving();
@@ -450,7 +451,7 @@ export class TurnStateMachine {
             // Momentum(N): skip this effect unless at least N cards were already played by its
             // owner earlier this turn — a single choke point, same pattern as the silenced guard above.
             if (effect.condition?.type === 'momentum' && cardsPlayedThisTurn < effect.condition.minCount) continue;
-            this.applyEffectAction(effect.action, ownerId, chosenTargetId);
+            this.applyEffectAction(effect.action, ownerId, instance.instanceId, chosenTargetId);
         }
     }
 
@@ -463,7 +464,7 @@ export class TurnStateMachine {
         }
     }
 
-    private applyEffectAction(action: EffectAction, ownerId: PlayerId, chosenTargetId?: string): void {
+    private applyEffectAction(action: EffectAction, ownerId: PlayerId, sourceId: string, chosenTargetId?: string): void {
         switch (action.kind) {
             case 'damage':
             case 'heal': {
@@ -472,7 +473,7 @@ export class TurnStateMachine {
                 // a large negative offset), which would silently invert dealDamage into a heal or
                 // vice versa without this floor.
                 const amount = Math.max(0, resolveEffectValue(action.amount, ownerId, this.gameState));
-                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId, action.tribeFilter);
+                const targetIds = this.resolveTargetIds(action.target, ownerId, sourceId, chosenTargetId, action.tribeFilter);
                 for (const targetId of targetIds) {
                     if (action.kind === 'damage') this.dealDamage(targetId, amount);
                     else this.heal(targetId, amount);
@@ -483,8 +484,8 @@ export class TurnStateMachine {
                 // Not clamped — a negative buff (debuff) is an intentional, already-shipped case.
                 const attack = resolveEffectValue(action.attack ?? 0, ownerId, this.gameState);
                 const health = resolveEffectValue(action.health ?? 0, ownerId, this.gameState);
-                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId, action.tribeFilter);
-                for (const targetId of targetIds) this.buff(targetId, attack, health);
+                const targetIds = this.resolveTargetIds(action.target, ownerId, sourceId, chosenTargetId, action.tribeFilter);
+                for (const targetId of targetIds) this.buff(targetId, attack, health, action.duration);
                 break;
             }
             case 'draw': {
@@ -496,33 +497,34 @@ export class TurnStateMachine {
                 for (let i = 0; i < action.count; i++) this.summonMinion(action.definitionId, ownerId);
                 break;
             case 'freeze': {
-                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId, action.tribeFilter);
+                const targetIds = this.resolveTargetIds(action.target, ownerId, sourceId, chosenTargetId, action.tribeFilter);
                 for (const targetId of targetIds) this.freezeMinion(targetId);
                 break;
             }
             case 'silence': {
-                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId, action.tribeFilter);
+                const targetIds = this.resolveTargetIds(action.target, ownerId, sourceId, chosenTargetId, action.tribeFilter);
                 for (const targetId of targetIds) this.silenceMinion(targetId);
                 break;
             }
             case 'destroy': {
-                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId, action.tribeFilter);
+                const targetIds = this.resolveTargetIds(action.target, ownerId, sourceId, chosenTargetId, action.tribeFilter);
                 for (const targetId of targetIds) this.forceKill(targetId);
                 break;
             }
             case 'grantKeyword': {
-                const targetIds = this.resolveTargetIds(action.target, ownerId, chosenTargetId, action.tribeFilter);
-                for (const targetId of targetIds) this.grantKeyword(targetId, action.keyword);
+                const targetIds = this.resolveTargetIds(action.target, ownerId, sourceId, chosenTargetId, action.tribeFilter);
+                for (const targetId of targetIds) this.grantKeyword(targetId, action.keyword, action.duration);
                 break;
             }
         }
     }
 
-    private resolveTargetIds(selector: TargetSelector, ownerId: PlayerId, chosenTargetId?: string, tribeFilter?: Tribe): string[] {
+    private resolveTargetIds(selector: TargetSelector, ownerId: PlayerId, sourceId: string, chosenTargetId?: string, tribeFilter?: Tribe): string[] {
         const opponentId = this.opponentOf(ownerId);
         const matchesTribe = (c: CardInstance) => !tribeFilter || minionHasTribe(CARD_DEFINITIONS[c.definitionId], tribeFilter);
         switch (selector) {
             case 'self':
+                return [sourceId];
             case 'friendlyHero':
                 return [ownerId];
             case 'enemyHero':
@@ -638,19 +640,56 @@ export class TurnStateMachine {
         }
     }
 
-    private buff(targetId: string, attack: number, health: number): void {
+    /** `duration` (in turns) additionally tracks this as a TemporaryEffect for tickTemporaryEffects
+     * to reverse later — expiry reuses this same method with negated amounts and no `duration`,
+     * relying on the same unclamped-subtraction symmetry a debuff already does. */
+    private buff(targetId: string, attack: number, health: number, duration?: number): void {
         const found = this.findMinion(targetId);
         if (found) {
             found.instance.currentAttack = (found.instance.currentAttack ?? 0) + attack;
             found.instance.currentHealth = (found.instance.currentHealth ?? 0) + health;
             // A health buff raises the healing ceiling too, not just current health, so a later heal can restore up to the new buffed max.
             found.instance.maxHealth = (found.instance.maxHealth ?? 0) + health;
+            if (duration) found.instance.temporaryEffects.push({ kind: 'buff', attack, health, turnsRemaining: duration });
         }
     }
 
-    private grantKeyword(targetId: string, keyword: Keyword): void {
+    private grantKeyword(targetId: string, keyword: Keyword, duration?: number): void {
         const found = this.findMinion(targetId);
-        if (found) found.instance.keywords.add(keyword);
+        if (found) {
+            found.instance.keywords.add(keyword);
+            if (duration) found.instance.temporaryEffects.push({ kind: 'keyword', keyword, turnsRemaining: duration });
+        }
+    }
+
+    /** Decrements every board minion's TemporaryEffect list by one turn (called once per endTurn(),
+     * either player's, so a duration of N survives N endTurn() calls) and reverses/removes any that
+     * hit zero. Sweeps both players' boards, unlike the frozen-clear loop above, since a temporary
+     * debuff (e.g. "-1/-1 until end of turn") can legally target an enemy minion as a combat trick.
+     * Known limitation: if the same keyword is ever granted to one instance both permanently (no
+     * duration) and temporarily, expiring the temporary grant strips the keyword regardless — a
+     * permanent grantKeyword call leaves no tracking record to check against. No shipped card does
+     * this today. */
+    private tickTemporaryEffects(): void {
+        for (const player of Object.values(this.gameState.players)) {
+            for (const card of player.board) {
+                if (card.temporaryEffects.length === 0) continue;
+                const decremented = card.temporaryEffects.map((e) => ({ ...e, turnsRemaining: e.turnsRemaining - 1 }));
+                const surviving = decremented.filter((e) => e.turnsRemaining > 0);
+                const expiring = decremented.filter((e) => e.turnsRemaining <= 0);
+                const definition = CARD_DEFINITIONS[card.definitionId];
+                for (const effect of expiring) {
+                    if (effect.kind === 'buff') {
+                        this.buff(card.instanceId, -effect.attack, -effect.health);
+                    } else {
+                        const printed = definition?.keywords?.includes(effect.keyword) ?? false;
+                        const stillGranted = surviving.some((e) => e.kind === 'keyword' && e.keyword === effect.keyword);
+                        if (!printed && !stillGranted) card.keywords.delete(effect.keyword);
+                    }
+                }
+                card.temporaryEffects = surviving;
+            }
+        }
     }
 
     /** Moves dead minions to the graveyard, fires their onDeath triggers, and fires Mourn

@@ -79,6 +79,9 @@ function validateAction(action: EffectAction, prefix: string, errors: FieldError
             if (action.tribeFilter && !TRIBE_FILTERABLE_TARGETS.includes(action.target)) {
                 errors[`${prefix}.tribeFilter`] = 'Only meaningful for an "all ... minions" target.';
             }
+            if (action.duration !== undefined && (!Number.isInteger(action.duration) || action.duration < 1)) {
+                errors[`${prefix}.duration`] = 'Duration must be a positive integer, or left blank for permanent.';
+            }
             break;
         case 'summon':
             if (!action.definitionId) errors[`${prefix}.definitionId`] = 'Pick a card to summon.';
@@ -87,12 +90,22 @@ function validateAction(action: EffectAction, prefix: string, errors: FieldError
         case 'freeze':
         case 'silence':
         case 'destroy':
+            if (action.target !== 'chosen' && action.chosenRestriction) {
+                errors[`${prefix}.chosenRestriction`] = 'Only meaningful when target is "chosen".';
+            }
+            if (action.tribeFilter && !TRIBE_FILTERABLE_TARGETS.includes(action.target)) {
+                errors[`${prefix}.tribeFilter`] = 'Only meaningful for an "all ... minions" target.';
+            }
+            break;
         case 'grantKeyword':
             if (action.target !== 'chosen' && action.chosenRestriction) {
                 errors[`${prefix}.chosenRestriction`] = 'Only meaningful when target is "chosen".';
             }
             if (action.tribeFilter && !TRIBE_FILTERABLE_TARGETS.includes(action.target)) {
                 errors[`${prefix}.tribeFilter`] = 'Only meaningful for an "all ... minions" target.';
+            }
+            if (action.duration !== undefined && (!Number.isInteger(action.duration) || action.duration < 1)) {
+                errors[`${prefix}.duration`] = 'Duration must be a positive integer, or left blank for permanent.';
             }
             break;
     }

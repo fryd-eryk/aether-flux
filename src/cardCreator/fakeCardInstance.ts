@@ -20,5 +20,6 @@ export function buildPreviewInstance(definition: CardDefinition): CardInstance {
         keywords: new Set(definition.keywords ?? []),
         frozen: false,
         silenced: false,
+        temporaryEffects: [],
     };
 }

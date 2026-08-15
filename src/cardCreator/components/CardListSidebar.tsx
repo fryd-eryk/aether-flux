@@ -6,6 +6,8 @@ import { TRIBE_METADATA } from "@/game/data/tribeMetadata";
 import type { CardDefinition, CardRarity, CardType, Keyword, Tribe } from "@/game/types/Card";
 import styles from "@/styles/CardCreator.module.css";
 
+import { FilterListbox, type FilterListboxOption } from "./FilterListbox";
+
 type SortField = "name" | "cost" | "rarity" | "type" | "tribe";
 type SortDir = "asc" | "desc";
 
@@ -14,6 +16,23 @@ const TRIBES = Object.keys(TRIBE_METADATA) as Tribe[];
 
 // Ascending power order, matching Card.ts's CardRarity doc comment.
 const RARITY_ORDER: CardRarity[] = ["common", "rare", "exotic", "legendary", "mythical"];
+
+function hexColor(n: number): string {
+    return `#${n.toString(16).padStart(6, "0")}`;
+}
+
+const TYPE_OPTIONS: FilterListboxOption[] = [
+    { value: "minion", label: "Minion" },
+    { value: "spell", label: "Spell" },
+    { value: "token", label: "Token" },
+];
+const TRIBE_OPTIONS: FilterListboxOption[] = TRIBES.map((tribe) => ({ value: tribe, label: TRIBE_METADATA[tribe].label }));
+const KEYWORD_OPTIONS: FilterListboxOption[] = KEYWORDS.map((keyword) => ({ value: keyword, label: KEYWORD_METADATA[keyword].label }));
+const RARITY_OPTIONS: FilterListboxOption[] = RARITY_ORDER.map((rarity) => ({
+    value: rarity,
+    label: rarity[0].toUpperCase() + rarity.slice(1),
+    swatch: hexColor(RARITY_METADATA[rarity].light),
+}));
 
 // Tokens rank below common regardless of sort direction — they aren't a power tier, so
 // there's no "descending" position that makes sense for them either.
@@ -47,33 +66,35 @@ export function CardListSidebar({ cards, selectedId, dirtyIds, onSelect, onNew }
     const [sortField, setSortField] = useState<SortField>("cost");
     const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-    const [filterType, setFilterType] = useState<CardType | "">("");
+    const [filterTypes, setFilterTypes] = useState<CardType[]>([]);
     const [filterTribes, setFilterTribes] = useState<Tribe[]>([]);
     const [filterKeywords, setFilterKeywords] = useState<Keyword[]>([]);
+    const [filterRarities, setFilterRarities] = useState<CardRarity[]>([]);
     const [filterAtkMin, setFilterAtkMin] = useState("");
     const [filterAtkMax, setFilterAtkMax] = useState("");
     const [filterHpMin, setFilterHpMin] = useState("");
     const [filterHpMax, setFilterHpMax] = useState("");
 
-    function toggleFilterTribe(tribe: Tribe, checked: boolean) {
-        setFilterTribes((prev) => (checked ? [...prev, tribe] : prev.filter((t) => t !== tribe)));
-    }
-
-    function toggleFilterKeyword(keyword: Keyword, checked: boolean) {
-        setFilterKeywords((prev) => (checked ? [...prev, keyword] : prev.filter((k) => k !== keyword)));
-    }
-
     function clearFilters() {
-        setFilterType("");
+        setFilterTypes([]);
         setFilterTribes([]);
         setFilterKeywords([]);
+        setFilterRarities([]);
         setFilterAtkMin("");
         setFilterAtkMax("");
         setFilterHpMin("");
         setFilterHpMax("");
     }
 
-    const hasActiveFilters = filterType !== "" || filterTribes.length > 0 || filterKeywords.length > 0 || filterAtkMin !== "" || filterAtkMax !== "" || filterHpMin !== "" || filterHpMax !== "";
+    const hasActiveFilters =
+        filterTypes.length > 0 ||
+        filterTribes.length > 0 ||
+        filterKeywords.length > 0 ||
+        filterRarities.length > 0 ||
+        filterAtkMin !== "" ||
+        filterAtkMax !== "" ||
+        filterHpMin !== "" ||
+        filterHpMax !== "";
 
     const entries = useMemo(() => {
         const query = search.trim().toLowerCase();
@@ -86,9 +107,10 @@ export function CardListSidebar({ cards, selectedId, dirtyIds, onSelect, onNew }
 
         return Object.values(cards)
             .filter((card) => !query || card.name.toLowerCase().includes(query) || card.id.toLowerCase().includes(query))
-            .filter((card) => filterType === "" || card.type === filterType)
+            .filter((card) => filterTypes.length === 0 || filterTypes.includes(card.type))
             .filter((card) => filterTribes.length === 0 || (card.tribes ?? []).some((t) => filterTribes.includes(t)))
             .filter((card) => filterKeywords.length === 0 || (card.keywords ?? []).some((k) => filterKeywords.includes(k)))
+            .filter((card) => filterRarities.length === 0 || (card.rarity !== undefined && filterRarities.includes(card.rarity)))
             .filter((card) => atkMin === null || (card.attack ?? 0) >= atkMin)
             .filter((card) => atkMax === null || (card.attack ?? 0) <= atkMax)
             .filter((card) => hpMin === null || (card.health ?? 0) >= hpMin)
@@ -115,12 +137,17 @@ export function CardListSidebar({ cards, selectedId, dirtyIds, onSelect, onNew }
                         return (a.cost - b.cost) * dir || a.name.localeCompare(b.name);
                 }
             });
-    }, [cards, search, sortField, sortDir, filterType, filterTribes, filterKeywords, filterAtkMin, filterAtkMax, filterHpMin, filterHpMax]);
+    }, [cards, search, sortField, sortDir, filterTypes, filterTribes, filterKeywords, filterRarities, filterAtkMin, filterAtkMax, filterHpMin, filterHpMax]);
+
+    const totalCount = useMemo(() => Object.keys(cards).length, [cards]);
 
     return (
         <div className={styles.sidebar}>
             <div className={styles.sidebarHeader}>
                 <input className={styles.searchInput} placeholder="Search cards..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                <div className={styles.cardCountLabel}>
+                    {entries.length} of {totalCount} card{totalCount === 1 ? "" : "s"}
+                </div>
                 <div className={styles.sortRow}>
                     <select className={styles.sortSelect} value={sortField} onChange={(e) => setSortField(e.target.value as SortField)}>
                         <option value="cost">Cost</option>
@@ -142,12 +169,14 @@ export function CardListSidebar({ cards, selectedId, dirtyIds, onSelect, onNew }
                         </button>
                     </div>
 
-                    <select className={styles.sortSelect} value={filterType} onChange={(e) => setFilterType(e.target.value as CardType | "")}>
-                        <option value="">All Types</option>
-                        <option value="minion">Minion</option>
-                        <option value="spell">Spell</option>
-                        <option value="token">Token</option>
-                    </select>
+                    <div className={styles.filterListboxRow}>
+                        <FilterListbox label="Type" options={TYPE_OPTIONS} selected={filterTypes} onChange={(next) => setFilterTypes(next as CardType[])} />
+                        <FilterListbox label="Rarity" options={RARITY_OPTIONS} selected={filterRarities} onChange={(next) => setFilterRarities(next as CardRarity[])} />
+                    </div>
+                    <div className={styles.filterListboxRow}>
+                        <FilterListbox label="Tribes" options={TRIBE_OPTIONS} selected={filterTribes} onChange={(next) => setFilterTribes(next as Tribe[])} />
+                        <FilterListbox label="Keywords" options={KEYWORD_OPTIONS} selected={filterKeywords} onChange={(next) => setFilterKeywords(next as Keyword[])} />
+                    </div>
 
                     <div className={styles.filterRangeRow}>
                         <span className={styles.filterRangeLabel}>Atk</span>
@@ -158,26 +187,6 @@ export function CardListSidebar({ cards, selectedId, dirtyIds, onSelect, onNew }
                         <span className={styles.filterRangeLabel}>Hp</span>
                         <input className={styles.numberInput} type="number" placeholder="Min" value={filterHpMin} onChange={(e) => setFilterHpMin(e.target.value)} />
                         <input className={styles.numberInput} type="number" placeholder="Max" value={filterHpMax} onChange={(e) => setFilterHpMax(e.target.value)} />
-                    </div>
-
-                    <span className={styles.filterHeaderLabel}>Tribes</span>
-                    <div className={`${styles.checkboxGroup} ${styles.filterCheckboxGroup}`}>
-                        {TRIBES.map((tribe) => (
-                            <label key={tribe} className={styles.checkboxLabel}>
-                                <input type="checkbox" checked={filterTribes.includes(tribe)} onChange={(e) => toggleFilterTribe(tribe, e.target.checked)} />
-                                {TRIBE_METADATA[tribe].label}
-                            </label>
-                        ))}
-                    </div>
-
-                    <span className={styles.filterHeaderLabel}>Keywords</span>
-                    <div className={`${styles.checkboxGroup} ${styles.filterCheckboxGroup}`}>
-                        {KEYWORDS.map((keyword) => (
-                            <label key={keyword} className={styles.checkboxLabel}>
-                                <input type="checkbox" checked={filterKeywords.includes(keyword)} onChange={(e) => toggleFilterKeyword(keyword, e.target.checked)} />
-                                {KEYWORD_METADATA[keyword].label}
-                            </label>
-                        ))}
                     </div>
                 </div>
 

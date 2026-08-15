@@ -1,6 +1,6 @@
 import { CARD_DEFINITIONS } from '../data/cards';
 import { resolveEffectValue } from '../state/counters';
-import { canDeclareAttack, hasKeyword, isTargetable } from '../state/keywordRules';
+import { canDeclareAttack, hasKeyword, isTargetable, tauntRestrictedTargets } from '../state/keywordRules';
 import { minionHasTribe, restrictionTribe, restrictsToMinion } from '../state/tribes';
 import type { CardDefinition, CardInstance, ChosenTargetRestriction, EffectAction, Keyword, PaidAbility, Tribe } from '../types/Card';
 import type { PlayerId } from '../types/common';
@@ -24,6 +24,12 @@ const KEYWORD_VALUE: Record<Keyword, number> = {
     venom: 4,
     initiative: 3,
 };
+
+/** Flat discount applied to a `buff`/`grantKeyword` action's value when it carries a `duration` —
+ * the AI can only realize a time-limited effect's value for as long as it lasts, unlike a
+ * permanent grant, so it shouldn't be valued the same. A flat multiplier, not a precise
+ * turn-by-turn calculation, matching KEYWORD_VALUE's own flat-heuristic style. */
+const TEMPORARY_EFFECT_DISCOUNT = 0.5;
 
 function opponentOf(id: PlayerId): PlayerId {
     return id === 'player' ? 'opponent' : 'player';
@@ -97,6 +103,31 @@ function tribeFilteredCount(board: CardInstance[], tribeFilter: Tribe | undefine
 }
 
 /**
+ * True if any of `board`'s currently attack-eligible, positive-attack minions would actually die
+ * to this AOE right now — i.e. free face damage the AI would permanently forfeit by playing it
+ * before swinging. Scoped to "face is currently a legal attack target" (no enemy Taunt up) —
+ * mirrors decideOpponentAction's own tauntUp gate (OpponentAI.ts) — since a forced trade into
+ * Taunt isn't guaranteed free the way an unblocked face swing is, and this file shouldn't
+ * re-derive scoreAttack's own trade-value reasoning here.
+ */
+function wipesAFreeFaceAttacker(
+    state: GameState,
+    aiId: PlayerId,
+    board: CardInstance[],
+    tribeFilter: Tribe | undefined,
+    wouldDie: (c: CardInstance) => boolean
+): boolean {
+    const enemy = state.players[opponentOf(aiId)];
+    const tauntUp = tauntRestrictedTargets(enemy.board).some((c) => hasKeyword(c, 'taunt'));
+    if (tauntUp) return false;
+    return board
+        .filter((c) => !tribeFilter || minionHasTribe(CARD_DEFINITIONS[c.definitionId], tribeFilter))
+        .filter(canDeclareAttack)
+        .filter((c) => (c.currentAttack ?? 0) > 0)
+        .some(wouldDie);
+}
+
+/**
  * Rough point value of an effect that doesn't need a chosen target — board-wide or fixed-target
  * (hero/all-minions) damage, heal, buff, draw, summon, across any trigger (onPlay/onDeath/
  * startOfTurn/endOfTurn alike, so a Deathcry or Vigil effect is weighed same as a Battlecry-style
@@ -125,6 +156,14 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
                     : 0;
             const enemyMinionsHit = action.target === 'allEnemyMinions';
             const friendlyMinionsHit = action.target === 'allFriendlyMinions';
+            // A friendly-fire hit that would kill one of the AI's own currently-eligible attackers
+            // is deferred (not lost) rather than valued as-is — see wipesAFreeFaceAttacker: the AI
+            // should swing that attacker at an open face first, then this AOE scores normally again
+            // once it's no longer attack-eligible (decideOpponentAction re-evaluates every action).
+            const wouldDie = (c: CardInstance) => !hasKeyword(c, 'divineShield') && (c.currentHealth ?? 0) <= amount;
+            if ((action.target === 'allMinions' || friendlyMinionsHit) && wipesAFreeFaceAttacker(state, aiId, ai.board, action.tribeFilter, wouldDie)) {
+                return -Infinity;
+            }
             // allMinions/allHeroes hit both sides — net the boards against each other (and halve a
             // mutual face hit) rather than a flat per-target count, so the AI disfavors nuking a
             // board/face split that actually favors the enemy. See CLAUDE.md's Apocalypse precedent.
@@ -146,7 +185,8 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
         }
         case 'buff': {
             if (action.target === 'chosen') return 0;
-            const magnitude = resolveEffectValue(action.attack ?? 0, aiId, state) + resolveEffectValue(action.health ?? 0, aiId, state);
+            let magnitude = resolveEffectValue(action.attack ?? 0, aiId, state) + resolveEffectValue(action.health ?? 0, aiId, state);
+            if (action.duration) magnitude *= TEMPORARY_EFFECT_DISCOUNT;
             const aiCount = tribeFilteredCount(ai.board, action.tribeFilter);
             const enemyCount = tribeFilteredCount(enemy.board, action.tribeFilter);
             if (action.target === 'allMinions') return magnitude * (aiCount - enemyCount);
@@ -178,12 +218,18 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
             const DESTROY_WEIGHT = 6;
             const aiCount = tribeFilteredCount(ai.board, action.tribeFilter);
             const enemyCount = tribeFilteredCount(enemy.board, action.tribeFilter);
+            // forceKill bypasses Divine Shield/health entirely, so every eligible attacker it
+            // targets dies unconditionally — same deferral as the damage case above.
+            const hitsOwnBoard = action.target === 'allMinions' || action.target === 'allFriendlyMinions';
+            if (hitsOwnBoard && wipesAFreeFaceAttacker(state, aiId, ai.board, action.tribeFilter, () => true)) {
+                return -Infinity;
+            }
             if (action.target === 'allMinions') return DESTROY_WEIGHT * (enemyCount - aiCount);
             return DESTROY_WEIGHT * (action.target === 'allEnemyMinions' ? Math.max(1, enemyCount) : 1);
         }
         case 'grantKeyword': {
             if (action.target === 'chosen') return 0;
-            const value = KEYWORD_VALUE[action.keyword];
+            const value = KEYWORD_VALUE[action.keyword] * (action.duration ? TEMPORARY_EFFECT_DISCOUNT : 1);
             const aiCount = tribeFilteredCount(ai.board, action.tribeFilter);
             const enemyCount = tribeFilteredCount(enemy.board, action.tribeFilter);
             // Mirrors 'buff's own AOE weighting exactly — a keyword grant is just a differently-shaped buff.
@@ -205,13 +251,14 @@ function scoreChosenTarget(state: GameState, aiId: PlayerId, action: EffectActio
             aiId,
             resolveEffectValue(action.attack ?? 0, aiId, state),
             resolveEffectValue(action.health ?? 0, aiId, state),
-            action.chosenRestriction
+            action.chosenRestriction,
+            action.duration
         );
     }
     if (action.kind === 'freeze') return scoreFreezeSpell(state, aiId, action.chosenRestriction);
     if (action.kind === 'silence') return scoreSilenceSpell(state, aiId, action.chosenRestriction);
     if (action.kind === 'destroy') return scoreDestroySpell(state, aiId, action.chosenRestriction);
-    if (action.kind === 'grantKeyword') return scoreGrantKeywordSpell(state, aiId, action.keyword, action.chosenRestriction);
+    if (action.kind === 'grantKeyword') return scoreGrantKeywordSpell(state, aiId, action.keyword, action.chosenRestriction, action.duration);
     return { score: 0 };
 }
 
@@ -464,13 +511,14 @@ function scoreBuffSpell(
     aiId: PlayerId,
     attack: number,
     health: number,
-    restriction?: ChosenTargetRestriction
+    restriction?: ChosenTargetRestriction,
+    duration?: number
 ): ScoredTarget {
     const enemy = state.players[opponentOf(aiId)];
     const ai = state.players[aiId];
     const tribe = restrictionTribe(restriction);
     const matchesTribe = (minion: CardInstance) => !tribe || minionHasTribe(CARD_DEFINITIONS[minion.definitionId], tribe);
-    const magnitude = attack + health;
+    const magnitude = (attack + health) * (duration ? TEMPORARY_EFFECT_DISCOUNT : 1);
 
     let best: ScoredTarget = { score: -Infinity };
     for (const minion of ai.board.filter(isTargetable).filter(matchesTribe)) {
@@ -590,12 +638,18 @@ function scoreSilenceSpell(state: GameState, aiId: PlayerId, restriction?: Chose
  * own stats/other effects are still worth playing doesn't get stuck in AwaitingTarget with no
  * resolvable target at all.
  */
-function scoreGrantKeywordSpell(state: GameState, aiId: PlayerId, keyword: Keyword, restriction?: ChosenTargetRestriction): ScoredTarget {
+function scoreGrantKeywordSpell(
+    state: GameState,
+    aiId: PlayerId,
+    keyword: Keyword,
+    restriction?: ChosenTargetRestriction,
+    duration?: number
+): ScoredTarget {
     const enemy = state.players[opponentOf(aiId)];
     const ai = state.players[aiId];
     const tribe = restrictionTribe(restriction);
     const matchesTribe = (minion: CardInstance) => !tribe || minionHasTribe(CARD_DEFINITIONS[minion.definitionId], tribe);
-    const value = KEYWORD_VALUE[keyword];
+    const value = KEYWORD_VALUE[keyword] * (duration ? TEMPORARY_EFFECT_DISCOUNT : 1);
 
     let best: ScoredTarget = { score: -Infinity };
     for (const minion of ai.board.filter(isTargetable).filter(matchesTribe)) {

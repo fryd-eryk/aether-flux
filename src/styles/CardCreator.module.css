@@ -39,6 +39,11 @@
     font-size: 12px;
 }
 
+.cardCountLabel {
+    font-size: 11px;
+    color: #9aa7bd;
+}
+
 .sortRow {
     display: flex;
     gap: 6px;
@@ -130,12 +135,116 @@
     width: auto;
 }
 
-.filterCheckboxGroup {
-    gap: 6px 8px;
+.filterListboxRow {
+    display: flex;
+    gap: 6px;
 }
 
-.filterCheckboxGroup .checkboxLabel {
+.filterListbox {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.filterListboxTrigger {
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 5px 6px;
+    background: #1c2330;
+    border: 1px solid #333d52;
+    border-radius: 4px;
+    color: #c7cdd6;
     font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+
+.filterListboxTrigger:hover {
+    background: #222a3a;
+}
+
+.filterListboxTriggerActive {
+    border-color: #3f7fe6;
+    color: #e8ecf5;
+}
+
+.filterListboxTriggerLabel {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.filterListboxCaret {
+    flex: 0 0 auto;
+    font-size: 8px;
+    color: #7d8aa3;
+}
+
+.filterListboxPopover {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 20;
+    width: 180px;
+    max-height: 220px;
+    display: flex;
+    flex-direction: column;
+    background: #1c2330;
+    border: 1px solid #3f5075;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+}
+
+.filterListboxSearch {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 6px 8px;
+    background: #141924;
+    border: none;
+    border-bottom: 1px solid #333d52;
+    color: #e8ecf5;
+    font-size: 12px;
+    font-family: inherit;
+}
+
+.filterListboxOptions {
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.filterListboxOption {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: #c7cdd6;
+    cursor: pointer;
+}
+
+.filterListboxOption:hover {
+    background: #24304a;
+}
+
+.filterListboxSwatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+}
+
+.filterListboxEmpty {
+    padding: 8px;
+    font-size: 11px;
+    color: #7d8aa3;
+    text-align: center;
 }
 
 .newButton {

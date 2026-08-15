@@ -306,6 +306,19 @@ export function ActionFieldsEditor({ action, onChange, errors, prefix, allCards 
                         onChange={(value) => onChange({ ...action, health: value })}
                     />
                     <div className={styles.field}>
+                        <label className={styles.fieldLabel}>Duration (turns)</label>
+                        <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            className={styles.numberInput}
+                            value={action.duration ?? ''}
+                            placeholder="Permanent"
+                            onChange={(e) => onChange({ ...action, duration: e.target.value === '' ? undefined : Number(e.target.value) })}
+                        />
+                        {errors[`${prefix}.duration`] && <span className={styles.fieldError}>{errors[`${prefix}.duration`]}</span>}
+                    </div>
+                    <div className={styles.field}>
                         <label className={styles.fieldLabel}>Target</label>
                         <select
                             className={styles.selectInput}
@@ -396,20 +409,35 @@ export function ActionFieldsEditor({ action, onChange, errors, prefix, allCards 
             {(action.kind === 'freeze' || action.kind === 'silence' || action.kind === 'destroy' || action.kind === 'grantKeyword') && (
                 <>
                     {action.kind === 'grantKeyword' && (
-                        <div className={styles.field}>
-                            <label className={styles.fieldLabel}>Keyword</label>
-                            <select
-                                className={styles.selectInput}
-                                value={action.keyword}
-                                onChange={(e) => onChange({ ...action, keyword: e.target.value as Keyword })}
-                            >
-                                {KEYWORDS.map((keyword) => (
-                                    <option key={keyword} value={keyword}>
-                                        {KEYWORD_METADATA[keyword].label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        <>
+                            <div className={styles.field}>
+                                <label className={styles.fieldLabel}>Keyword</label>
+                                <select
+                                    className={styles.selectInput}
+                                    value={action.keyword}
+                                    onChange={(e) => onChange({ ...action, keyword: e.target.value as Keyword })}
+                                >
+                                    {KEYWORDS.map((keyword) => (
+                                        <option key={keyword} value={keyword}>
+                                            {KEYWORD_METADATA[keyword].label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className={styles.field}>
+                                <label className={styles.fieldLabel}>Duration (turns)</label>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    step={1}
+                                    className={styles.numberInput}
+                                    value={action.duration ?? ''}
+                                    placeholder="Permanent"
+                                    onChange={(e) => onChange({ ...action, duration: e.target.value === '' ? undefined : Number(e.target.value) })}
+                                />
+                                {errors[`${prefix}.duration`] && <span className={styles.fieldError}>{errors[`${prefix}.duration`]}</span>}
+                            </div>
+                        </>
                     )}
                     <div className={styles.field}>
                         <label className={styles.fieldLabel}>Target</label>

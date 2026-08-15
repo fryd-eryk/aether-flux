@@ -67,6 +67,7 @@ function serializeEffectAction(action: EffectAction, level: number): string {
             if (action.tribeFilter) {
                 lines.push(`${indent(level)}tribeFilter: ${JSON.stringify(action.tribeFilter)},`);
             }
+            if (action.duration !== undefined) lines.push(`${indent(level)}duration: ${action.duration},`);
             break;
         case 'summon':
             lines.push(`${indent(level)}definitionId: ${JSON.stringify(action.definitionId)},`);
@@ -92,6 +93,7 @@ function serializeEffectAction(action: EffectAction, level: number): string {
             if (action.tribeFilter) {
                 lines.push(`${indent(level)}tribeFilter: ${JSON.stringify(action.tribeFilter)},`);
             }
+            if (action.duration !== undefined) lines.push(`${indent(level)}duration: ${action.duration},`);
             break;
     }
 
