@@ -22,8 +22,8 @@ export type EffectTrigger =
     | 'onAttack'
     | 'onDamaged'
     | 'onSpellCast'
-    | 'onMinionDeath'
-    | 'onMinionCast';
+    | 'onFriendlyMinionDeath'
+    | 'onFriendlyMinionCast';
 
 export type TargetSelector =
     | 'self'
@@ -65,17 +65,23 @@ export type EffectValue = number | { counter: CounterKind; multiplier?: number; 
  * TargetSelector; a single `chosen` target's tribe restriction is `chosenRestriction` instead.
  */
 export type EffectAction =
-    | { kind: 'damage'; amount: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
-    | { kind: 'heal'; amount: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
+    | { kind: 'damage'; amount: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe; reuseTarget?: boolean }
+    | { kind: 'heal'; amount: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe; reuseTarget?: boolean }
     | { kind: 'draw'; count: EffectValue }
     /** `duration` (in turns) makes this a temporary buff — absent means permanent. See TemporaryEffect / TurnStateMachine.tickTemporaryEffects. */
-    | { kind: 'buff'; attack?: EffectValue; health?: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe; duration?: number }
+    | { kind: 'buff'; attack?: EffectValue; health?: EffectValue; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe; duration?: number; reuseTarget?: boolean }
     | { kind: 'summon'; definitionId: string; count: number }
-    | { kind: 'freeze'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
-    | { kind: 'silence'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
-    | { kind: 'destroy'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe }
+    | { kind: 'freeze'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe; reuseTarget?: boolean }
+    | { kind: 'silence'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe; reuseTarget?: boolean }
+    | { kind: 'destroy'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe; reuseTarget?: boolean }
     /** `duration` (in turns) makes this a temporary grant — absent means permanent. See TemporaryEffect / TurnStateMachine.tickTemporaryEffects. */
-    | { kind: 'grantKeyword'; keyword: Keyword; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe; duration?: number };
+    | { kind: 'grantKeyword'; keyword: Keyword; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe; duration?: number; reuseTarget?: boolean };
+
+/** `reuseTarget: true` (only meaningful when `target === 'chosen'`) means this action targets
+ * whatever the nearest earlier `target: 'chosen'` action in the same actions[] list resolved to,
+ * instead of prompting for a fresh target — e.g. "Target minion gets +1/+2 and Divine Shield"
+ * is one prompt, not two. Must not be set on the first chosen-target action in a list (nothing to
+ * reuse yet) — see validateCardDefinition.ts and TurnStateMachine.collectChosenRestrictions. */
 
 /**
  * A time-limited keyword grant or stat buff riding on a CardInstance, decremented once per
@@ -97,13 +103,15 @@ export type EffectCondition = { type: 'momentum'; minCount: number };
 
 export interface CardEffect {
     trigger: EffectTrigger;
-    action: EffectAction;
+    /** Fire together, in order, whenever `trigger` fires — not independent sub-effects. */
+    actions: EffectAction[];
     condition?: EffectCondition;
 }
 
 /**
  * A minion/token's activated ability: pay `cost` mana any time during the controller's turn to
- * resolve `action` (prompting for a target first if `action.target === 'chosen'`). Unlike
+ * resolve `actions` in order (prompting for a target first, once per chosen-target action, if
+ * any `actions[].target === 'chosen'`). Unlike
  * CardEffect, this isn't trigger-driven — it's a player-initiated, repeatable action gated purely
  * by available mana (no 'once per turn' limiter, and not blocked by summoning sickness, since
  * activating one isn't a combat action — see TurnStateMachine.activateAbility). Card text
@@ -112,7 +120,8 @@ export interface CardEffect {
  */
 export interface PaidAbility {
     cost: number;
-    action: EffectAction;
+    /** Fire together, in order, whenever this ability is activated — not independent sub-abilities. */
+    actions: EffectAction[];
 }
 
 /** A card's power-level bucket, used by deckGenerator.ts to build proportionate random decks. Ascending rarity/power order. */

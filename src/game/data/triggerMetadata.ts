@@ -9,8 +9,8 @@ export const TRIGGER_METADATA: Record<EffectTrigger, { color: number; label: str
     onAttack: { color: 0xd6543f, label: 'Strike' },
     onDamaged: { color: 0x9c4f3f, label: 'Wound' },
     onSpellCast: { color: 0x4fb8d6, label: 'Channel' },
-    onMinionDeath: { color: 0x8a4fc2, label: 'Mourn' },
-    onMinionCast: { color: 0x6fae4f, label: 'Muster' },
+    onFriendlyMinionDeath: { color: 0x8a4fc2, label: 'Mourn' },
+    onFriendlyMinionCast: { color: 0x6fae4f, label: 'Muster' },
 };
 
 /** Distinct triggers present in a card's effects, in first-seen order — a card with two onPlay effects still yields one "Anthem" entry. */

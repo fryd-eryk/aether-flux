@@ -650,9 +650,18 @@ export class CardGame extends Scene
         else if (action.kind === 'attack') this.machine.declareAttack(action.attackerInstanceId);
         else this.machine.activateAbility(action.instanceId, action.abilityIndex);
 
-        if (this.machine.state.phase === TurnPhase.AwaitingTarget)
+        if (action.kind === 'attack')
         {
-            this.machine.selectTarget(action.targetId!);
+            if (this.machine.state.phase === TurnPhase.AwaitingTarget) this.machine.selectTarget(action.targetId);
+            return;
+        }
+
+        // A card/ability with multiple `target: 'chosen'` actions prompts once per action, in
+        // sequence, staying in AwaitingTarget between prompts — see TurnStateMachine.selectTarget.
+        for (const targetId of action.targetIds ?? [])
+        {
+            if (this.machine.state.phase !== TurnPhase.AwaitingTarget) break;
+            this.machine.selectTarget(targetId);
         }
     }
 
@@ -947,7 +956,12 @@ export class CardGame extends Scene
             return state.winner === 'player' ? 'You win!' : 'You lose!';
         }
         const whoseTurn = state.activePlayer === 'player' ? 'Your' : "Opponent's";
-        if (state.phase === TurnPhase.AwaitingTarget) return `${whoseTurn} turn — choose a target`;
+        if (state.phase === TurnPhase.AwaitingTarget)
+        {
+            const { step, totalSteps } = state.pendingTarget ?? { step: 1, totalSteps: 1 };
+            const suffix = totalSteps > 1 ? ` (${step} of ${totalSteps})` : '';
+            return `${whoseTurn} turn — choose a target${suffix}`;
+        }
         return `${whoseTurn} turn (Turn ${state.turnNumber})`;
     }
 

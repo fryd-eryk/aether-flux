@@ -198,6 +198,27 @@ interface ActionFieldsEditorProps {
      * caller owns the numbering scheme, this component just reads `errors[`${prefix}.field`]`. */
     prefix: string;
     allCards: Record<string, CardDefinition>;
+    /** Whether an earlier action in the same actions[] list already resolved a real (non-reuseTarget)
+     * chosen target — gates whether the "Same target as previous effect" checkbox is offered at all,
+     * mirroring validateCardDefinition.ts's validateActions. */
+    canReuseTarget: boolean;
+}
+
+interface ReuseTargetFieldProps {
+    checked: boolean;
+    onChange: (checked: boolean) => void;
+}
+
+/** "Same target as previous effect" checkbox for a chosen-target action — see EffectAction.reuseTarget
+ * in Card.ts. Shared across the damage/heal, buff, and freeze/silence/destroy/grantKeyword blocks
+ * below, all of which have the exact same reuseTarget?: boolean field. */
+function ReuseTargetField({ checked, onChange }: ReuseTargetFieldProps) {
+    return (
+        <label className={styles.fieldLabel} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+            Same target as previous effect
+        </label>
+    );
 }
 
 /**
@@ -206,7 +227,7 @@ interface ActionFieldsEditorProps {
  * EffectAction shape and only differ in what wraps it (trigger+condition vs. a mana cost). Operates
  * directly on `action`/`onChange` so neither caller's own wrapper shape leaks in here.
  */
-export function ActionFieldsEditor({ action, onChange, errors, prefix, allCards }: ActionFieldsEditorProps) {
+export function ActionFieldsEditor({ action, onChange, errors, prefix, allCards, canReuseTarget }: ActionFieldsEditorProps) {
     const summonOptions = Object.values(allCards).sort((a, b) => a.name.localeCompare(b.name));
     const isChosen = 'target' in action && action.target === 'chosen';
     const isTribeFilterable = 'target' in action && TRIBE_FILTERABLE_TARGETS.includes(action.target);
@@ -275,6 +296,12 @@ export function ActionFieldsEditor({ action, onChange, errors, prefix, allCards 
                             value={action.tribeFilter}
                             error={errors[`${prefix}.tribeFilter`]}
                             onChange={(tribeFilter) => onChange({ ...action, tribeFilter })}
+                        />
+                    )}
+                    {isChosen && canReuseTarget && (
+                        <ReuseTargetField
+                            checked={!!action.reuseTarget}
+                            onChange={(reuseTarget) => onChange({ ...action, reuseTarget: reuseTarget || undefined })}
                         />
                     )}
                 </>
@@ -368,6 +395,12 @@ export function ActionFieldsEditor({ action, onChange, errors, prefix, allCards 
                             value={action.tribeFilter}
                             error={errors[`${prefix}.tribeFilter`]}
                             onChange={(tribeFilter) => onChange({ ...action, tribeFilter })}
+                        />
+                    )}
+                    {isChosen && canReuseTarget && (
+                        <ReuseTargetField
+                            checked={!!action.reuseTarget}
+                            onChange={(reuseTarget) => onChange({ ...action, reuseTarget: reuseTarget || undefined })}
                         />
                     )}
                 </>
@@ -488,6 +521,12 @@ export function ActionFieldsEditor({ action, onChange, errors, prefix, allCards 
                             value={action.tribeFilter}
                             error={errors[`${prefix}.tribeFilter`]}
                             onChange={(tribeFilter) => onChange({ ...action, tribeFilter })}
+                        />
+                    )}
+                    {isChosen && canReuseTarget && (
+                        <ReuseTargetField
+                            checked={!!action.reuseTarget}
+                            onChange={(reuseTarget) => onChange({ ...action, reuseTarget: reuseTarget || undefined })}
                         />
                     )}
                 </>

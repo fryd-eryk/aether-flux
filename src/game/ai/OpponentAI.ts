@@ -36,9 +36,9 @@ export function decideOpponentAction(state: GameState): AIAction | null {
         const definition = CARD_DEFINITIONS[card.definitionId];
         if (!definition || ai.mana < definition.cost) continue; // mirrors TurnStateMachine.playCard's own guard
 
-        const { score, targetId } = scorePlayCard(state, aiId, card, definition, lethalAvailable);
+        const { score, targetIds } = scorePlayCard(state, aiId, card, definition, lethalAvailable);
         if (!best || score > best.score) {
-            best = { score, action: { kind: 'playCard', instanceId: card.instanceId, targetId } };
+            best = { score, action: { kind: 'playCard', instanceId: card.instanceId, targetIds } };
         }
     }
 
@@ -77,9 +77,9 @@ export function decideOpponentAction(state: GameState): AIAction | null {
         const definition = CARD_DEFINITIONS[minion.definitionId];
         (definition?.paidAbilities ?? []).forEach((ability, abilityIndex) => {
             if (ai.mana < ability.cost) return; // mirrors TurnStateMachine.activateAbility's own guard
-            const { score, targetId } = scorePaidAbility(state, aiId, ability, lethalAvailable);
+            const { score, targetIds } = scorePaidAbility(state, aiId, ability, lethalAvailable);
             if (!best || score > best.score) {
-                best = { score, action: { kind: 'activateAbility', instanceId: minion.instanceId, abilityIndex, targetId } };
+                best = { score, action: { kind: 'activateAbility', instanceId: minion.instanceId, abilityIndex, targetIds } };
             }
         });
     }

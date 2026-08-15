@@ -562,3 +562,25 @@
     width: auto;
     padding: 7px 14px;
 }
+
+/* --- Nested per-action rows within one effect/ability block --- */
+
+.actionRow {
+    background: #1a2130;
+    border: 1px solid #2c374a;
+    border-radius: 5px;
+    padding: 8px;
+    margin: 8px 0;
+}
+
+.actionRowHeader {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.addActionButton {
+    composes: smallButton;
+    padding: 5px 10px;
+}

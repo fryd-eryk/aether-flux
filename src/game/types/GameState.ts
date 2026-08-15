@@ -15,6 +15,12 @@ export enum TurnPhase {
 export interface PendingTarget {
     sourceInstanceId: string;
     validTargetIds: string[];
+    /** 1-based position in the current play/ability's chosen-target queue, and the queue's total
+     * length — a card/ability with N `target: 'chosen'` actions prompts N times in sequence, one
+     * target each, rather than sharing a single target across all of them. See
+     * TurnStateMachine.beginTargeting/advanceTargeting. */
+    step: number;
+    totalSteps: number;
 }
 
 export interface PlayerState {

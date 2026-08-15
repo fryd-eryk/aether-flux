@@ -67,9 +67,11 @@ export function resolveCardText(instance: CardInstance, state: GameState): strin
     if (!definition || !definition.text.includes('{X}')) return definition?.text ?? '';
 
     for (const effect of definition.effects ?? []) {
-        const value = headlineValue(effect.action);
-        if (value !== undefined) {
-            return definition.text.replaceAll('{X}', String(resolveEffectValue(value, instance.owner, state)));
+        for (const action of effect.actions) {
+            const value = headlineValue(action);
+            if (value !== undefined) {
+                return definition.text.replaceAll('{X}', String(resolveEffectValue(value, instance.owner, state)));
+            }
         }
     }
     return definition.text;

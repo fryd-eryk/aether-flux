@@ -2,18 +2,6 @@ import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     // --- Common rarity (22) ---
-    "rusty-shieldbearer": {
-        id: "rusty-shieldbearer",
-        name: "Rusty Shieldbearer",
-        cost: 1,
-        type: "minion",
-        text: "",
-        attack: 0,
-        health: 3,
-        keywords: ["taunt"],
-        tribes: ["human"],
-        rarity: "common",
-    },
     "pocket-sand": {
         id: "pocket-sand",
         name: "Pocket Sand",
@@ -23,12 +11,14 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 2,
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 2,
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                ],
             },
         ],
         rarity: "common",
@@ -41,7 +31,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "",
         attack: 1,
         health: 1,
-        keywords: ["divineShield"],
+        keywords: ["lifesteal"],
         tribes: ["demon"],
         rarity: "common",
     },
@@ -58,6 +48,19 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "bottom",
     },
+    "shieldbearer-of-faroria": {
+        id: "shieldbearer-of-faroria",
+        name: "Shieldbearer of Faroria",
+        cost: 1,
+        type: "minion",
+        text: "",
+        attack: 1,
+        health: 2,
+        keywords: ["taunt"],
+        tribes: ["human","holy"],
+        rarity: "common",
+        artVerticalAlign: "bottom",
+    },
     "stonemoss-walker": {
         id: "stonemoss-walker",
         name: "Stonemoss Walker",
@@ -70,11 +73,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onDamaged",
-                action: {
-                    kind: "summon",
-                    definitionId: "pebble-runner",
-                    count: 1,
-                },
+                actions: [
+                    {
+                        kind: "summon",
+                        definitionId: "pebble-runner",
+                        count: 1,
+                    },
+                ],
             },
         ],
         rarity: "common",
@@ -85,18 +90,20 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Alms Cleric",
         cost: 2,
         type: "minion",
-        text: "**Anthem:** Restore 2 Health to you.",
+        text: "**Anthem:** Restore 2 Health to your hero.",
         attack: 1,
         health: 1,
         tribes: ["human"],
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "heal",
-                    amount: 2,
-                    target: "friendlyHero",
-                },
+                actions: [
+                    {
+                        kind: "heal",
+                        amount: 2,
+                        target: "friendlyHero",
+                    },
+                ],
             },
         ],
         rarity: "common",
@@ -111,11 +118,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "freeze",
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
+                actions: [
+                    {
+                        kind: "freeze",
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                ],
             },
         ],
         rarity: "common",
@@ -130,11 +139,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "silence",
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
+                actions: [
+                    {
+                        kind: "silence",
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                ],
             },
         ],
         rarity: "common",
@@ -151,10 +162,12 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "draw",
-                    count: 1,
-                },
+                actions: [
+                    {
+                        kind: "draw",
+                        count: 1,
+                    },
+                ],
             },
         ],
         rarity: "common",
@@ -168,11 +181,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "heal",
-                    amount: 5,
-                    target: "chosen",
-                },
+                actions: [
+                    {
+                        kind: "heal",
+                        amount: 5,
+                        target: "chosen",
+                    },
+                ],
             },
         ],
         rarity: "common",
@@ -208,7 +223,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Infectious Imp",
         cost: 2,
         type: "minion",
-        text: "**Deathcry:** Deal 1 damage to the enemy player.",
+        text: "**Deathcry:** Deal 1 damage to the enemy hero.",
         attack: 1,
         health: 1,
         keywords: ["venom"],
@@ -216,11 +231,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onDeath",
-                action: {
-                    kind: "damage",
-                    amount: 1,
-                    target: "enemyHero",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 1,
+                        target: "enemyHero",
+                    },
+                ],
             },
         ],
         rarity: "common",
@@ -234,22 +251,22 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "buff",
-                    attack: 1,
-                    health: 2,
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "grantKeyword",
-                    keyword: "divineShield",
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: 1,
+                        health: 2,
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                    {
+                        kind: "grantKeyword",
+                        keyword: "divineShield",
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                        reuseTarget: true,
+                    },
+                ],
             },
         ],
         rarity: "common",
@@ -272,18 +289,20 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Ashfang Assassin",
         cost: 3,
         type: "minion",
-        text: "Strike: Deal 1 damage to the enemy player.",
+        text: "Strike: Deal 1 damage to the enemy hero.",
         attack: 3,
         health: 1,
         tribes: ["human","underworld"],
         effects: [
             {
                 trigger: "onAttack",
-                action: {
-                    kind: "damage",
-                    amount: 1,
-                    target: "enemyHero",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 1,
+                        target: "enemyHero",
+                    },
+                ],
             },
         ],
         rarity: "common",
@@ -300,10 +319,12 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "draw",
-                    count: 1,
-                },
+                actions: [
+                    {
+                        kind: "draw",
+                        count: 1,
+                    },
+                ],
             },
         ],
         rarity: "common",
@@ -318,24 +339,24 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "buff",
-                    attack: 2,
-                    health: -1,
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                    duration: 1,
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "grantKeyword",
-                    keyword: "initiative",
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                    duration: 1,
-                },
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: 2,
+                        health: -1,
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                        duration: 1,
+                    },
+                    {
+                        kind: "grantKeyword",
+                        keyword: "initiative",
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                        duration: 1,
+                        reuseTarget: true,
+                    },
+                ],
             },
         ],
         rarity: "common",
@@ -353,12 +374,14 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "heal",
-                    amount: 3,
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
+                actions: [
+                    {
+                        kind: "heal",
+                        amount: 3,
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                ],
             },
         ],
         rarity: "common",
@@ -403,7 +426,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Rare rarity (22) ---
+    // --- Rare rarity (24) ---
     "sprout-whelp": {
         id: "sprout-whelp",
         name: "Sprout Whelp",
@@ -416,11 +439,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "startOfTurn",
-                action: {
-                    kind: "heal",
-                    amount: { counter: "friendlyMinionCount" },
-                    target: "self",
-                },
+                actions: [
+                    {
+                        kind: "heal",
+                        amount: { counter: "friendlyMinionCount" },
+                        target: "self",
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -450,14 +475,37 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onAttack",
-                action: {
-                    kind: "draw",
-                    count: { counter: "enemyMinionCount" },
-                },
+                actions: [
+                    {
+                        kind: "draw",
+                        count: { counter: "enemyMinionCount" },
+                    },
+                ],
             },
         ],
         rarity: "rare",
         artVerticalAlign: "bottom",
+    },
+    "primal-stampede": {
+        id: "primal-stampede",
+        name: "Primal Stampede",
+        cost: 2,
+        type: "spell",
+        text: "All your minions gain *Initiative *until end of turn.",
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "grantKeyword",
+                        keyword: "initiative",
+                        target: "allFriendlyMinions",
+                        duration: 1,
+                    },
+                ],
+            },
+        ],
+        rarity: "rare",
     },
     "bog-witch": {
         id: "bog-witch",
@@ -471,20 +519,19 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onMinionDeath",
-                action: {
-                    kind: "buff",
-                    attack: 1,
-                    health: 0,
-                    target: "self",
-                },
-            },
-            {
-                trigger: "onMinionDeath",
-                action: {
-                    kind: "damage",
-                    amount: 1,
-                    target: "friendlyHero",
-                },
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: 1,
+                        health: 0,
+                        target: "self",
+                    },
+                    {
+                        kind: "damage",
+                        amount: 1,
+                        target: "friendlyHero",
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -502,11 +549,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onDeath",
-                action: {
-                    kind: "damage",
-                    amount: 2,
-                    target: "enemyHero",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 2,
+                        target: "enemyHero",
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -521,42 +570,66 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: { counter: "allTribeMinionCount", tribe: "cosmic" },
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: { counter: "allTribeMinionCount", tribe: "cosmic" },
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                ],
             },
         ],
         rarity: "rare",
         artVerticalAlign: "bottom",
+    },
+    "maizens-devotee": {
+        id: "maizens-devotee",
+        name: "Maizen's Devotee",
+        cost: 3,
+        type: "minion",
+        text: "(3): Restore 3 Health to you.",
+        attack: 2,
+        health: 3,
+        tribes: ["holy"],
+        paidAbilities: [
+            {
+                cost: 3,
+                actions: [
+                    {
+                        kind: "heal",
+                        amount: 3,
+                        target: "friendlyHero",
+                    },
+                ],
+            },
+        ],
+        rarity: "rare",
     },
     "sapping-leech": {
         id: "sapping-leech",
         name: "Sapping Leech",
         cost: 4,
         type: "minion",
-        text: "Vigil: Restore 1 Health to you and deal 1 damage to the enemy player.",
+        text: "Vigil: Restore 1 Health to your hero and deal 1 damage to the enemy hero.",
         attack: 1,
         health: 4,
         tribes: ["nature"],
         effects: [
             {
                 trigger: "startOfTurn",
-                action: {
-                    kind: "damage",
-                    amount: 1,
-                    target: "enemyHero",
-                },
-            },
-            {
-                trigger: "startOfTurn",
-                action: {
-                    kind: "heal",
-                    amount: 1,
-                    target: "friendlyHero",
-                },
+                actions: [
+                    {
+                        kind: "heal",
+                        amount: 1,
+                        target: "friendlyHero",
+                    },
+                    {
+                        kind: "damage",
+                        amount: 1,
+                        target: "enemyHero",
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -574,10 +647,12 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onDeath",
-                action: {
-                    kind: "draw",
-                    count: 1,
-                },
+                actions: [
+                    {
+                        kind: "draw",
+                        count: 1,
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -588,7 +663,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Vampiric Doomcaller",
         cost: 4,
         type: "minion",
-        text: "**Anthem:** Deal 3 damage to the enemy player. **Deathcry:** Deal 3 damage to you.",
+        text: "**Anthem:** Deal 3 damage to the enemy hero.\n**Deathcry:** Deal 3 damage to you.",
         attack: 2,
         health: 3,
         keywords: ["lifesteal"],
@@ -596,19 +671,23 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 3,
-                    target: "enemyHero",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 3,
+                        target: "enemyHero",
+                    },
+                ],
             },
             {
                 trigger: "onDeath",
-                action: {
-                    kind: "damage",
-                    amount: 3,
-                    target: "friendlyHero",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 3,
+                        target: "friendlyHero",
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -622,19 +701,18 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 3,
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "draw",
-                    count: 1,
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 3,
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                    {
+                        kind: "draw",
+                        count: 1,
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -662,11 +740,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 3,
-                    target: "allEnemyMinions",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 3,
+                        target: "allEnemyMinions",
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -683,12 +763,14 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         paidAbilities: [
             {
                 cost: 4,
-                action: {
-                    kind: "damage",
-                    amount: { counter: "friendlyMinionCount" },
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: { counter: "friendlyMinionCount" },
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -707,11 +789,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "buff",
-                    attack: 1,
-                    target: "allFriendlyMinions",
-                },
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: 1,
+                        target: "allFriendlyMinions",
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -728,11 +812,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "summon",
-                    definitionId: "ember-fledgling",
-                    count: 1,
-                },
+                actions: [
+                    {
+                        kind: "summon",
+                        definitionId: "ember-fledgling",
+                        count: 1,
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -747,11 +833,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 5,
-                    target: "chosen",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 5,
+                        target: "chosen",
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -766,22 +854,21 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "buff",
-                    attack: 2,
-                    health: 2,
-                    target: "allFriendlyMinions",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "buff",
-                    attack: 1,
-                    health: 2,
-                    target: "allFriendlyMinions",
-                    tribeFilter: "human",
-                },
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: 2,
+                        health: 2,
+                        target: "allFriendlyMinions",
+                    },
+                    {
+                        kind: "buff",
+                        attack: 1,
+                        health: 2,
+                        target: "allFriendlyMinions",
+                        tribeFilter: "human",
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -810,13 +897,15 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onMinionCast",
-                action: {
-                    kind: "buff",
-                    attack: 1,
-                    health: 1,
-                    target: "self",
-                    duration: 1,
-                },
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: 1,
+                        health: 1,
+                        target: "self",
+                        duration: 1,
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -826,23 +915,22 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Mass Restoration",
         cost: 6,
         type: "spell",
-        text: "Restore 6 Health to you. Restore 4 Health to all your minions.",
+        text: "Restore 6 Health to your hero. Restore 4 Health to all friendly minions.",
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "heal",
-                    amount: 6,
-                    target: "friendlyHero",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "heal",
-                    amount: 4,
-                    target: "allFriendlyMinions",
-                },
+                actions: [
+                    {
+                        kind: "heal",
+                        amount: 6,
+                        target: "friendlyHero",
+                    },
+                    {
+                        kind: "heal",
+                        amount: 4,
+                        target: "allFriendlyMinions",
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -853,7 +941,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Gravebind Priest",
         cost: 6,
         type: "minion",
-        text: "Anthem: Restore 5 Health to you.",
+        text: "Anthem: Restore 5 Health to your hero.",
         attack: 2,
         health: 4,
         keywords: ["taunt"],
@@ -861,11 +949,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "heal",
-                    amount: 5,
-                    target: "friendlyHero",
-                },
+                actions: [
+                    {
+                        kind: "heal",
+                        amount: 5,
+                        target: "friendlyHero",
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -879,19 +969,18 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 6,
-                    target: "allEnemyMinions",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 6,
-                    target: "allFriendlyMinions",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 6,
+                        target: "allEnemyMinions",
+                    },
+                    {
+                        kind: "damage",
+                        amount: 6,
+                        target: "allFriendlyMinions",
+                    },
+                ],
             },
         ],
         rarity: "rare",
@@ -908,18 +997,17 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 2,
-                    target: "allFriendlyMinions",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "draw",
-                    count: 3,
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 2,
+                        target: "allFriendlyMinions",
+                    },
+                    {
+                        kind: "draw",
+                        count: 3,
+                    },
+                ],
             },
         ],
         rarity: "exotic",
@@ -934,21 +1022,21 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "buff",
-                    attack: 3,
-                    health: 3,
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "silence",
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: 3,
+                        health: 3,
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                    {
+                        kind: "silence",
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                        reuseTarget: true,
+                    },
+                ],
             },
         ],
         rarity: "exotic",
@@ -959,19 +1047,21 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Soulgorger Hound",
         cost: 3,
         type: "minion",
-        text: "Mourn: Soulgorger Hound gains +1/+0.",
+        text: "Mourn: gains +1/+0.",
         attack: 1,
         health: 4,
         tribes: ["underworld"],
         effects: [
             {
                 trigger: "onMinionDeath",
-                action: {
-                    kind: "buff",
-                    attack: 1,
-                    health: 0,
-                    target: "self",
-                },
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: 1,
+                        health: 0,
+                        target: "self",
+                    },
+                ],
             },
         ],
         rarity: "exotic",
@@ -989,11 +1079,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: { counter: "allTribeMinionCount", tribe: "elemental" },
-                    target: "allEnemyMinions",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: { counter: "allTribeMinionCount", tribe: "elemental" },
+                        target: "allEnemyMinions",
+                    },
+                ],
             },
         ],
         rarity: "exotic",
@@ -1023,17 +1115,21 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onSpellCast",
-                action: {
-                    kind: "draw",
-                    count: 1,
-                },
+                actions: [
+                    {
+                        kind: "draw",
+                        count: 1,
+                    },
+                ],
             },
             {
                 trigger: "onMinionCast",
-                action: {
-                    kind: "draw",
-                    count: 1,
-                },
+                actions: [
+                    {
+                        kind: "draw",
+                        count: 1,
+                    },
+                ],
             },
         ],
         rarity: "exotic",
@@ -1064,19 +1160,23 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "summon",
-                    definitionId: "ember-fledgling",
-                    count: 1,
-                },
+                actions: [
+                    {
+                        kind: "summon",
+                        definitionId: "ember-fledgling",
+                        count: 1,
+                    },
+                ],
             },
             {
                 trigger: "onDeath",
-                action: {
-                    kind: "summon",
-                    definitionId: "ember-fledgling",
-                    count: 1,
-                },
+                actions: [
+                    {
+                        kind: "summon",
+                        definitionId: "ember-fledgling",
+                        count: 1,
+                    },
+                ],
             },
         ],
         rarity: "exotic",
@@ -1091,21 +1191,20 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 7,
-                    target: "allMinions",
-                    tribeFilter: "human",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 7,
-                    target: "allMinions",
-                    tribeFilter: "animal",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 7,
+                        target: "allMinions",
+                        tribeFilter: "human",
+                    },
+                    {
+                        kind: "damage",
+                        amount: 7,
+                        target: "allMinions",
+                        tribeFilter: "animal",
+                    },
+                ],
             },
         ],
         rarity: "exotic",
@@ -1116,22 +1215,21 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Genesis Wellspring",
         cost: 7,
         type: "spell",
-        text: "Restore 11 Health to you. Draw 2 cards.",
+        text: "Restore 12 Health to your hero. Draw 3 cards.",
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "heal",
-                    amount: 11,
-                    target: "friendlyHero",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "draw",
-                    count: 2,
-                },
+                actions: [
+                    {
+                        kind: "heal",
+                        amount: 12,
+                        target: "friendlyHero",
+                    },
+                    {
+                        kind: "draw",
+                        count: 3,
+                    },
+                ],
             },
         ],
         rarity: "exotic",
@@ -1148,11 +1246,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onSpellCast",
-                action: {
-                    kind: "silence",
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
+                actions: [
+                    {
+                        kind: "silence",
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                ],
             },
         ],
         rarity: "exotic",
@@ -1163,27 +1263,31 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Eternal Phoenix Sovereign",
         cost: 9,
         type: "minion",
-        text: "**Anthem:** your minions get +1/+2.\nWhen you cast a minion, all your minions restore 3 Health.",
+        text: "**Anthem:** your minions get +1/+2.\nWhen you cast a minion, all your minions gain 3 Health.",
         attack: 4,
         health: 5,
         tribes: ["elemental","animal"],
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "buff",
-                    attack: 1,
-                    health: 2,
-                    target: "allFriendlyMinions",
-                },
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: 1,
+                        health: 2,
+                        target: "allFriendlyMinions",
+                    },
+                ],
             },
             {
                 trigger: "onMinionCast",
-                action: {
-                    kind: "heal",
-                    amount: 3,
-                    target: "allFriendlyMinions",
-                },
+                actions: [
+                    {
+                        kind: "heal",
+                        amount: 3,
+                        target: "allFriendlyMinions",
+                    },
+                ],
             },
         ],
         rarity: "exotic",
@@ -1200,36 +1304,22 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "freeze",
-                    target: "allEnemyMinions",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 2,
-                    target: "chosen",
-                    chosenRestriction: "minion",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 2,
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                    {
+                        kind: "freeze",
+                        target: "allEnemyMinions",
+                    },
+                ],
             },
         ],
         rarity: "legendary",
         artVerticalAlign: "bottom",
-    },
-    "atraxalys-rampant-agony": {
-        id: "atraxalys-rampant-agony",
-        name: "Atraxalys, Rampant Agony",
-        cost: 7,
-        type: "minion",
-        text: "TODO",
-        attack: 6,
-        health: 6,
-        keywords: ["lifesteal"],
-        tribes: ["demon"],
-        rarity: "legendary",
-        artVerticalAlign: "top",
     },
     "disallowed-prince-halaard": {
         id: "disallowed-prince-halaard",
@@ -1244,11 +1334,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onDamaged",
-                action: {
-                    kind: "damage",
-                    amount: 1,
-                    target: "friendlyHero",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 1,
+                        target: "friendlyHero",
+                    },
+                ],
             },
         ],
         rarity: "legendary",
@@ -1267,22 +1359,37 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "endOfTurn",
-                action: {
-                    kind: "buff",
-                    attack: 0,
-                    health: 1,
-                    target: "allFriendlyMinions",
-                },
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: 0,
+                        health: 1,
+                        target: "allFriendlyMinions",
+                    },
+                ],
             },
         ],
         rarity: "legendary",
+    },
+    "atraxalys-rampant-agony": {
+        id: "atraxalys-rampant-agony",
+        name: "Atraxalys, Rampant Agony",
+        cost: 8,
+        type: "minion",
+        text: "TODO",
+        attack: 6,
+        health: 6,
+        keywords: ["lifesteal"],
+        tribes: ["demon"],
+        rarity: "legendary",
+        artVerticalAlign: "top",
     },
     "martheus-the-last-bastion": {
         id: "martheus-the-last-bastion",
         name: "Martheus, The Last Bastion",
         cost: 9,
         type: "minion",
-        text: "Vigil: Restore 4 Health to you.",
+        text: "Vigil: Restore 4 Health to your hero.",
         attack: 4,
         health: 9,
         keywords: ["taunt","divineShield"],
@@ -1290,11 +1397,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "startOfTurn",
-                action: {
-                    kind: "heal",
-                    amount: 4,
-                    target: "friendlyHero",
-                },
+                actions: [
+                    {
+                        kind: "heal",
+                        amount: 4,
+                        target: "friendlyHero",
+                    },
+                ],
             },
         ],
         rarity: "legendary",
@@ -1309,19 +1418,18 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onPlay",
-                action: {
-                    kind: "damage",
-                    amount: 5,
-                    target: "allMinions",
-                },
-            },
-            {
-                trigger: "onPlay",
-                action: {
-                    kind: "summon",
-                    definitionId: "vampiric-doomcaller",
-                    count: 1,
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 5,
+                        target: "allMinions",
+                    },
+                    {
+                        kind: "summon",
+                        definitionId: "vampiric-doomcaller",
+                        count: 1,
+                    },
+                ],
             },
         ],
         rarity: "legendary",
@@ -1334,18 +1442,20 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "The Hollow Sovereign",
         cost: 7,
         type: "minion",
-        text: "(10): Destroy all minions.",
+        text: "(9): Destroy all minions.",
         attack: 3,
         health: 8,
         keywords: ["veiled"],
         tribes: ["cosmic"],
         paidAbilities: [
             {
-                cost: 10,
-                action: {
-                    kind: "destroy",
-                    target: "allMinions",
-                },
+                cost: 9,
+                actions: [
+                    {
+                        kind: "destroy",
+                        target: "allMinions",
+                    },
+                ],
             },
         ],
         rarity: "mythical",
@@ -1356,7 +1466,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Thos, Reaper of Worlds",
         cost: 8,
         type: "minion",
-        text: "**Deathcry:**Deal 6 damage to the enemy player.\n**Momentum(1):** When Thos attacks, draw a card.",
+        text: "**Deathcry:** Deal 6 damage to the enemy hero.\n**Momentum(1):** When Thos attacks, draw a card.",
         attack: 7,
         health: 8,
         keywords: ["veiled"],
@@ -1364,18 +1474,22 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         effects: [
             {
                 trigger: "onDeath",
-                action: {
-                    kind: "damage",
-                    amount: 6,
-                    target: "enemyHero",
-                },
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 6,
+                        target: "enemyHero",
+                    },
+                ],
             },
             {
                 trigger: "onAttack",
-                action: {
-                    kind: "draw",
-                    count: 1,
-                },
+                actions: [
+                    {
+                        kind: "draw",
+                        count: 1,
+                    },
+                ],
                 condition: { type: "momentum", minCount: 1 },
             },
         ],

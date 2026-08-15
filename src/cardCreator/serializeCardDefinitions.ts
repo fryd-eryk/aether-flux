@@ -53,6 +53,7 @@ function serializeEffectAction(action: EffectAction, level: number): string {
             if (action.tribeFilter) {
                 lines.push(`${indent(level)}tribeFilter: ${JSON.stringify(action.tribeFilter)},`);
             }
+            if (action.reuseTarget) lines.push(`${indent(level)}reuseTarget: true,`);
             break;
         case 'draw':
             lines.push(`${indent(level)}count: ${serializeEffectValue(action.count)},`);
@@ -68,6 +69,7 @@ function serializeEffectAction(action: EffectAction, level: number): string {
                 lines.push(`${indent(level)}tribeFilter: ${JSON.stringify(action.tribeFilter)},`);
             }
             if (action.duration !== undefined) lines.push(`${indent(level)}duration: ${action.duration},`);
+            if (action.reuseTarget) lines.push(`${indent(level)}reuseTarget: true,`);
             break;
         case 'summon':
             lines.push(`${indent(level)}definitionId: ${JSON.stringify(action.definitionId)},`);
@@ -83,6 +85,7 @@ function serializeEffectAction(action: EffectAction, level: number): string {
             if (action.tribeFilter) {
                 lines.push(`${indent(level)}tribeFilter: ${JSON.stringify(action.tribeFilter)},`);
             }
+            if (action.reuseTarget) lines.push(`${indent(level)}reuseTarget: true,`);
             break;
         case 'grantKeyword':
             lines.push(`${indent(level)}keyword: ${JSON.stringify(action.keyword)},`);
@@ -94,18 +97,23 @@ function serializeEffectAction(action: EffectAction, level: number): string {
                 lines.push(`${indent(level)}tribeFilter: ${JSON.stringify(action.tribeFilter)},`);
             }
             if (action.duration !== undefined) lines.push(`${indent(level)}duration: ${action.duration},`);
+            if (action.reuseTarget) lines.push(`${indent(level)}reuseTarget: true,`);
             break;
     }
 
     return `{\n${lines.join('\n')}\n${indent(level - 1)}}`;
 }
 
+function serializeEffectActions(actions: EffectAction[], level: number): string {
+    const entries = actions.map((action) => `${indent(level + 1)}${serializeEffectAction(action, level + 2)}`).join(',\n');
+    return `[\n${entries},\n${indent(level)}]`;
+}
+
 function serializeEffect(effect: CardEffect, level: number): string {
-    const actionSrc = serializeEffectAction(effect.action, level + 2);
     const lines = [
         `${indent(level)}{`,
         `${indent(level + 1)}trigger: ${JSON.stringify(effect.trigger)},`,
-        `${indent(level + 1)}action: ${actionSrc},`,
+        `${indent(level + 1)}actions: ${serializeEffectActions(effect.actions, level + 1)},`,
     ];
     if (effect.condition) {
         lines.push(`${indent(level + 1)}condition: { type: "momentum", minCount: ${effect.condition.minCount} },`);
@@ -115,8 +123,12 @@ function serializeEffect(effect: CardEffect, level: number): string {
 }
 
 function serializePaidAbility(ability: PaidAbility, level: number): string {
-    const actionSrc = serializeEffectAction(ability.action, level + 2);
-    const lines = [`${indent(level)}{`, `${indent(level + 1)}cost: ${ability.cost},`, `${indent(level + 1)}action: ${actionSrc},`, `${indent(level)}}`];
+    const lines = [
+        `${indent(level)}{`,
+        `${indent(level + 1)}cost: ${ability.cost},`,
+        `${indent(level + 1)}actions: ${serializeEffectActions(ability.actions, level + 1)},`,
+        `${indent(level)}}`,
+    ];
     return lines.join('\n');
 }
 

@@ -59,7 +59,7 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                 onChange(next);
             }
         } else {
-            const { attack: _attack, health: _health, tribes: _tribes, paidAbilities: _paidAbilities, ...rest } = draft;
+            const { attack: _attack, health: _health, tribes: _tribes, paidAbilities: _paidAbilities, keywords: _keywords, ...rest } = draft;
             onChange({ ...rest, type });
         }
     }
@@ -238,21 +238,23 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                 </div>
             </section>
 
-            <section className={styles.formSection}>
-                <h3 className={styles.formSectionTitle}>Keywords</h3>
-                <div className={styles.checkboxGroup}>
-                    {KEYWORDS.map((keyword) => (
-                        <label key={keyword} className={styles.checkboxLabel}>
-                            <input
-                                type="checkbox"
-                                checked={(draft.keywords ?? []).includes(keyword)}
-                                onChange={(e) => toggleKeyword(keyword, e.target.checked)}
-                            />
-                            {KEYWORD_METADATA[keyword].label}
-                        </label>
-                    ))}
-                </div>
-            </section>
+            {draft.type !== 'spell' && (
+                <section className={styles.formSection}>
+                    <h3 className={styles.formSectionTitle}>Keywords</h3>
+                    <div className={styles.checkboxGroup}>
+                        {KEYWORDS.map((keyword) => (
+                            <label key={keyword} className={styles.checkboxLabel}>
+                                <input
+                                    type="checkbox"
+                                    checked={(draft.keywords ?? []).includes(keyword)}
+                                    onChange={(e) => toggleKeyword(keyword, e.target.checked)}
+                                />
+                                {KEYWORD_METADATA[keyword].label}
+                            </label>
+                        ))}
+                    </div>
+                </section>
+            )}
 
             {(draft.type === 'minion' || draft.type === 'token') && (
                 <section className={styles.formSection}>

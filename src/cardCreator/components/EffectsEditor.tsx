@@ -6,6 +6,18 @@ import { ACTION_KINDS, ActionFieldsEditor, defaultActionFor } from './ActionFiel
 
 const TRIGGERS = Object.keys(TRIGGER_METADATA) as EffectTrigger[];
 
+/** Per-index "is there an earlier real (non-reuseTarget) chosen action before this one" flag,
+ * for gating the "Same target as previous effect" checkbox — mirrors
+ * validateCardDefinition.ts's validateActions. */
+function canReuseTargetByIndex(actions: EffectAction[]): boolean[] {
+    let seenChosen = false;
+    return actions.map((action) => {
+        const canReuse = seenChosen;
+        if ('target' in action && action.target === 'chosen' && !action.reuseTarget) seenChosen = true;
+        return canReuse;
+    });
+}
+
 interface EffectsEditorProps {
     effects: CardEffect[];
     onChange: (effects: CardEffect[]) => void;
@@ -31,13 +43,38 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
     }
 
     function addEffect() {
-        onChange([...effects, { trigger: 'onPlay', action: defaultActionFor('damage') }]);
+        onChange([...effects, { trigger: 'onPlay', actions: [defaultActionFor('damage')] }]);
+    }
+
+    function updateAction(effectIndex: number, actionIndex: number, next: EffectAction) {
+        const effect = effects[effectIndex];
+        updateEffect(effectIndex, { ...effect, actions: effect.actions.map((a, i) => (i === actionIndex ? next : a)) });
+    }
+
+    function removeAction(effectIndex: number, actionIndex: number) {
+        const effect = effects[effectIndex];
+        updateEffect(effectIndex, { ...effect, actions: effect.actions.filter((_, i) => i !== actionIndex) });
+    }
+
+    function moveAction(effectIndex: number, actionIndex: number, delta: number) {
+        const effect = effects[effectIndex];
+        const target = actionIndex + delta;
+        if (target < 0 || target >= effect.actions.length) return;
+        const next = effect.actions.slice();
+        [next[actionIndex], next[target]] = [next[target], next[actionIndex]];
+        updateEffect(effectIndex, { ...effect, actions: next });
+    }
+
+    function addAction(effectIndex: number) {
+        const effect = effects[effectIndex];
+        updateEffect(effectIndex, { ...effect, actions: [...effect.actions, defaultActionFor('damage')] });
     }
 
     return (
         <div>
             {effects.map((effect, index) => {
                 const prefix = `effects.${index}`;
+                const canReuse = canReuseTargetByIndex(effect.actions);
 
                 return (
                     <div key={index} className={styles.effectRow}>
@@ -51,20 +88,6 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                 {TRIGGERS.map((trigger) => (
                                     <option key={trigger} value={trigger}>
                                         {TRIGGER_METADATA[trigger].label} ({trigger})
-                                    </option>
-                                ))}
-                            </select>
-                            <select
-                                className={styles.selectInput}
-                                style={{ width: 'auto' }}
-                                value={effect.action.kind}
-                                onChange={(e) =>
-                                    updateEffect(index, { ...effect, action: defaultActionFor(e.target.value as EffectAction['kind']) })
-                                }
-                            >
-                                {ACTION_KINDS.map((kind) => (
-                                    <option key={kind} value={kind}>
-                                        {kind}
                                     </option>
                                 ))}
                             </select>
@@ -116,13 +139,67 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                             </div>
                         </div>
 
-                        <ActionFieldsEditor
-                            action={effect.action}
-                            onChange={(action) => updateEffect(index, { ...effect, action })}
-                            errors={errors}
-                            prefix={prefix}
-                            allCards={allCards}
-                        />
+                        {effect.actions.map((action, actionIndex) => {
+                            const actionPrefix = `${prefix}.actions.${actionIndex}`;
+                            return (
+                                <div key={actionIndex} className={styles.actionRow}>
+                                    <div className={styles.actionRowHeader}>
+                                        <select
+                                            className={styles.selectInput}
+                                            style={{ width: 'auto' }}
+                                            value={action.kind}
+                                            onChange={(e) =>
+                                                updateAction(index, actionIndex, defaultActionFor(e.target.value as EffectAction['kind']))
+                                            }
+                                        >
+                                            {ACTION_KINDS.map((kind) => (
+                                                <option key={kind} value={kind}>
+                                                    {kind}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <div className={styles.effectRowButtons}>
+                                            <button
+                                                type="button"
+                                                className={styles.smallButton}
+                                                disabled={actionIndex === 0}
+                                                onClick={() => moveAction(index, actionIndex, -1)}
+                                            >
+                                                ↑
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={styles.smallButton}
+                                                disabled={actionIndex === effect.actions.length - 1}
+                                                onClick={() => moveAction(index, actionIndex, 1)}
+                                            >
+                                                ↓
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={styles.smallButton}
+                                                disabled={effect.actions.length <= 1}
+                                                onClick={() => removeAction(index, actionIndex)}
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <ActionFieldsEditor
+                                        action={action}
+                                        onChange={(next) => updateAction(index, actionIndex, next)}
+                                        errors={errors}
+                                        prefix={actionPrefix}
+                                        allCards={allCards}
+                                        canReuseTarget={canReuse[actionIndex]}
+                                    />
+                                </div>
+                            );
+                        })}
+
+                        <button type="button" className={styles.addActionButton} onClick={() => addAction(index)}>
+                            + Add effect line
+                        </button>
                     </div>
                 );
             })}

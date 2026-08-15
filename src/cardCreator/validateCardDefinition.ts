@@ -15,8 +15,24 @@ const INVALID_ID_CHARS = /["\n\r]/;
 /** Targets a `tribeFilter` can narrow — see EffectAction.tribeFilter in Card.ts. */
 const TRIBE_FILTERABLE_TARGETS = ['allMinions', 'allEnemyMinions', 'allFriendlyMinions'];
 
+/** Validates one actions[] list in traversal order, tracking whether an earlier action in the
+ * same list already resolved a real (non-reuseTarget) chosen target — reuseTarget on the very
+ * first chosen action has nothing to reuse (see TurnStateMachine.collectChosenRestrictions). */
+function validateActions(actions: EffectAction[], prefix: string, errors: FieldErrors): void {
+    let hasEarlierChosenTarget = false;
+    actions.forEach((action, index) => {
+        validateAction(action, `${prefix}.actions.${index}`, errors, hasEarlierChosenTarget);
+        if ('target' in action && action.target === 'chosen' && !('reuseTarget' in action && action.reuseTarget)) {
+            hasEarlierChosenTarget = true;
+        }
+    });
+}
+
 function validateEffect(effect: CardEffect, prefix: string, errors: FieldErrors): void {
-    validateAction(effect.action, prefix, errors);
+    if (effect.actions.length === 0) {
+        errors[`${prefix}.actions`] = 'Add at least one effect line.';
+    }
+    validateActions(effect.actions, prefix, errors);
     if (effect.condition && (!Number.isInteger(effect.condition.minCount) || effect.condition.minCount < 1)) {
         errors[`${prefix}.condition`] = 'Momentum count must be a positive integer.';
     }
@@ -26,7 +42,10 @@ function validatePaidAbility(ability: PaidAbility, prefix: string, errors: Field
     if (!Number.isInteger(ability.cost) || ability.cost < 1) {
         errors[`${prefix}.cost`] = 'Cost must be a positive integer.';
     }
-    validateAction(ability.action, prefix, errors);
+    if (ability.actions.length === 0) {
+        errors[`${prefix}.actions`] = 'Add at least one effect line.';
+    }
+    validateActions(ability.actions, prefix, errors);
 }
 
 /**
@@ -48,7 +67,17 @@ function validateEffectValue(value: EffectValue, prefix: string, field: string, 
     }
 }
 
-function validateAction(action: EffectAction, prefix: string, errors: FieldErrors): void {
+/** `hasEarlierChosenTarget`: whether an earlier action in the same actions[] list already
+ * resolved a real (non-reuseTarget) chosen target — see validateActions. */
+function validateAction(action: EffectAction, prefix: string, errors: FieldErrors, hasEarlierChosenTarget: boolean): void {
+    if ('reuseTarget' in action && action.reuseTarget) {
+        if (action.target !== 'chosen') {
+            errors[`${prefix}.reuseTarget`] = 'Only meaningful when target is "chosen".';
+        } else if (!hasEarlierChosenTarget) {
+            errors[`${prefix}.reuseTarget`] = 'No earlier chosen target in this block to reuse.';
+        }
+    }
+
     switch (action.kind) {
         case 'damage':
         case 'heal':
