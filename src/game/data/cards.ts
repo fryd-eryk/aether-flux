@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (22) ---
+    // --- Common rarity (23) ---
     "pocket-sand": {
         id: "pocket-sand",
         name: "Pocket Sand",
@@ -48,6 +48,18 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "bottom",
     },
+    "bramble-python": {
+        id: "bramble-python",
+        name: "Bramble Python",
+        cost: 1,
+        type: "minion",
+        text: "",
+        attack: 1,
+        health: 1,
+        keywords: ["venom"],
+        tribes: ["nature","animal"],
+        rarity: "common",
+    },
     "shieldbearer-of-faroria": {
         id: "shieldbearer-of-faroria",
         name: "Shieldbearer of Faroria",
@@ -90,7 +102,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Alms Cleric",
         cost: 2,
         type: "minion",
-        text: "**Anthem:** Restore 2 Health to your hero.",
+        text: "**Anthem:** Restore 2 Health to you.",
         attack: 1,
         health: 1,
         tribes: ["human"],
@@ -223,7 +235,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Infectious Imp",
         cost: 2,
         type: "minion",
-        text: "**Deathcry:** Deal 1 damage to the enemy hero.",
+        text: "**Deathcry:** Deal 1 damage to the enemy player.",
         attack: 1,
         health: 1,
         keywords: ["venom"],
@@ -289,7 +301,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Ashfang Assassin",
         cost: 3,
         type: "minion",
-        text: "Strike: Deal 1 damage to the enemy hero.",
+        text: "**Strike:** Deal 1 damage to the enemy player.",
         attack: 3,
         health: 1,
         tribes: ["human","underworld"],
@@ -426,7 +438,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Rare rarity (24) ---
+    // --- Rare rarity (23) ---
     "sprout-whelp": {
         id: "sprout-whelp",
         name: "Sprout Whelp",
@@ -450,18 +462,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
         artVerticalAlign: "bottom",
-    },
-    "bramble-python": {
-        id: "bramble-python",
-        name: "Bramble Python",
-        cost: 1,
-        type: "minion",
-        text: "",
-        attack: 1,
-        health: 1,
-        keywords: ["venom"],
-        tribes: ["nature","animal"],
-        rarity: "rare",
     },
     "celestial-chaser": {
         id: "celestial-chaser",
@@ -518,7 +518,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         tribes: ["nature","demon"],
         effects: [
             {
-                trigger: "onMinionDeath",
+                trigger: "onFriendlyMinionDeath",
                 actions: [
                     {
                         kind: "buff",
@@ -611,7 +611,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Sapping Leech",
         cost: 4,
         type: "minion",
-        text: "Vigil: Restore 1 Health to your hero and deal 1 damage to the enemy hero.",
+        text: "**Vigil:** Restore 1 Health to you and deal 1 damage to the enemy player.",
         attack: 1,
         health: 4,
         tribes: ["nature"],
@@ -633,6 +633,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "rare",
+        artVerticalAlign: "bottom",
     },
     "grave-warden": {
         id: "grave-warden",
@@ -663,7 +664,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Vampiric Doomcaller",
         cost: 4,
         type: "minion",
-        text: "**Anthem:** Deal 3 damage to the enemy hero.\n**Deathcry:** Deal 3 damage to you.",
+        text: "**Anthem:** Deal 3 damage to the enemy player.\n**Deathcry:** Deal 3 damage to you.",
         attack: 2,
         health: 3,
         keywords: ["lifesteal"],
@@ -896,7 +897,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         tribes: ["human","animal"],
         effects: [
             {
-                trigger: "onMinionCast",
+                trigger: "onFriendlyMinionCast",
                 actions: [
                     {
                         kind: "buff",
@@ -915,7 +916,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Mass Restoration",
         cost: 6,
         type: "spell",
-        text: "Restore 6 Health to your hero. Restore 4 Health to all friendly minions.",
+        text: "Restore 6 Health to you. Restore 4 Health to all minions you control.",
         effects: [
             {
                 trigger: "onPlay",
@@ -941,7 +942,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Gravebind Priest",
         cost: 6,
         type: "minion",
-        text: "Anthem: Restore 5 Health to your hero.",
+        text: "**Anthem:** Restore 5 Health to you.",
         attack: 2,
         health: 4,
         keywords: ["taunt"],
@@ -1053,7 +1054,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         tribes: ["underworld"],
         effects: [
             {
-                trigger: "onMinionDeath",
+                trigger: "onFriendlyMinionDeath",
                 actions: [
                     {
                         kind: "buff",
@@ -1097,9 +1098,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         cost: 5,
         type: "minion",
         text: "",
-        attack: 4,
+        attack: 3,
         health: 5,
-        keywords: ["taunt","divineShield"],
+        keywords: ["taunt","initiative"],
         tribes: ["human"],
         rarity: "exotic",
     },
@@ -1123,7 +1124,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 ],
             },
             {
-                trigger: "onMinionCast",
+                trigger: "onFriendlyMinionCast",
                 actions: [
                     {
                         kind: "draw",
@@ -1215,19 +1216,19 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Genesis Wellspring",
         cost: 7,
         type: "spell",
-        text: "Restore 12 Health to your hero. Draw 3 cards.",
+        text: "Restore 11 Health to you. Draw 2 cards.",
         effects: [
             {
                 trigger: "onPlay",
                 actions: [
                     {
                         kind: "heal",
-                        amount: 12,
+                        amount: 11,
                         target: "friendlyHero",
                     },
                     {
                         kind: "draw",
-                        count: 3,
+                        count: 2,
                     },
                 ],
             },
@@ -1280,7 +1281,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 ],
             },
             {
-                trigger: "onMinionCast",
+                trigger: "onFriendlyMinionCast",
                 actions: [
                     {
                         kind: "heal",
@@ -1389,9 +1390,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Martheus, The Last Bastion",
         cost: 9,
         type: "minion",
-        text: "Vigil: Restore 4 Health to your hero.",
+        text: "**Vigil:** Restore 3 Health to you.",
         attack: 4,
-        health: 9,
+        health: 8,
         keywords: ["taunt","divineShield"],
         tribes: ["human","holy"],
         effects: [
@@ -1466,7 +1467,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Thos, Reaper of Worlds",
         cost: 8,
         type: "minion",
-        text: "**Deathcry:** Deal 6 damage to the enemy hero.\n**Momentum(1):** When Thos attacks, draw a card.",
+        text: "**Deathcry:** Deal 6 damage to the enemy player.\n**Momentum(1):** When Thos attacks, draw a card.",
         attack: 7,
         health: 8,
         keywords: ["veiled"],
