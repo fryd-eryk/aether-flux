@@ -653,6 +653,13 @@ export class CardGame extends Scene
         if (action.kind === 'attack')
         {
             if (this.machine.state.phase === TurnPhase.AwaitingTarget) this.machine.selectTarget(action.targetId);
+            // The attacker's own onAttack effect(s) (e.g. Nythis's destroy) prompt for further
+            // target(s) right after — same guarded loop shape as the playCard/ability case below.
+            for (const targetId of action.chosenTargetIds ?? [])
+            {
+                if (this.machine.state.phase !== TurnPhase.AwaitingTarget) break;
+                this.machine.selectTarget(targetId);
+            }
             return;
         }
 

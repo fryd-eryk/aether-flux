@@ -37,6 +37,11 @@ export class TurnStateMachine {
      * far — see beginTargeting/collectChosenRestrictions. Reset on every beginTargeting call. */
     private pendingChosenQueue: (ChosenTargetRestriction | undefined)[] = [];
     private pendingChosenTargets: string[] = [];
+    /** For a pending 'attack' action only: undefined while the attack's own target (who Nythis
+     * hits) is still being chosen, then set once it is — distinguishing that fixed first step from
+     * any chosen-target onAttack steps (e.g. Nythis's destroy) that follow it. See
+     * currentPendingTarget/selectTarget. */
+    private pendingAttackTargetId?: string;
 
     constructor(initialState: GameState) {
         this.gameState = initialState;
@@ -149,7 +154,28 @@ export class TurnStateMachine {
         console.log('[TurnStateMachine] selectTarget', { targetId, pendingAction: this.pendingAction });
         const action = this.pendingAction;
         if (action.type === 'attack') {
-            this.executeAttack(action.attackerInstanceId, targetId);
+            if (this.pendingAttackTargetId === undefined) {
+                // Step 1: who Nythis (or any attacker) hits. If its onAttack effect(s) also need a
+                // chosen target (see collectAttackChosenRestrictions), stay in AwaitingTarget and
+                // advance to that step instead of resolving immediately.
+                this.pendingAttackTargetId = targetId;
+                if (this.pendingChosenQueue.length > 0) {
+                    this.gameState.pendingTarget = this.currentPendingTarget(action, this.gameState.activePlayer);
+                    this.setPhase(TurnPhase.AwaitingTarget);
+                    return;
+                }
+                this.executeAttack(action.attackerInstanceId, targetId);
+                return;
+            }
+
+            // Step 2+: the attacker's own chosen-target onAttack effect(s) (e.g. Nythis's destroy).
+            this.pendingChosenTargets.push(targetId);
+            if (this.pendingChosenTargets.length < this.pendingChosenQueue.length) {
+                this.gameState.pendingTarget = this.currentPendingTarget(action, this.gameState.activePlayer);
+                this.setPhase(TurnPhase.AwaitingTarget);
+                return;
+            }
+            this.executeAttack(action.attackerInstanceId, this.pendingAttackTargetId, this.pendingChosenTargets);
             return;
         }
 
@@ -180,6 +206,7 @@ export class TurnStateMachine {
         this.gameState.pendingTarget = undefined;
         this.pendingChosenQueue = [];
         this.pendingChosenTargets = [];
+        this.pendingAttackTargetId = undefined;
         // Only a card pulled out of hand (not an attacker choosing its target) gets the Scene's
         // held-at-spotlight treatment — see beginTargeting's matching emit below.
         if (pendingAction?.type === 'playCard') {
@@ -298,7 +325,7 @@ export class TurnStateMachine {
         this.finishResolving();
     }
 
-    private executeAttack(attackerInstanceId: string, targetId: string): void {
+    private executeAttack(attackerInstanceId: string, targetId: string, chosenTargetIds: string[] = []): void {
         const player = this.gameState.players[this.gameState.activePlayer];
         const attacker = player.board.find((c) => c.instanceId === attackerInstanceId);
         if (!attacker) return;
@@ -310,7 +337,7 @@ export class TurnStateMachine {
         // in dealDamage. Strike (onAttack) fires unconditionally here, before any damage resolves
         // either way, so it's unaffected by whether the hit lands or either side survives it.
         attacker.keywords.delete('veiled');
-        this.triggerEffects(attacker, 'onAttack', player.id);
+        this.triggerEffects(attacker, 'onAttack', player.id, { ids: chosenTargetIds, index: 0 });
 
         const defender = !this.isPlayerId(targetId) ? this.findMinion(targetId) : undefined;
         // Initiative (MTG's First Strike): the side that ALONE has it hits first, and the other
@@ -357,6 +384,7 @@ export class TurnStateMachine {
     private finishResolving(): void {
         this.pendingAction = undefined;
         this.gameState.pendingTarget = undefined;
+        this.pendingAttackTargetId = undefined;
         this.setPhase(TurnPhase.CheckState);
         if (this.checkWinCondition()) return;
         this.setPhase(TurnPhase.MainIdle);
@@ -423,7 +451,11 @@ export class TurnStateMachine {
     private beginTargeting(action: PendingAction, ownerId: PlayerId): void {
         this.pendingAction = action;
         this.pendingChosenTargets = [];
-        this.pendingChosenQueue = action.type === 'attack' ? [] : this.collectChosenRestrictions(action, ownerId);
+        this.pendingAttackTargetId = undefined;
+        this.pendingChosenQueue =
+            action.type === 'attack'
+                ? this.collectAttackChosenRestrictions(action.attackerInstanceId, ownerId)
+                : this.collectChosenRestrictions(action, ownerId);
         this.gameState.pendingTarget = this.currentPendingTarget(action, ownerId);
         // A card pulled out of hand gets held at the Scene's spotlight while the player picks a
         // target (see CardGame's targetBeginHandler) — an attacker choosing its target never left
@@ -441,11 +473,21 @@ export class TurnStateMachine {
      * the same play/ability (see selectTarget). */
     private currentPendingTarget(action: PendingAction, ownerId: PlayerId): PendingTarget {
         if (action.type === 'attack') {
+            const totalSteps = 1 + this.pendingChosenQueue.length;
+            if (this.pendingAttackTargetId === undefined) {
+                return {
+                    sourceInstanceId: action.attackerInstanceId,
+                    validTargetIds: this.computeAttackTargets(ownerId),
+                    step: 1,
+                    totalSteps,
+                };
+            }
+            const restriction = this.pendingChosenQueue[this.pendingChosenTargets.length];
             return {
                 sourceInstanceId: action.attackerInstanceId,
-                validTargetIds: this.computeAttackTargets(ownerId),
-                step: 1,
-                totalSteps: 1,
+                validTargetIds: this.computeValidTargetsForRestriction(restriction, ownerId),
+                step: 1 + this.pendingChosenTargets.length + 1,
+                totalSteps,
             };
         }
 
@@ -492,6 +534,21 @@ export class TurnStateMachine {
      * triggerEffects's matching cursor-advance-even-when-skipped comment). A `reuseTarget: true`
      * action is excluded entirely — it isn't its own prompt, it reads the nearest earlier action's
      * resolved id at execution time instead (see ChosenTargetCursor.last). */
+    /** Mirrors collectChosenRestrictions below but for an attacker's own `onAttack` effects (e.g.
+     * Nythis's "When Nythis attacks, destroy target minion") — one prompt per chosen-target
+     * onAttack action, in the traversal order executeAttack's ChosenTargetCursor will later
+     * consume them. A silenced attacker's onAttack effects never fire (see triggerEffects' guard),
+     * so nothing is collected — the player isn't prompted for a target that would go unused. */
+    private collectAttackChosenRestrictions(attackerInstanceId: string, ownerId: PlayerId): (ChosenTargetRestriction | undefined)[] {
+        const attacker = this.gameState.players[ownerId].board.find((c) => c.instanceId === attackerInstanceId);
+        if (!attacker || attacker.silenced) return [];
+        const definition = CARD_DEFINITIONS[attacker.definitionId];
+        const onAttackEffects = definition?.effects?.filter((e) => e.trigger === 'onAttack') ?? [];
+        const needsPrompt = (a: EffectAction): a is Extract<EffectAction, { target: TargetSelector }> =>
+            'target' in a && a.target === 'chosen' && !('reuseTarget' in a && a.reuseTarget);
+        return onAttackEffects.flatMap((e) => e.actions).filter(needsPrompt).map((a) => a.chosenRestriction);
+    }
+
     private collectChosenRestrictions(action: Exclude<PendingAction, { type: 'attack' }>, ownerId: PlayerId): (ChosenTargetRestriction | undefined)[] {
         const needsPrompt = (a: EffectAction): a is Extract<EffectAction, { target: TargetSelector }> =>
             'target' in a && a.target === 'chosen' && !('reuseTarget' in a && a.reuseTarget);

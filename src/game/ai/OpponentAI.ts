@@ -2,7 +2,7 @@ import { CARD_DEFINITIONS } from '../data/cards';
 import { canDeclareAttack, hasKeyword, tauntRestrictedTargets } from '../state/keywordRules';
 import type { PlayerId } from '../types/common';
 import type { GameState } from '../types/GameState';
-import { computePotentialFaceDamage, scoreAttack, scorePaidAbility, scorePlayCard } from './scoring';
+import { computePotentialFaceDamage, scoreAttack, scoreAttackTriggers, scorePaidAbility, scorePlayCard } from './scoring';
 import type { AIAction } from './types';
 
 const PASS_THRESHOLD = 0;
@@ -52,17 +52,22 @@ export function decideOpponentAction(state: GameState): AIAction | null {
     for (const attacker of ai.board) {
         if (!canDeclareAttack(attacker)) continue; // mirrors TurnStateMachine.declareAttack's own guard
 
+        // Fires unconditionally on declaring this attack, regardless of who it's aimed at (see
+        // TurnStateMachine.executeAttack) — a fixed addend per attacker, and its own chosen
+        // target(s) (e.g. Nythis's destroy pick) don't depend on the attack target either.
+        const { score: triggerScore, targetIds: chosenTargetIds } = scoreAttackTriggers(state, aiId, attacker, lethalAvailable);
+
         if (!tauntUp) {
-            const faceScore = scoreAttack(state, aiId, attacker, 'face', lethalAvailable);
+            const faceScore = scoreAttack(state, aiId, attacker, 'face', lethalAvailable) + triggerScore;
             if (!best || faceScore > best.score) {
-                best = { score: faceScore, action: { kind: 'attack', attackerInstanceId: attacker.instanceId, targetId: enemyId } };
+                best = { score: faceScore, action: { kind: 'attack', attackerInstanceId: attacker.instanceId, targetId: enemyId, chosenTargetIds } };
             }
         }
 
         for (const defender of legalDefenders) {
-            const score = scoreAttack(state, aiId, attacker, defender, lethalAvailable);
+            const score = scoreAttack(state, aiId, attacker, defender, lethalAvailable) + triggerScore;
             if (!best || score > best.score) {
-                best = { score, action: { kind: 'attack', attackerInstanceId: attacker.instanceId, targetId: defender.instanceId } };
+                best = { score, action: { kind: 'attack', attackerInstanceId: attacker.instanceId, targetId: defender.instanceId, chosenTargetIds } };
             }
         }
     }

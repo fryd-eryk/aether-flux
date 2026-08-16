@@ -740,6 +740,51 @@ function scoreGrantKeywordSpell(
     return best;
 }
 
+/**
+ * Scores + picks target(s) for `attacker`'s own `onAttack` effect(s) (e.g. Nythis's "When Nythis
+ * attacks, destroy target minion") — separate from scoreAttack's combat-trade math below, since
+ * these fire unconditionally on declaring the attack regardless of who's being attacked (see
+ * TurnStateMachine.executeAttack) and need their own target(s) picked the same way
+ * scorePlayCard/scorePaidAbility do for onPlay/ability actions. Callers add `.score` to the
+ * relevant scoreAttack result and thread `.targetIds` through as AIAction's `chosenTargetIds` —
+ * see OpponentAI.decideOpponentAction. A silenced attacker's onAttack effects never fire (see
+ * TurnStateMachine.triggerEffects' guard), so nothing is scored or targeted for one.
+ */
+export function scoreAttackTriggers(
+    state: GameState,
+    aiId: PlayerId,
+    attacker: CardInstance,
+    lethalAvailable: boolean
+): ScoredAction {
+    if (attacker.silenced) return { score: 0 };
+    const definition = CARD_DEFINITIONS[attacker.definitionId];
+    const onAttackEffects = definition?.effects?.filter((e) => e.trigger === 'onAttack') ?? [];
+
+    let score = 0;
+    const targetIds: string[] = [];
+    for (const effect of onAttackEffects) {
+        // Momentum-gated onAttack effects still need a real target picked up front (the state
+        // machine prompts for it regardless — see TurnStateMachine.collectAttackChosenRestrictions),
+        // but only count toward the score if the block will actually fire, mirroring scorePlayCard.
+        const live = momentumSatisfied(effect, state.players[aiId]);
+        for (const action of effect.actions) {
+            if ('target' in action && action.target === 'chosen') {
+                if ('reuseTarget' in action && action.reuseTarget) {
+                    if (live) score += estimateReuseTargetValue(action, state, aiId);
+                    continue;
+                }
+                const scored = scoreChosenTarget(state, aiId, action, lethalAvailable);
+                if (live) score += scored.score;
+                if (scored.targetId) targetIds.push(scored.targetId);
+            } else if (live) {
+                score += estimateEffectValue(action, state, aiId);
+            }
+        }
+    }
+
+    return { score, targetIds };
+}
+
 /** Scores attacking `target` (a specific enemy minion, or 'face' for the enemy hero) with `attacker`. */
 export function scoreAttack(
     state: GameState,

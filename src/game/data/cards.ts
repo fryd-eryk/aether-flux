@@ -1458,10 +1458,35 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "mythical",
         artVerticalAlign: "bottom",
     },
+    "nythis-god-of-sorrow-and-panic": {
+        id: "nythis-god-of-sorrow-and-panic",
+        name: "Nythis, God of Sorrow and Panic",
+        cost: 9,
+        type: "minion",
+        text: "When Nythis attacks, destroy target minion.",
+        attack: 7,
+        health: 7,
+        keywords: ["veiled"],
+        tribes: ["underworld"],
+        effects: [
+            {
+                trigger: "onAttack",
+                actions: [
+                    {
+                        kind: "destroy",
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                ],
+            },
+        ],
+        rarity: "mythical",
+        artVerticalAlign: "top",
+    },
     "theredas-farorias-last-hope": {
         id: "theredas-farorias-last-hope",
         name: "Theredas, Faroria's Last Hope",
-        cost: 9,
+        cost: 10,
         type: "minion",
         text: "**Curfew:** Restore 3 Health to you.\n**Deathcry:** Summon Theredas, the Plaguewoven.",
         attack: 4,
@@ -1492,31 +1517,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "mythical",
         artVerticalAlign: "bottom",
-    },
-    "nythis-god-of-sorrow-and-panic": {
-        id: "nythis-god-of-sorrow-and-panic",
-        name: "Nythis, God of Sorrow and Panic",
-        cost: 9,
-        type: "minion",
-        text: "When Nythis attacks, destroy target minion.",
-        attack: 7,
-        health: 7,
-        keywords: ["veiled"],
-        tribes: ["underworld"],
-        effects: [
-            {
-                trigger: "onAttack",
-                actions: [
-                    {
-                        kind: "destroy",
-                        target: "chosen",
-                        chosenRestriction: "minion",
-                    },
-                ],
-            },
-        ],
-        rarity: "mythical",
-        artVerticalAlign: "top",
     },
 
     // --- Tokens (not collectible — `type: "token"`, so deckGenerator.ts never draws them) ---
