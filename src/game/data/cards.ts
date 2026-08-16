@@ -69,7 +69,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 1,
         health: 2,
         keywords: ["taunt"],
-        tribes: ["human","holy"],
+        tribes: ["humanoid","holy"],
         rarity: "common",
         artVerticalAlign: "bottom",
     },
@@ -146,7 +146,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "**Anthem:** Draw a card.",
         attack: 1,
         health: 1,
-        tribes: ["human"],
+        tribes: ["humanoid"],
         effects: [
             {
                 trigger: "onPlay",
@@ -201,7 +201,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "**Anthem:** Restore 2 Health to you.",
         attack: 1,
         health: 1,
-        tribes: ["human"],
+        tribes: ["humanoid"],
         effects: [
             {
                 trigger: "onPlay",
@@ -293,7 +293,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "",
         attack: 3,
         health: 3,
-        tribes: ["human"],
+        tribes: ["humanoid"],
         rarity: "common",
     },
     "survivors-anthem": {
@@ -346,7 +346,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "**Strike:** Deal 1 damage to the enemy player.",
         attack: 3,
         health: 1,
-        tribes: ["human","underworld"],
+        tribes: ["humanoid","underworld"],
         effects: [
             {
                 trigger: "onAttack",
@@ -370,7 +370,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "**Anthem:** Restore 3 Health to target minion.",
         attack: 2,
         health: 3,
-        tribes: ["human","holy"],
+        tribes: ["humanoid","holy"],
         effects: [
             {
                 trigger: "onPlay",
@@ -409,7 +409,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 2,
         health: 5,
         keywords: ["taunt"],
-        tribes: ["human"],
+        tribes: ["humanoid"],
         rarity: "common",
         artVerticalAlign: "bottom",
     },
@@ -546,7 +546,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "**Deathcry:** Deal 2 damage to target minion or player.",
         attack: 1,
         health: 3,
-        tribes: ["human","demon"],
+        tribes: ["humanoid","demon"],
         effects: [
             {
                 trigger: "onDeath",
@@ -785,7 +785,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 3,
         health: 3,
         keywords: ["windfury"],
-        tribes: ["human","animal"],
+        tribes: ["humanoid","animal"],
         effects: [
             {
                 trigger: "onPlay",
@@ -808,7 +808,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "**Anthem:** summon a 1/2 Ember Fledgling.",
         attack: 3,
         health: 4,
-        tribes: ["human","elemental"],
+        tribes: ["humanoid","elemental"],
         effects: [
             {
                 trigger: "onPlay",
@@ -850,7 +850,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Warlord's Rally",
         cost: 5,
         type: "spell",
-        text: "All your minions get +2/+2. *Human* minions get  +3/+4 instead.",
+        text: "All your minions get +2/+2. *Humanoid* minions get  +3/+4 instead.",
         effects: [
             {
                 trigger: "onPlay",
@@ -866,7 +866,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                         attack: 1,
                         health: 2,
                         target: "allFriendlyMinions",
-                        tribeFilter: "human",
+                        tribeFilter: "humanoid",
                     },
                 ],
             },
@@ -893,7 +893,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 3,
         health: 5,
         keywords: ["windfury"],
-        tribes: ["human","animal"],
+        tribes: ["humanoid","animal"],
         effects: [
             {
                 trigger: "onFriendlyMinionCast",
@@ -945,7 +945,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 2,
         health: 4,
         keywords: ["taunt"],
-        tribes: ["human","holy"],
+        tribes: ["humanoid","holy"],
         effects: [
             {
                 trigger: "onPlay",
@@ -971,7 +971,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "top",
     },
 
-    // --- Exotic rarity (12) ---
+    // --- Exotic rarity (13) ---
     "blood-moon-ritual": {
         id: "blood-moon-ritual",
         name: "Blood Moon Ritual",
@@ -994,6 +994,18 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 ],
             },
         ],
+        rarity: "exotic",
+        artVerticalAlign: "top",
+    },
+    "crast-witness": {
+        id: "crast-witness",
+        name: "Crast Witness",
+        cost: 2,
+        type: "minion",
+        text: "",
+        attack: 1,
+        health: 1,
+        tribes: ["humanoid","animal"],
         rarity: "exotic",
         artVerticalAlign: "top",
     },
@@ -1031,9 +1043,10 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Soulgorger Hound",
         cost: 3,
         type: "minion",
-        text: "(3): Gains *Veiled* until the end of next turn.\n**Deathcry:** Deal X damage to target player, where X is the number of cards in your grave.",
+        text: "**Deathcry:** Deal X damage to target minion or player, where X is the number of cards in your grave.",
         attack: 2,
         health: 3,
+        keywords: ["veiled"],
         tribes: ["underworld"],
         effects: [
             {
@@ -1043,20 +1056,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                         kind: "damage",
                         amount: { counter: "friendlyGraveyardCount" },
                         target: "chosen",
-                        chosenRestriction: "hero",
-                    },
-                ],
-            },
-        ],
-        paidAbilities: [
-            {
-                cost: 1,
-                actions: [
-                    {
-                        kind: "grantKeyword",
-                        keyword: "veiled",
-                        target: "self",
-                        duration: 2,
                     },
                 ],
             },
@@ -1072,7 +1071,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "(4): Target minion gains *Charge* until end of turn.",
         attack: 1,
         health: 2,
-        tribes: ["human","elemental"],
+        tribes: ["humanoid","elemental"],
         paidAbilities: [
             {
                 cost: 4,
@@ -1099,7 +1098,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 3,
         health: 5,
         keywords: ["taunt","initiative"],
-        tribes: ["human"],
+        tribes: ["humanoid"],
         rarity: "exotic",
     },
     "fortunes-weaver": {
@@ -1186,7 +1185,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Hundred Days Storm",
         cost: 6,
         type: "spell",
-        text: "Deal 7 damage to all *Human *and *Animal *minions.",
+        text: "Deal 7 damage to all *Humanoid* and *Animal* minions.",
         effects: [
             {
                 trigger: "onPlay",
@@ -1195,7 +1194,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                         kind: "damage",
                         amount: 7,
                         target: "allMinions",
-                        tribeFilter: "human",
+                        tribeFilter: "humanoid",
                     },
                     {
                         kind: "damage",
@@ -1328,7 +1327,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 5,
         health: 4,
         keywords: ["windfury","initiative"],
-        tribes: ["human","animal"],
+        tribes: ["humanoid","animal"],
         effects: [
             {
                 trigger: "onDamaged",
@@ -1369,9 +1368,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "legendary",
     },
-    "atraxalys-rampant-agony": {
-        id: "atraxalys-rampant-agony",
-        name: "Atraxalys, Rampant Agony",
+    "fiend-warlord": {
+        id: "fiend-warlord",
+        name: "Fiend Warlord",
         cost: 8,
         type: "minion",
         text: "All your *Demon* get +2/+0.",
@@ -1489,7 +1488,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 4,
         health: 6,
         keywords: ["taunt","divineShield"],
-        tribes: ["human","holy"],
+        tribes: ["humanoid","holy"],
         effects: [
             {
                 trigger: "endOfTurn",

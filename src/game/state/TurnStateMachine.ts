@@ -35,6 +35,16 @@ type ChosenTargetCursor = { ids: string[]; index: number; last?: string };
  * target(s) rather than desyncing every other source's. */
 type PendingPrompt = { sourceInstanceId: string; action: Extract<EffectAction, { target: TargetSelector }> };
 
+/** What a suspended Tier-2 resolution generator yields when it hits a `target: 'chosen'` action
+ * with no answer already pre-walked into a ChosenTargetCursor — see resolveChosenTargetId,
+ * driveResolution. Tier-1 triggers (a card's own onPlay/ability/onAttack, and the board-wide
+ * Channel/Muster/Vigil/Curfew reactions) never yield one of these: their answers are always fully
+ * collected up front by collectPendingPrompts before resolution starts, so resolveChosenTargetId's
+ * fast (cursor-already-has-it) path always applies. onDeath/onDamaged/onFriendlyMinionDeath fire
+ * from inside sweepDeaths/dealDamage instead, where the full set of firing sources can only be
+ * discovered by resolving an earlier chosen target for real — hence the yield/resume mechanism. */
+type TargetRequest = { sourceInstanceId: string; action: Extract<EffectAction, { target: TargetSelector }>; validTargetIds: string[] };
+
 /**
  * Pure game-state driver, no Phaser dependency. A Scene forwards player input into
  * playCard/declareAttack/selectTarget/endTurn and listens on EventBus for the
@@ -57,6 +67,12 @@ export class TurnStateMachine {
      * any chosen-target onAttack steps (e.g. Nythis's destroy) that follow it. See
      * currentPendingTarget/selectTarget. */
     private pendingAttackTargetId?: string;
+    /** The one in-flight, paused Tier-2 resolution generator, if any — set only while an
+     * onDeath/onDamaged/onFriendlyMinionDeath trigger is suspended mid-cascade awaiting a chosen
+     * target that couldn't be pre-walked (see resolveChosenTargetId). Undefined the rest of the
+     * time, including throughout every Tier-1 (pendingPrompts-driven) targeting flow — selectTarget
+     * checks this first to decide which mechanism a click should resume. See driveResolution. */
+    private activeResolution?: Generator<TargetRequest, void, string>;
 
     constructor(initialState: GameState) {
         this.gameState = initialState;
@@ -102,7 +118,7 @@ export class TurnStateMachine {
         }
 
         console.log('[TurnStateMachine] playCard', { instanceId, definitionId: card.definitionId, playerId: player.id, cost: definition.cost, mana: player.mana });
-        this.executePlayCard(instanceId);
+        this.driveResolution(this.executePlayCard(instanceId));
     }
 
     declareAttack(attackerInstanceId: string): void {
@@ -153,16 +169,30 @@ export class TurnStateMachine {
         }
 
         console.log('[TurnStateMachine] activateAbility', { instanceId, abilityIndex, playerId: player.id, cost: ability.cost, mana: player.mana });
-        this.executeAbility(instanceId, abilityIndex);
+        this.driveResolution(this.executeAbility(instanceId, abilityIndex));
     }
 
     selectTarget(targetId: string): void {
-        if (this.gameState.phase !== TurnPhase.AwaitingTarget || !this.pendingAction) {
+        if (this.gameState.phase !== TurnPhase.AwaitingTarget) {
             console.log(`[TurnStateMachine] selectTarget rejected: not awaiting target (phase ${this.gameState.phase})`, { targetId });
             return;
         }
         if (!this.gameState.pendingTarget?.validTargetIds.includes(targetId)) {
             console.log('[TurnStateMachine] selectTarget rejected: not a valid target', { targetId, validTargetIds: this.gameState.pendingTarget?.validTargetIds });
+            return;
+        }
+
+        if (this.activeResolution) {
+            // A Tier-2 (onDeath/onDamaged/onFriendlyMinionDeath) prompt raised mid-cascade — resume
+            // the paused generator with this answer directly, bypassing the Tier-1 pendingAction/
+            // pendingPrompts machinery below entirely (this flow never used it — see beginTargeting).
+            console.log('[TurnStateMachine] selectTarget (resolution)', { targetId });
+            this.driveResolution(this.activeResolution, targetId);
+            return;
+        }
+
+        if (!this.pendingAction) {
+            console.log('[TurnStateMachine] selectTarget rejected: no pending action', { targetId });
             return;
         }
 
@@ -179,7 +209,7 @@ export class TurnStateMachine {
                     this.setPhase(TurnPhase.AwaitingTarget);
                     return;
                 }
-                this.executeAttack(action.attackerInstanceId, targetId);
+                this.driveResolution(this.executeAttack(action.attackerInstanceId, targetId));
                 return;
             }
 
@@ -190,7 +220,7 @@ export class TurnStateMachine {
                 this.setPhase(TurnPhase.AwaitingTarget);
                 return;
             }
-            this.executeAttack(action.attackerInstanceId, this.pendingAttackTargetId, this.buildCursorMap(this.pendingChosenTargets));
+            this.driveResolution(this.executeAttack(action.attackerInstanceId, this.pendingAttackTargetId, this.buildCursorMap(this.pendingChosenTargets)));
             return;
         }
 
@@ -207,13 +237,13 @@ export class TurnStateMachine {
 
         const cursors = this.buildCursorMap(this.pendingChosenTargets);
         if (action.type === 'playCard') {
-            this.executePlayCard(action.instanceId, cursors);
+            this.driveResolution(this.executePlayCard(action.instanceId, cursors));
         } else if (action.type === 'ability') {
-            this.executeAbility(action.instanceId, action.abilityIndex, cursors);
+            this.driveResolution(this.executeAbility(action.instanceId, action.abilityIndex, cursors));
         } else if (action.type === 'endTurn') {
-            this.executeEndTurn(cursors);
+            this.driveResolution(this.executeEndTurn(cursors));
         } else {
-            this.executeStartTurn(cursors);
+            this.driveResolution(this.executeStartTurn(cursors));
         }
     }
 
@@ -253,23 +283,27 @@ export class TurnStateMachine {
         }
 
         console.log('[TurnStateMachine] endTurn', { playerId: player.id, turnNumber: this.gameState.turnNumber });
-        this.executeEndTurn(new Map());
+        this.driveResolution(this.executeEndTurn(new Map()));
     }
 
     /** Curfew (endOfTurn) resolves here, once any of its own chosen targets are already in hand —
      * see endTurn. Ends by handing off to beginStartTurn for the new active player's own Vigil
-     * (startOfTurn) targeting phase, chained the same way. */
-    private executeEndTurn(cursors: Map<string, ChosenTargetCursor>): void {
+     * (startOfTurn) targeting phase, chained the same way. A generator (see driveResolution) since
+     * triggerBoardWide/sweepDeaths can now suspend mid-resolution for a Tier-2 chosen target — the
+     * plain `beginStartTurn` call at the tail is a nested, independent resolution of its own, not
+     * part of this generator's own yield* chain (see driveResolution's doc comment on why its
+     * `done` handling has to tolerate that). */
+    private *executeEndTurn(cursors: Map<string, ChosenTargetCursor>): Generator<TargetRequest, void, string> {
         const player = this.gameState.players[this.gameState.activePlayer];
         this.setPhase(TurnPhase.TurnEnd);
-        this.triggerBoardWide('endOfTurn', player.id, player.board, cursors);
+        yield* this.triggerBoardWide('endOfTurn', player.id, player.board, cursors);
         for (const card of player.board) {
             // A minion frozen on an earlier turn only reaches this point once its own controller's
             // turn (the one it was blocked for) is ending — see keywordRules.canDeclareAttack.
             card.frozen = false;
         }
         this.tickTemporaryEffects();
-        this.sweepDeaths();
+        yield* this.sweepDeaths();
         // Catch-all (see recalculateAuras' doc comment) — endOfTurn effects can change a counter
         // without any minion dying.
         this.recalculateAuras();
@@ -281,7 +315,7 @@ export class TurnStateMachine {
 
     // --- resolution ---------------------------------------------------------
 
-    private executePlayCard(instanceId: string, cursors: Map<string, ChosenTargetCursor> = new Map()): void {
+    private *executePlayCard(instanceId: string, cursors: Map<string, ChosenTargetCursor> = new Map()): Generator<TargetRequest, void, string> {
         const player = this.gameState.players[this.gameState.activePlayer];
         const card = player.hand.find((c) => c.instanceId === instanceId);
         if (!card) return;
@@ -308,24 +342,24 @@ export class TurnStateMachine {
         }
 
         this.setPhase(TurnPhase.Resolving);
-        this.triggerEffects(card, 'onPlay', player.id, cursors.get(instanceId));
+        yield* this.triggerEffects(card, 'onPlay', player.id, cursors.get(instanceId));
         // Counted after this card's own onPlay resolves (so a Momentum effect on the card itself
         // reads "how many were played before it"), but before Channel fires below (so a Channel
         // minion's own Momentum condition correctly counts this card as already played).
         player.cardsPlayedThisTurn += 1;
-        this.sweepDeaths();
+        yield* this.sweepDeaths();
         if (definition.type !== 'minion' && definition.type !== 'token') {
             // Channel (onSpellCast) — every minion on the caster's own board with a matching
             // effect reacts, distinct from the single-instance onPlay trigger just fired above.
-            this.triggerBoardWide('onSpellCast', player.id, player.board, cursors);
-            this.sweepDeaths();
+            yield* this.triggerBoardWide('onSpellCast', player.id, player.board, cursors);
+            yield* this.sweepDeaths();
         } else {
             // Muster (onFriendlyMinionCast) — the mirror image of Channel above, for casting a minion
             // instead of a spell. The played minion is already sitting in player.board by this
             // point (pushed above), so it's filtered out here — otherwise it would react to its
             // own cast, which is exactly what the single-instance onPlay trigger already covers.
-            this.triggerBoardWide('onFriendlyMinionCast', player.id, player.board.filter((c) => c.instanceId !== card.instanceId), cursors);
-            this.sweepDeaths();
+            yield* this.triggerBoardWide('onFriendlyMinionCast', player.id, player.board.filter((c) => c.instanceId !== card.instanceId), cursors);
+            yield* this.sweepDeaths();
         }
         // Catch-all: keeps any dynamic-counter aura (e.g. "+1/+1 per Demon you control") correct
         // even when this action changed a counter (hand/graveyard/deck size, hero health) without
@@ -340,7 +374,7 @@ export class TurnStateMachine {
      * target is still being chosen. Doesn't touch cardsPlayedThisTurn (not "playing a card", so it
      * shouldn't feed Momentum) and doesn't call triggerEffects (no onPlay/Channel/Muster — those
      * are for cards entering play, not an already-in-play minion's activated ability). */
-    private executeAbility(instanceId: string, abilityIndex: number, cursors: Map<string, ChosenTargetCursor> = new Map()): void {
+    private *executeAbility(instanceId: string, abilityIndex: number, cursors: Map<string, ChosenTargetCursor> = new Map()): Generator<TargetRequest, void, string> {
         const player = this.gameState.players[this.gameState.activePlayer];
         const card = player.board.find((c) => c.instanceId === instanceId);
         if (!card) return;
@@ -354,16 +388,16 @@ export class TurnStateMachine {
         this.setPhase(TurnPhase.Resolving);
         const cursor: ChosenTargetCursor = cursors.get(instanceId) ?? { ids: [], index: 0 };
         for (const action of ability.actions) {
-            const chosenTargetId = this.resolveChosenCursor(action, cursor);
-            this.applyEffectAction(action, player.id, card.instanceId, chosenTargetId);
+            const chosenTargetId = yield* this.resolveChosenTargetId(card.instanceId, action, player.id, cursor);
+            yield* this.applyEffectAction(action, player.id, card.instanceId, chosenTargetId);
         }
-        this.sweepDeaths();
+        yield* this.sweepDeaths();
         this.recalculateAuras();
         EventBus.emit('state:ability-activated', { instanceId, abilityIndex, playerId: player.id });
         this.finishResolving();
     }
 
-    private executeAttack(attackerInstanceId: string, targetId: string, cursors: Map<string, ChosenTargetCursor> = new Map()): void {
+    private *executeAttack(attackerInstanceId: string, targetId: string, cursors: Map<string, ChosenTargetCursor> = new Map()): Generator<TargetRequest, void, string> {
         const player = this.gameState.players[this.gameState.activePlayer];
         const attacker = player.board.find((c) => c.instanceId === attackerInstanceId);
         if (!attacker) return;
@@ -375,7 +409,7 @@ export class TurnStateMachine {
         // in dealDamage. Strike (onAttack) fires unconditionally here, before any damage resolves
         // either way, so it's unaffected by whether the hit lands or either side survives it.
         attacker.keywords.delete('veiled');
-        this.triggerEffects(attacker, 'onAttack', player.id, cursors.get(attackerInstanceId));
+        yield* this.triggerEffects(attacker, 'onAttack', player.id, cursors.get(attackerInstanceId));
 
         const defender = !this.isPlayerId(targetId) ? this.findMinion(targetId) : undefined;
         // Initiative (MTG's First Strike): the side that ALONE has it hits first, and the other
@@ -384,21 +418,21 @@ export class TurnStateMachine {
         const defenderStrikesFirst = !!defender && hasKeyword(defender.instance, 'initiative') && !hasKeyword(attacker, 'initiative');
 
         if (defenderStrikesFirst && defender) {
-            this.resolveCombatHit(defender.instance, defender.owner.id, attackerInstanceId);
+            yield* this.resolveCombatHit(defender.instance, defender.owner.id, attackerInstanceId);
             if ((attacker.currentHealth ?? 0) > 0) {
-                this.resolveCombatHit(attacker, player.id, targetId);
+                yield* this.resolveCombatHit(attacker, player.id, targetId);
             }
         } else {
-            this.resolveCombatHit(attacker, player.id, targetId);
+            yield* this.resolveCombatHit(attacker, player.id, targetId);
             if (defender) {
                 const attackerWinsInitiative = hasKeyword(attacker, 'initiative') && !hasKeyword(defender.instance, 'initiative');
                 if (!attackerWinsInitiative || (defender.instance.currentHealth ?? 0) > 0) {
-                    this.resolveCombatHit(defender.instance, defender.owner.id, attackerInstanceId);
+                    yield* this.resolveCombatHit(defender.instance, defender.owner.id, attackerInstanceId);
                 }
             }
         }
 
-        this.sweepDeaths();
+        yield* this.sweepDeaths();
         // Catch-all (see recalculateAuras' doc comment) — combat can change hero health without
         // any minion dying, which sweepDeaths' own internal call wouldn't otherwise catch.
         this.recalculateAuras();
@@ -409,8 +443,8 @@ export class TurnStateMachine {
     /** One side's combat swing (attacker's hit or defender's return hit) plus its Lifesteal/Venom
      * follow-ups — factored out so Initiative can reorder or skip a side's hit in executeAttack
      * without duplicating this logic. */
-    private resolveCombatHit(source: CardInstance, sourceOwnerId: PlayerId, targetId: string): void {
-        const damageDealt = this.dealDamage(targetId, source.currentAttack ?? 0);
+    private *resolveCombatHit(source: CardInstance, sourceOwnerId: PlayerId, targetId: string): Generator<TargetRequest, void, string> {
+        const damageDealt = yield* this.dealDamage(targetId, source.currentAttack ?? 0);
         if (damageDealt > 0 && hasKeyword(source, 'lifesteal')) {
             this.heal(sourceOwnerId, damageDealt);
         }
@@ -453,16 +487,16 @@ export class TurnStateMachine {
             return;
         }
 
-        this.executeStartTurn(new Map());
+        this.driveResolution(this.executeStartTurn(new Map()));
     }
 
     /** Vigil (startOfTurn) resolves here, once any of its own chosen targets are already in hand —
      * see beginStartTurn. Not cancellable (see PendingTarget.cancellable) — by this point mana has
      * already refreshed and a card's already been drawn for the turn, so there's no clean "undo". */
-    private executeStartTurn(cursors: Map<string, ChosenTargetCursor>): void {
+    private *executeStartTurn(cursors: Map<string, ChosenTargetCursor>): Generator<TargetRequest, void, string> {
         const player = this.gameState.players[this.gameState.activePlayer];
-        this.triggerBoardWide('startOfTurn', player.id, player.board, cursors);
-        this.sweepDeaths();
+        yield* this.triggerBoardWide('startOfTurn', player.id, player.board, cursors);
+        yield* this.sweepDeaths();
         // Catch-all — a startOfTurn effect (e.g. hero damage/heal) can change a counter an aura's
         // magnitude depends on without any minion dying.
         this.recalculateAuras();
@@ -666,13 +700,18 @@ export class TurnStateMachine {
 
     // --- effects ---------------------------------------------------------------
 
-    private triggerEffects(instance: CardInstance, trigger: EffectTrigger, ownerId: PlayerId, cursor?: ChosenTargetCursor): void {
+    /** A generator (see driveResolution) so a `target: 'chosen'` action with no pre-walked answer
+     * (always true for onDeath/onDamaged/onFriendlyMinionDeath — see resolveChosenTargetId) can
+     * suspend mid-block for a real one. Defaults `cursor` to a fresh, empty one for exactly that
+     * case — every Tier-1 call site already passes its own pre-populated cursor. */
+    private *triggerEffects(instance: CardInstance, trigger: EffectTrigger, ownerId: PlayerId, cursor?: ChosenTargetCursor): Generator<TargetRequest, void, string> {
         // Silence permanently suppresses all of this instance's own effects, Deathcry included —
         // one guard here covers every trigger dispatch site, current and future.
         if (instance.silenced) return;
         const definition = CARD_DEFINITIONS[instance.definitionId];
         const effects = definition?.effects?.filter((e) => e.trigger === trigger) ?? [];
         const cardsPlayedThisTurn = this.gameState.players[ownerId].cardsPlayedThisTurn;
+        const activeCursor: ChosenTargetCursor = cursor ?? { ids: [], index: 0 };
         for (const effect of effects) {
             // Momentum(N): skip this effect's actions unless at least N cards were already played
             // by its owner earlier this turn — a single choke point, same pattern as the silenced
@@ -683,21 +722,40 @@ export class TurnStateMachine {
                 // the cursor must still advance (for a real, non-reuseTarget chosen action) here even
                 // when this block is skipped below — otherwise every chosen action after a skipped
                 // Momentum block would silently consume the wrong id.
-                const chosenTargetId = this.resolveChosenCursor(action, cursor);
+                const chosenTargetId = yield* this.resolveChosenTargetId(instance.instanceId, action, ownerId, activeCursor);
                 if (!satisfied) continue;
-                this.applyEffectAction(action, ownerId, instance.instanceId, chosenTargetId);
+                yield* this.applyEffectAction(action, ownerId, instance.instanceId, chosenTargetId);
             }
         }
     }
 
-    /** Resolves (and, for a fresh non-reuseTarget action, advances) the chosen-target cursor for
-     * one action — shared by triggerEffects and executeAbility so both walk actions[] the same
-     * way. Returns undefined for a non-chosen action or when there's no cursor (board-wide
-     * triggers never prompt for a target). */
-    private resolveChosenCursor(action: EffectAction, cursor?: ChosenTargetCursor): string | undefined {
-        if (!cursor || !('target' in action) || action.target !== 'chosen') return undefined;
+    /** Resolves (and, for a fresh non-reuseTarget action, advances) `cursor` for one action —
+     * shared by triggerEffects and executeAbility so both walk actions[] the same way, and unified
+     * across Tier-1 and Tier-2 triggers alike. `cursor.ids`/`index` already fully populated
+     * (Tier-1, pre-walked via collectPendingPrompts/buildCursorMap before this call chain started)
+     * means the fast path below consumes the next id synchronously without ever yielding, exactly
+     * as before Tier-2 existed. A chosen-target action with nothing left pre-walked (always true
+     * for Tier-2 — onDeath/onDamaged/onFriendlyMinionDeath fire from inside sweepDeaths/dealDamage,
+     * whose firing set can't be known ahead of resolution) computes valid targets fresh against the
+     * live board and `yield`s a TargetRequest instead, resuming with the real answer once
+     * driveResolution/selectTarget deliver it — same graceful "no legal targets" no-op as today if
+     * none exist. Either path writes through the same cursor object, so `reuseTarget: true` actions
+     * read `cursor.last` correctly regardless of which path produced it. */
+    private *resolveChosenTargetId(sourceInstanceId: string, action: EffectAction, ownerId: PlayerId, cursor: ChosenTargetCursor): Generator<TargetRequest, string | undefined, string> {
+        if (!('target' in action) || action.target !== 'chosen') return undefined;
         if ('reuseTarget' in action && action.reuseTarget) return cursor.last;
-        const chosenTargetId = cursor.ids[cursor.index++];
+
+        if (cursor.index < cursor.ids.length) {
+            const chosenTargetId = cursor.ids[cursor.index++];
+            cursor.last = chosenTargetId;
+            return chosenTargetId;
+        }
+
+        const validTargetIds = this.computeValidTargetsForRestriction(action.chosenRestriction, ownerId);
+        if (validTargetIds.length === 0) return undefined;
+        const chosenTargetId: string = yield { sourceInstanceId, action, validTargetIds };
+        cursor.ids.push(chosenTargetId);
+        cursor.index++;
         cursor.last = chosenTargetId;
         return chosenTargetId;
     }
@@ -706,15 +764,22 @@ export class TurnStateMachine {
      * each looking up its own cursor (if any) from `cursors` by instanceId — the shared shape for
      * board-wide triggers (Channel/onSpellCast, Muster/onFriendlyMinionCast, Vigil/startOfTurn,
      * Curfew/endOfTurn, and Mourn/onFriendlyMinionDeath) that react to another card's event rather
-     * than their own. Omitting `cursors` (as sweepDeaths' Mourn call still does — the deferred
-     * Tier-2 case) means every chosen action silently no-ops, same as today. */
-    private triggerBoardWide(trigger: EffectTrigger, ownerId: PlayerId, board: CardInstance[], cursors?: Map<string, ChosenTargetCursor>): void {
-        for (const card of board) {
-            this.triggerEffects(card, trigger, ownerId, cursors?.get(card.instanceId));
+     * than their own. `board` is only used to snapshot which instance ids to walk — each one is
+     * re-looked-up fresh via findMinion right before firing, so a source that died from an
+     * *earlier* prompt's own resolution during this same walk (Tier-2) or a same-cascade sweep
+     * (Tier-1's documented "invalidated pre-walked source" edge case) is correctly skipped rather
+     * than firing against stale data. Omitting `cursors` (as sweepDeaths' onDeath/
+     * onFriendlyMinionDeath calls do) routes every chosen action through resolveChosenTargetId's
+     * live-prompt path instead of silently no-op-ing, per this trigger's Tier-2 wiring. */
+    private *triggerBoardWide(trigger: EffectTrigger, ownerId: PlayerId, board: CardInstance[], cursors?: Map<string, ChosenTargetCursor>): Generator<TargetRequest, void, string> {
+        for (const instanceId of board.map((c) => c.instanceId)) {
+            const instance = this.findMinion(instanceId)?.instance;
+            if (!instance) continue;
+            yield* this.triggerEffects(instance, trigger, ownerId, cursors?.get(instance.instanceId));
         }
     }
 
-    private applyEffectAction(action: EffectAction, ownerId: PlayerId, sourceId: string, chosenTargetId?: string): void {
+    private *applyEffectAction(action: EffectAction, ownerId: PlayerId, sourceId: string, chosenTargetId?: string): Generator<TargetRequest, void, string> {
         switch (action.kind) {
             case 'damage':
             case 'heal': {
@@ -725,7 +790,7 @@ export class TurnStateMachine {
                 const amount = Math.max(0, resolveEffectValue(action.amount, ownerId, this.gameState));
                 const targetIds = this.resolveTargetIds(action.target, ownerId, sourceId, chosenTargetId, action.tribeFilter);
                 for (const targetId of targetIds) {
-                    if (action.kind === 'damage') this.dealDamage(targetId, amount);
+                    if (action.kind === 'damage') yield* this.dealDamage(targetId, amount);
                     else this.heal(targetId, amount);
                 }
                 break;
@@ -825,8 +890,10 @@ export class TurnStateMachine {
         player.graveyard.push(card);
     }
 
-    /** Returns the amount of damage actually applied (0 if absorbed by Divine Shield), so callers (e.g. Lifesteal) can react to what really landed. */
-    private dealDamage(targetId: string, amount: number): number {
+    /** Returns the amount of damage actually applied (0 if absorbed by Divine Shield), so callers
+     * (e.g. Lifesteal) can react to what really landed. A generator (see driveResolution) since
+     * the Wound (onDamaged) trigger it fires can suspend for a chosen target. */
+    private *dealDamage(targetId: string, amount: number): Generator<TargetRequest, number, string> {
         if (this.isPlayerId(targetId)) {
             const player = this.gameState.players[targetId];
             const before = player.health;
@@ -848,7 +915,7 @@ export class TurnStateMachine {
         // this minion to sweepDeaths — independent of any follow-up like Venom retroactively
         // killing the same minion afterward (see executeAttack).
         if (amount > 0) {
-            this.triggerEffects(found.instance, 'onDamaged', found.owner.id);
+            yield* this.triggerEffects(found.instance, 'onDamaged', found.owner.id);
             EventBus.emit('state:damaged', { targetId });
         }
         return amount;
@@ -1033,8 +1100,12 @@ export class TurnStateMachine {
     /** Moves dead minions to the graveyard, fires their onDeath triggers, and fires Mourn
      * (onFriendlyMinionDeath) on each surviving friendly minion per death. Repeats until a pass produces
      * no new deaths — Mourn can itself deal damage and kill further minions, so a single pass is
-     * no longer sufficient now that Mourn exists (bounded: board size is finite, nothing revives). */
-    private sweepDeaths(): void {
+     * no longer sufficient now that Mourn exists (bounded: board size is finite, nothing revives).
+     * A generator (see driveResolution) since a chosen-target Deathcry/Mourn can suspend for a real
+     * target — resuming picks the `while`/inner `for` loop back up exactly where it paused, and the
+     * already-computed `dead` array for that pass stays valid across the pause (it was captured
+     * before any trigger fired, from cards already removed from `player.board`). */
+    private *sweepDeaths(): Generator<TargetRequest, void, string> {
         let sweptAny = true;
         while (sweptAny) {
             sweptAny = false;
@@ -1048,8 +1119,8 @@ export class TurnStateMachine {
                     console.log('[TurnStateMachine] card died', { instanceId: card.instanceId, definitionId: card.definitionId, ownerId: player.id });
                     this.moveToGraveyard(card, player);
                     EventBus.emit('state:card-died', { instanceId: card.instanceId, playerId: player.id });
-                    this.triggerEffects(card, 'onDeath', player.id);
-                    this.triggerBoardWide('onFriendlyMinionDeath', player.id, player.board);
+                    yield* this.triggerEffects(card, 'onDeath', player.id);
+                    yield* this.triggerBoardWide('onFriendlyMinionDeath', player.id, player.board);
                 }
             }
         }
@@ -1070,6 +1141,37 @@ export class TurnStateMachine {
     }
 
     // --- helpers ---------------------------------------------------------------
+
+    /** Advances a resolution generator (an executeX call, once entered — see the driveResolution
+     * call sites in playCard/activateAbility/endTurn/beginStartTurn/selectTarget) to its next
+     * suspension point or completion. `resumeValue` is the just-clicked target id when resuming a
+     * paused Tier-2 prompt (see selectTarget); omitted for the initial call that starts a fresh
+     * generator running. A generator that finishes (`done: true`) has already run its own tail
+     * (recalculateAuras/checkWin/setPhase/finishResolving) exactly where today's code always has —
+     * this method only owns the suspend/resume handshake, not any resolution logic itself.
+     *
+     * The `this.activeResolution === gen` check on completion (rather than unconditionally
+     * clearing) matters for one specific case: executeEndTurn's generator body ends by plainly
+     * calling `beginStartTurn`, which — for the new active player's own Vigil — may itself drive a
+     * *second*, independent `executeStartTurn` generator via a nested driveResolution call, all
+     * before the outer executeEndTurn generator's own `.next()` call (still in progress here)
+     * returns `done: true`. If that inner call suspended (its own Tier-2 prompt), `activeResolution`
+     * already correctly points at the inner generator by the time control returns here — the
+     * identity check stops the outer completion from clobbering it. If the inner call didn't
+     * suspend (no Tier-2 prompt, or it routed into the Tier-1 pendingPrompts/beginTargeting path
+     * instead, which never touches `activeResolution` at all), `activeResolution` still correctly
+     * equals `gen`, so the outer completion clears it as normal. */
+    private driveResolution(gen: Generator<TargetRequest, void, string>, resumeValue?: string): void {
+        const result = resumeValue !== undefined ? gen.next(resumeValue) : gen.next();
+        if (result.done) {
+            if (this.activeResolution === gen) this.activeResolution = undefined;
+            return;
+        }
+        this.activeResolution = gen;
+        const { sourceInstanceId, action, validTargetIds } = result.value;
+        this.gameState.pendingTarget = { sourceInstanceId, validTargetIds, action, cancellable: false, step: 1, totalSteps: 1 };
+        this.setPhase(TurnPhase.AwaitingTarget);
+    }
 
     private setPhase(phase: TurnPhase): void {
         this.gameState.phase = phase;

@@ -4,7 +4,7 @@ import type { Tribe } from "../types/Card";
  * which is pure game logic. Adding a tribe: add the literal to Tribe (types/Card.ts) and an entry here; 
  * nothing else needs to change to make it choosable/renderable. */
 export const TRIBE_METADATA: Record<Tribe, { label: string }> = {
-    human: { label: "Human" },
+    humanoid: { label: "Humanoid" },
     elemental: { label: "Elemental" },
     nature: { label: "Nature" },
     animal: { label: "Animal" },
