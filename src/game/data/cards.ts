@@ -1002,10 +1002,21 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Crast Witness",
         cost: 2,
         type: "minion",
-        text: "",
-        attack: 1,
-        health: 1,
+        text: "**Anthem:** draw X cards, where X is half the number of cards in the opponent's hand.",
+        attack: 2,
+        health: 2,
         tribes: ["humanoid","animal"],
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "draw",
+                        count: { counter: "enemyHandCount", multiplier: 0.5 },
+                    },
+                ],
+            },
+        ],
         rarity: "exotic",
         artVerticalAlign: "top",
     },
