@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (23) ---
+    // --- Common rarity (22) ---
     "pocket-sand": {
         id: "pocket-sand",
         name: "Pocket Sand",
@@ -192,30 +192,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         tribes: ["underworld"],
         rarity: "common",
         artVerticalAlign: "bottom",
-    },
-    "infectious-imp": {
-        id: "infectious-imp",
-        name: "Infectious Imp",
-        cost: 2,
-        type: "minion",
-        text: "**Deathcry:** Deal 1 damage to the enemy player.",
-        attack: 1,
-        health: 1,
-        keywords: ["venom"],
-        tribes: ["demon"],
-        effects: [
-            {
-                trigger: "onDeath",
-                actions: [
-                    {
-                        kind: "damage",
-                        amount: 1,
-                        target: "enemyHero",
-                    },
-                ],
-            },
-        ],
-        rarity: "common",
     },
     "townfolk-helper": {
         id: "townfolk-helper",
@@ -438,7 +414,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Rare rarity (23) ---
+    // --- Rare rarity (24) ---
     "whelp-of-eloki-woods": {
         id: "whelp-of-eloki-woods",
         name: "Whelp of Eloki Woods",
@@ -462,6 +438,30 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
         artVerticalAlign: "bottom",
+    },
+    "infectious-imp": {
+        id: "infectious-imp",
+        name: "Infectious Imp",
+        cost: 2,
+        type: "minion",
+        text: "**Deathcry:** Deal 1 damage to the enemy player.",
+        attack: 1,
+        health: 1,
+        keywords: ["venom"],
+        tribes: ["demon"],
+        effects: [
+            {
+                trigger: "onDeath",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 1,
+                        target: "enemyHero",
+                    },
+                ],
+            },
+        ],
+        rarity: "rare",
     },
     "celestial-chaser": {
         id: "celestial-chaser",
@@ -543,7 +543,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Mind-lost Cultist",
         cost: 3,
         type: "minion",
-        text: "**Deathcry:** Deal 2 damage to the enemy player.",
+        text: "**Deathcry:** Deal 2 damage to target minion or player.",
         attack: 1,
         health: 3,
         tribes: ["human","demon"],
@@ -554,29 +554,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     {
                         kind: "damage",
                         amount: 2,
-                        target: "enemyHero",
-                    },
-                ],
-            },
-        ],
-        rarity: "rare",
-        artVerticalAlign: "bottom",
-    },
-    "dark-star-spear": {
-        id: "dark-star-spear",
-        name: "Dark Star Spear",
-        cost: 3,
-        type: "spell",
-        text: "Deal X damage to a minion, where X is the number of *Cosmic* minions.",
-        effects: [
-            {
-                trigger: "onPlay",
-                actions: [
-                    {
-                        kind: "damage",
-                        amount: { counter: "allTribeMinionCount", tribe: "cosmic" },
                         target: "chosen",
-                        chosenRestriction: "minion",
                     },
                 ],
             },
@@ -777,12 +755,33 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
     },
+    "elemental-spray": {
+        id: "elemental-spray",
+        name: "Elemental Spray",
+        cost: 4,
+        type: "spell",
+        text: "Deal X damage to a minion, where X is the number of *Elemental* minions.",
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: { counter: "allTribeMinionCount", tribe: "elemental" },
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                ],
+            },
+        ],
+        rarity: "rare",
+    },
     "squall-falconer": {
         id: "squall-falconer",
         name: "Squall Falconer",
         cost: 5,
         type: "minion",
-        text: "Anthem: Give your minions +1/+0.",
+        text: "**Anthem:** Give your minions +1/+0.",
         attack: 3,
         health: 3,
         keywords: ["windfury"],
@@ -879,7 +878,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Duskbound Reaver",
         cost: 6,
         type: "minion",
-        text: "(3): Deal 2 damage to you, target minion gets -1/-1.",
+        text: "(3): Target minion gets -1/-1. Deal 2 damage to you. ",
         attack: 5,
         health: 5,
         tribes: ["underworld","demon"],
@@ -891,8 +890,8 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         cost: 6,
         type: "minion",
         text: "**Muster:** Windroc Sky-Marshal gains +1/+1 until end of turn.",
-        attack: 2,
-        health: 4,
+        attack: 3,
+        health: 5,
         keywords: ["windfury"],
         tribes: ["human","animal"],
         effects: [
@@ -960,30 +959,14 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "rare",
+        artVerticalAlign: "top",
     },
     "city-wide-riots": {
         id: "city-wide-riots",
         name: "City-wide Riots",
         cost: 6,
         type: "spell",
-        text: "Deal 6 damage to all minions.",
-        effects: [
-            {
-                trigger: "onPlay",
-                actions: [
-                    {
-                        kind: "damage",
-                        amount: 6,
-                        target: "allEnemyMinions",
-                    },
-                    {
-                        kind: "damage",
-                        amount: 6,
-                        target: "allFriendlyMinions",
-                    },
-                ],
-            },
-        ],
+        text: "TODO",
         rarity: "rare",
         artVerticalAlign: "top",
     },
@@ -1048,19 +1031,32 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Soulgorger Hound",
         cost: 3,
         type: "minion",
-        text: "Mourn: gains +1/+0.",
-        attack: 1,
-        health: 4,
+        text: "(3): Gains *Veiled* until the end of next turn.\n**Deathcry:** Deal X damage to target player, where X is the number of cards in your grave.",
+        attack: 2,
+        health: 3,
         tribes: ["underworld"],
         effects: [
             {
-                trigger: "onFriendlyMinionDeath",
+                trigger: "onDeath",
                 actions: [
                     {
-                        kind: "buff",
-                        attack: 1,
-                        health: 0,
+                        kind: "damage",
+                        amount: { counter: "friendlyGraveyardCount" },
+                        target: "chosen",
+                        chosenRestriction: "hero",
+                    },
+                ],
+            },
+        ],
+        paidAbilities: [
+            {
+                cost: 1,
+                actions: [
+                    {
+                        kind: "grantKeyword",
+                        keyword: "veiled",
                         target: "self",
+                        duration: 2,
                     },
                 ],
             },
@@ -1068,23 +1064,25 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "exotic",
         artVerticalAlign: "bottom",
     },
-    "firebender-adept": {
-        id: "firebender-adept",
-        name: "Firebender Adept",
+    "quickfire-adept": {
+        id: "quickfire-adept",
+        name: "Quickfire Adept",
         cost: 4,
         type: "minion",
-        text: "**Anthem:** deal X damage to all enemy minions, where X is the number of *Elemental* you control.",
+        text: "(4): Target minion gains *Charge* until end of turn.",
         attack: 1,
         health: 2,
         tribes: ["human","elemental"],
-        effects: [
+        paidAbilities: [
             {
-                trigger: "onPlay",
+                cost: 4,
                 actions: [
                     {
-                        kind: "damage",
-                        amount: { counter: "allTribeMinionCount", tribe: "elemental" },
-                        target: "allEnemyMinions",
+                        kind: "grantKeyword",
+                        keyword: "charge",
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                        duration: 1,
                     },
                 ],
             },
@@ -1185,7 +1183,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     },
     "world-ending-rift": {
         id: "world-ending-rift",
-        name: "World-ending Rift",
+        name: "Hundred Days Storm",
         cost: 6,
         type: "spell",
         text: "Deal 7 damage to all *Human *and *Animal *minions.",
@@ -1209,7 +1207,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "exotic",
-        artVerticalAlign: "bottom",
     },
     "genesis-wellspring": {
         id: "genesis-wellspring",
@@ -1329,8 +1326,8 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         type: "minion",
         text: "When Halaard is wounded, it deals 1 damage to you.",
         attack: 5,
-        health: 5,
-        keywords: ["charge","windfury"],
+        health: 4,
+        keywords: ["windfury","initiative"],
         tribes: ["human","animal"],
         effects: [
             {
@@ -1499,7 +1496,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 actions: [
                     {
                         kind: "heal",
-                        amount: 4,
+                        amount: 3,
                         target: "friendlyHero",
                     },
                 ],
@@ -1509,7 +1506,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 actions: [
                     {
                         kind: "summon",
-                        definitionId: "ashfall-raven",
+                        definitionId: "theredas-the-plaguewoven",
                         count: 1,
                     },
                 ],

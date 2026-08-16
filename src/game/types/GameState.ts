@@ -1,4 +1,4 @@
-import type { CardInstance } from './Card';
+import type { CardInstance, EffectAction } from './Card';
 import type { PlayerId } from './common';
 
 export enum TurnPhase {
@@ -15,10 +15,19 @@ export enum TurnPhase {
 export interface PendingTarget {
     sourceInstanceId: string;
     validTargetIds: string[];
-    /** 1-based position in the current play/ability's chosen-target queue, and the queue's total
-     * length — a card/ability with N `target: 'chosen'` actions prompts N times in sequence, one
-     * target each, rather than sharing a single target across all of them. See
-     * TurnStateMachine.beginTargeting/advanceTargeting. */
+    /** The chosen-target EffectAction generating this prompt — absent only for an attack's own
+     * first step (who to attack), which isn't itself an EffectAction. Lets the AI dispatch the
+     * right scoring heuristic (scoreChosenTarget) for a prompt it may not have declared itself —
+     * e.g. a board-wide Channel/Muster/Vigil/Curfew reaction — see ai/OpponentAI.decideOpponentTarget. */
+    action?: EffectAction;
+    /** False only during the startTurn/Vigil targeting phase, which follows irreversible
+     * turn-transition mutations (mana refresh, draw, the prior endTurn/Curfew resolution) that
+     * can't be cleanly undone — see TurnStateMachine.cancelTarget. True everywhere else. */
+    cancellable: boolean;
+    /** 1-based position in the current action's chosen-target prompt sequence, and its total
+     * length — an action with N `target: 'chosen'` actions (its own, plus any board-wide reaction
+     * they trigger) prompts N times in sequence, one target each, rather than sharing a single
+     * target across all of them. See TurnStateMachine.beginTargeting/currentPendingTarget. */
     step: number;
     totalSteps: number;
 }

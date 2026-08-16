@@ -403,6 +403,46 @@ export function getPileCards(playerState: PlayerState, zone: PileZone): CardInst
 }
 
 /**
+ * The full-screen dimmed backdrop + heading + close button + hint text shared by every full-
+ * screen card-grid overlay (PileViewController's pile inspect, CardPickerController's card
+ * picker) — genuinely identical boilerplate between the two, only the title text and dismiss
+ * callback differ; everything else about the two overlays (what cards they show, how they're laid
+ * out, what a click does) is different enough to be worth keeping separate. Returns the created
+ * objects so the caller can push them onto its own cleanup list — this helper doesn't track or own
+ * them itself.
+ */
+export function createOverlayChrome(scene: Phaser.Scene, title: string, onDismiss: () => void): {
+    dimmer: Phaser.GameObjects.Rectangle;
+    title: Phaser.GameObjects.Text;
+    close: Phaser.GameObjects.Text;
+    hint: Phaser.GameObjects.Text;
+}
+{
+    // Interactive so a click anywhere off a card dismisses the view — and, more importantly, so
+    // the board underneath cannot be clicked through it. Phaser's InputPlugin is topOnly by
+    // default, so this full-screen rect swallows every pointer event below PILE_VIEW_DEPTH.
+    const dimmer = scene.add.rectangle(CENTER_X, CENTER_Y, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.82)
+        .setDepth(PILE_VIEW_DEPTH)
+        .setInteractive();
+    dimmer.on('pointerup', () => onDismiss());
+
+    const titleText = scene.add.text(CENTER_X, 52, title, {
+        fontFamily: 'Arial Black', fontSize: '36px', color: '#ffffff',
+    }).setOrigin(0.5, 0).setDepth(PILE_VIEW_DEPTH + 1);
+
+    const close = scene.add.text(GAME_WIDTH - 48, 52, '✕ Close', {
+        fontFamily: 'Arial', fontSize: '24px', color: '#ffffff', backgroundColor: '#3a4a6b',
+    }).setOrigin(1, 0).setPadding(16, 9, 16, 9).setDepth(PILE_VIEW_DEPTH + 1).setInteractive({ useHandCursor: true });
+    close.on('pointerup', () => onDismiss());
+
+    const hint = scene.add.text(CENTER_X, GAME_HEIGHT - 34, 'Click anywhere or press Esc to close', {
+        fontFamily: 'Arial', fontSize: '16px', color: '#8fa8d6',
+    }).setOrigin(0.5, 1).setDepth(PILE_VIEW_DEPTH + 1);
+
+    return { dimmer, title: titleText, close, hint };
+}
+
+/**
  * CSS `background-size: cover; background-position: center` for a Phaser Image — fills exactly
  * width x height with no stretching, cropping whichever axis overflows and keeping the crop
  * centered. Crops the *source* texture to the target aspect ratio first (in texture pixels, via

@@ -161,7 +161,9 @@ Conventions to follow when authoring or editing entries in `src/game/data/cards.
 - **`chosenRestriction` must match the card's own text.** Any effect using `target: 'chosen'` defaults to "any minion or hero" in `TurnStateMachine.computeValidTargets` — a card whose text says "a minion" (e.g. "Deal 3 damage to a minion") must set `chosenRestriction: 'minion'`, or it will silently accept the enemy hero as a legal target despite what it says. This was a real bug (Pocket Sand, Frostbite Bolt, Firelance, Boneshard Finger, Emberheart Shaman all lacked it originally) — when adding a new "to a minion"/"to a hero" effect, set the matching restriction and mirror it in `ai/scoring.ts` (`scoreDamageSpell`, `computePotentialFaceDamage`) so the AI respects the same limitation instead of soft-locking in `AwaitingTarget`.
 - **Tribes are minion-only and 'full'-mode-footer-only.** `CardDefinition.tribes` should never be set on a `type: 'spell'` card (`validateCardDefinition.ts` flags it; the Card Creator hides the Tribes section for spells and strips it on switching a draft to spell) and never renders in 'simplified' (board) mode's card face — board cards surface tribes through the hover tooltip instead (`HelpBoxController.ts`), not the card itself. `ChosenTargetRestriction` also accepts a `Tribe` value now (a further narrowing of `'minion'`, since tribes are minion-only) — same as any other targeting behavior, extending it further (e.g. a tribe-count `EffectCondition`) must stay in sync across `TurnStateMachine.computeValidTargets` and all five `scoreXSpell` functions (`scoreDamageSpell`/`scoreHealSpell`/`scoreFreezeSpell`/`scoreSilenceSpell`/`scoreDestroySpell`) in `ai/scoring.ts`, per the AI-sync rule below. `EffectAction.tribeFilter` is the board-wide counterpart (narrows `allMinions`/`allEnemyMinions`/`allFriendlyMinions` instead of a single chosen target) — keep it in sync across `TurnStateMachine.resolveTargetIds` and `ai/scoring.ts`'s `estimateEffectValue`/`tribeFilteredCount` instead, since it never goes through the chosen-target path.
 - **`destroy` kills a minion outright, bypassing Divine Shield and all normal damage/health math.** Unlike `damage`, it never reduces `currentHealth` by an amount and never checks/consumes Divine Shield — it calls `TurnStateMachine.forceKill` directly (the same primitive Venom uses for its "damage that lands still kills outright" follow-up), which just sets `currentHealth = 0`. Shaped like `freeze`/`silence` (target + optional `chosenRestriction`/`tribeFilter`, no amount) — never targets a hero (`forceKill`'s `findMinion` lookup simply won't find one, so a hero-targeted `destroy` silently no-ops, same accepted gap as freeze/silence). Any future change to how kills/death are resolved must keep `forceKill` in sync, since `destroy` and Venom both depend on it.
-- **A chosen-target `onAttack` (Strike) effect prompts for its target as an extra step right after the attack's own target** (e.g. Nythis, God of Sorrow and Panic's "When Nythis attacks, destroy target minion") — `TurnStateMachine.beginTargeting`/`currentPendingTarget`/`selectTarget` sequence the fixed attack-target step first, then any chosen-target `onAttack` action(s) via `collectAttackChosenRestrictions`, before `executeAttack` actually resolves combat (mirroring how `onAttack` already fires before damage). The Scene's targeting UI needed no changes — it's entirely driven by `pendingTarget.validTargetIds`/`step`/`totalSteps`, not per-trigger logic. `ai/scoring.ts`'s `scoreAttackTriggers` is the AI-side counterpart (added to `scoreAttack`'s result in `OpponentAI.ts` per attacker, since it fires regardless of who's being attacked) — keep it in sync with any future chosen-target `onAttack` effect, same as the `scoreXSpell` functions for onPlay/ability effects.
+- **Chosen-target triggers beyond onPlay/paid-ability (onAttack/Strike, onSpellCast/Channel, onFriendlyMinionCast/Muster, startOfTurn/Vigil, endOfTurn/Curfew) are all pre-walked and prompted for *before* the triggering action resolves anything**, exactly like a card's own onPlay chosen actions always have been — never mid-resolution. `TurnStateMachine.collectPendingPrompts` is the single function that walks every one of these for a given `PendingAction` (including the sourceless `'endTurn'`/`'startTurn'` variants, which gate `endTurn()`/`beginStartTurn()` the same way `playCard`/`declareAttack` already gated on `needsChosenTarget`), returning a flat, ordered list of `PendingPrompt`s (`{ sourceInstanceId, action }`) rather than a single shared restriction queue — because once a prompt sequence can span *multiple source minions* (a board-wide Channel/Muster/Vigil/Curfew reaction, not just the one card/attacker declaring the action), an *earlier* prompt's resolution (e.g. a spell's own onPlay `destroy`) can make a *later* pre-walked source ineligible (dead or silenced) by the time its own trigger actually fires. `TurnStateMachine.buildCursorMap` keys the real execution-time `ChosenTargetCursor` by source instance (not one shared FIFO) specifically so that case degrades gracefully — the ineligible source's own reserved target(s) just go unused, rather than shifting every other source's ids by one position and corrupting them. This is a known, accepted, currently-unreachable limitation (needs two interacting board-wide chosen-target cards on the same trigger; only Sky Titan exists today) — not something to build further machinery for. Reactive, damage/death-cascade-dependent triggers (onDeath/Deathcry, onDamaged/Wound, onFriendlyMinionDeath/Mourn) are explicitly **out of scope** for this pre-walk approach — the set of firing instances for those can only be discovered by resolving an earlier chosen target for real, which needs execution to actually pause mid-resolution (generators/coroutines), and would require rewriting `CardGame/index.ts`'s animation-sequencing invariants and the AI turn-driving loop; `triggerBoardWide`'s Mourn call site still passes no cursor, so a chosen-target Mourn/Deathcry/Wound effect remains a silent no-op today, same as before this was built.
+- **`PendingTarget` (`GameState.ts`) carries `action?: EffectAction` and `cancellable: boolean`** alongside `sourceInstanceId`/`validTargetIds`/`step`/`totalSteps`. `action` is the actual `EffectAction` generating the current prompt (absent only for attack's own first step, who to attack, which isn't itself an `EffectAction`) — this is what lets the AI (`ai/OpponentAI.ts`'s `decideOpponentTarget`) resolve *any* prompt reactively via `scoreChosenTarget`, including one it didn't itself declare (a board-wide reaction). `cancellable` is `false` only during the Vigil (`startTurn`) targeting phase — by that point mana has already refreshed and a card's already been drawn for the turn, so there's no clean "undo"; every other phase, including Curfew (`endTurn`, where nothing has mutated yet), stays cancellable. The Scene's Cancel button (`updateCancelButton`) and `TurnStateMachine.cancelTarget` both gate on this flag — no other Scene-side targeting UI needed any changes, since it was already entirely generic over `pendingTarget`.
+- **The opponent AI resolves every chosen-target prompt reactively, not via a precomputed target list.** `ai/OpponentAI.ts`'s `decideOpponentTarget(state)` reads the live `state.pendingTarget.action` and calls `scoreChosenTarget` directly — the same function `scorePlayCard`/`scorePaidAbility`/`scoreAttackTriggers` already use internally to rank *which* action to take (they still compute a chosen action's best-achievable score for ranking, they just no longer thread the actual target id through `AIAction`). `CardGame/index.ts`'s `drainOpponentTargeting()` calls this in a loop — `while (phase === AwaitingTarget && activePlayer === 'opponent') selectTarget(decideOpponentTarget(state))` — after `runOpponentTurn` issues any action, after the opponent's own pass-triggered `endTurn()`, and after the *player's* own End Turn button handler (since ending the player's turn can flip `activePlayer` to `'opponent'` mid-call and land straight in the opponent's own Vigil targeting phase, which nothing else would ever resume). This replaced the earlier per-action precomputed `targetIds`/`chosenTargetIds` list on `AIAction` (built by hand-mirroring `TurnStateMachine`'s pre-walk order) — reactive resolution is required anyway for prompts the AI doesn't declare itself, and removes the risk of the AI's own traversal order silently drifting from the engine's.
 - **Every new rule must be checked against the opponent AI, not just the player-facing path — no exceptions, including cards authored via the Card Creator.** `ai/scoring.ts`/`OpponentAI.ts` are hand-authored heuristics with no automatic awareness of `TurnStateMachine`/`keywordRules.ts` changes — a new keyword, effect kind, or targeting rule can render and enforce perfectly for the player while the AI either ignores it, misplays it, or soft-locks on it, and nothing will error to surface that. This is a standing rule, not a one-off reminder: after adding or editing any card rule, actually watch the AI play a card that exercises it (or trace the new case through `scoring.ts` by hand) before calling the change done. The Card Creator (see below) only ever writes to `cards.ts` — it has no path to `ai/scoring.ts`, so anything authored through it is exactly as exposed to this gap as a hand-edited card.
 - **Rarity is a power-level bucket, not flavor.** `CardRarity` (`common | rare | exotic | legendary | mythical`, ascending) drives `deckGenerator.ts`'s proportional random deck-building (14 common / 12 rare / 2 exotic / 1 legendary / 1 mythical per 30-card deck currently, guaranteeing every rarity at least one slot) — a card's rarity should reflect its intended power level and how often it should show up, not just feel. Moving a card between rarity tiers (as opposed to only tuning its stats) is a legitimate, deliberate balance lever.
 - Tokens (e.g. `ember-fledgling`, summoned rather than drawn) use `type: "token"` instead of `"minion"`/`"spell"` and omit `rarity` entirely — `deckGenerator.ts`'s `idsForRarity` excludes any `type: "token"` definition from generated decks. `type: "token"` is mechanically identical to `"minion"` everywhere else (attack/health, board placement, combat, Muster/Mourn triggers) — see `CardType`'s doc comment in `Card.ts` for the full list of call sites that treat it as minion-equivalent. Don't add a `rarity` to a token (the Card Creator's validator flags it).
@@ -262,7 +264,7 @@ is picked — see the next bullet for why it can't show a computed number.
 ## Playtesting-only features
 
 Deliberate cheats, left in on purpose to speed up playtesting and debugging.
-**Remove both of these before the game ships** — neither is gated behind a
+**Remove all of these before the game ships** — none are gated behind a
 dev-only flag, so as written they'd otherwise ship live to players.
 
 - **Opponent's deck is visible.** `CardGame`'s `renderPile` renders a
@@ -273,27 +275,71 @@ dev-only flag, so as written they'd otherwise ship live to players.
   `renderPile`'s deck-zone call (`CardGame`'s `renderNow`) to the player's own
   deck, or otherwise stop the opponent's deck pile from being interactive/
   openable.
-- **Click a card in your own deck view to draw it instantly.**
-  `TurnStateMachine.debugDrawCard(playerId, instanceId)` pulls one specific
-  card out of a deck and into that player's hand, bypassing the normal random
-  top-of-deck `drawCard` entirely (no phase/turn gating either — callable any
-  time). `PileViewController` wires this in only for the `player`-owned
-  `'deck'` pile view (`debugDrawable` in `render()`): each card in that grid
-  gets a hand cursor and a click handler that calls it, then re-renders the
-  same overlay off the still-open `state` reference so the card disappears
-  from the grid and play can keep drawing more. Reuses the existing
-  `'state:card-drawn'` EventBus event, so the normal fly-from-deck-to-hand
-  animation (`playDrawAnimation`) plays unmodified — no new animation code was
-  needed. `debugDrawCard` fires no `'state:phase-change'` (it's outside the
-  normal turn flow), so the `onDebugDraw` callback `CardGame` passes into
-  `PileViewController`'s constructor also calls `CardGame`'s own
+- **"Draw Card" button conjures any card in the game into your hand.** A
+  bottom-right-corner button (`CardGame.createDrawCardButton`, purple-themed
+  to read as a debug control rather than a real gameplay button — distinct
+  from End Turn's blue/Cancel's red) opens `CardPickerController`
+  (`src/game/scenes/CardGame/CardPickerController.ts`): a full-screen,
+  scrollable grid of every `minion`/`spell` card definition in the game
+  (`type: 'token'` cards excluded — summon-only, never directly obtainable,
+  the same exclusion `deckGenerator.ts` applies when building decks), sorted
+  cost then name. Clicking a card calls
+  `TurnStateMachine.debugAddCard(playerId, definitionId)`, which conjures a
+  *brand-new* `CardInstance` of that definition (via `createCardInstance`,
+  the same factory `summonMinion` uses to conjure a fresh instance onto the
+  board) straight into hand — no deck involvement at all, unlike a real draw
+  or the deck-view draw cheat this replaced (see below). No phase/turn
+  gating, callable any time. The overlay deliberately doesn't close on pick,
+  so several cards can be loaded into hand in a row.
+
+  Modeled closely on `PileViewController`'s `open`/`close`/`clear`/`render`
+  shape, and reuses its full-screen dimmer/title/close-button/hint chrome via
+  a shared `createOverlayChrome(scene, title, onDismiss)` helper in
+  `cardLayout.ts` (the one piece of literal duplication between the two that
+  was worth factoring out — everything else, including the grid layout
+  itself, differs too much to share: the card pool here is ~70 entries, far
+  more than any single pile ever holds, so unlike `PileViewController`'s
+  shrink-to-fit-one-screen grid, this one keeps cards at full `CARD_W`×
+  `CARD_H` size and scrolls instead, via a `GeometryMask`-clipped content
+  container and a `'wheel'` input listener registered once in the
+  constructor (no-ops while closed, rather than being wired/unwired per
+  open). That mask clips rendering only, not input hit-testing, so a card
+  scrolled just past the visible edge could in principle still catch a stray
+  click — an accepted caveat for a debug-only tool.
+
+  `debugAddCard` fires no `'state:phase-change'` (same reasoning as the old
+  cheat), so the `onPick` callback `CardGame` passes into
+  `CardPickerController`'s constructor also calls `CardGame`'s own
   `requestRender()` right after — without it, nothing schedules the
   `renderNow()` that re-lays the hand fan and rewires the new card's
-  interactivity, which is exactly the "hand looks displaced until end turn"
-  bug seen during development. To remove: delete `TurnStateMachine.debugDrawCard`, the
-  `onDebugDraw` constructor param/wiring in `PileViewController`, its
-  callback (with the `requestRender()` call) in `CardGame`, and the
-  `debugDrawable`/`debugDraw` branches in its `render`/`renderGrid`.
+  interactivity (the "hand looks displaced until end turn" bug from the
+  cheat this replaced). To remove: delete
+  `TurnStateMachine.debugAddCard`, `CardPickerController.ts`,
+  `CardGame.createDrawCardButton`/its field/its `create()` wiring, the
+  `cardPicker.clear()`/`cardPicker.render()` calls in
+  `clearRendered()`/`renderNow()`, the Esc handler's `cardPicker.close()`
+  call, and (optionally — harmless if left) `createOverlayChrome` in
+  `cardLayout.ts` if `PileViewController` is inlined back to building its own
+  chrome directly.
+
+  This replaced an earlier version of this cheat: clicking a card inside
+  your own deck-inspect overlay drew that exact card
+  (`TurnStateMachine.debugDrawCard(playerId, instanceId)`, pulling an
+  *existing* instance out of the deck by id). That deck-view click-to-draw
+  wiring has been fully reverted — your own deck view is read-only again,
+  identical to the graveyard/opponent-deck views.
+- **"Full Mana" button fills your mana to 10/10.** Sits immediately to Draw
+  Card's left (`CardGame.createFullManaButton`, same row/size/purple
+  palette, reading as a matching pair of debug tools). Calls
+  `TurnStateMachine.debugSetMaxMana(playerId)`, which sets both `mana` and
+  `maxMana` straight to `TurnStateMachine.MAX_MANA` (10) — no phase/turn
+  gating, same as `debugAddCard`. Unlike `debugAddCard`, this emits no event
+  and touches no animation queue (a mana change has nothing to fly across
+  the screen), so the button's click handler just calls `CardGame`'s
+  `requestRender()` directly, which runs `renderNow()` synchronously (nothing
+  is animating at the time this fires) and refreshes the mana readout text.
+  To remove: delete `TurnStateMachine.debugSetMaxMana` and
+  `CardGame.createFullManaButton`/its field/its `create()` wiring.
 
 ## Assets
 

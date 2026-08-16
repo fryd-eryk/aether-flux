@@ -2,7 +2,7 @@ import { CARD_DEFINITIONS } from '../data/cards';
 import { canDeclareAttack, hasKeyword, tauntRestrictedTargets } from '../state/keywordRules';
 import type { PlayerId } from '../types/common';
 import type { GameState } from '../types/GameState';
-import { computePotentialFaceDamage, scoreAttack, scoreAttackTriggers, scorePaidAbility, scorePlayCard } from './scoring';
+import { computePotentialFaceDamage, scoreAttack, scoreAttackTriggers, scoreChosenTarget, scorePaidAbility, scorePlayCard } from './scoring';
 import type { AIAction } from './types';
 
 const PASS_THRESHOLD = 0;
@@ -36,9 +36,9 @@ export function decideOpponentAction(state: GameState): AIAction | null {
         const definition = CARD_DEFINITIONS[card.definitionId];
         if (!definition || ai.mana < definition.cost) continue; // mirrors TurnStateMachine.playCard's own guard
 
-        const { score, targetIds } = scorePlayCard(state, aiId, card, definition, lethalAvailable);
+        const score = scorePlayCard(state, aiId, card, definition, lethalAvailable);
         if (!best || score > best.score) {
-            best = { score, action: { kind: 'playCard', instanceId: card.instanceId, targetIds } };
+            best = { score, action: { kind: 'playCard', instanceId: card.instanceId } };
         }
     }
 
@@ -53,21 +53,21 @@ export function decideOpponentAction(state: GameState): AIAction | null {
         if (!canDeclareAttack(attacker)) continue; // mirrors TurnStateMachine.declareAttack's own guard
 
         // Fires unconditionally on declaring this attack, regardless of who it's aimed at (see
-        // TurnStateMachine.executeAttack) — a fixed addend per attacker, and its own chosen
-        // target(s) (e.g. Nythis's destroy pick) don't depend on the attack target either.
-        const { score: triggerScore, targetIds: chosenTargetIds } = scoreAttackTriggers(state, aiId, attacker, lethalAvailable);
+        // TurnStateMachine.executeAttack) — a fixed addend per attacker. Its own chosen target(s)
+        // (e.g. Nythis's destroy pick) aren't decided here — see decideOpponentTarget.
+        const triggerScore = scoreAttackTriggers(state, aiId, attacker, lethalAvailable);
 
         if (!tauntUp) {
             const faceScore = scoreAttack(state, aiId, attacker, 'face', lethalAvailable) + triggerScore;
             if (!best || faceScore > best.score) {
-                best = { score: faceScore, action: { kind: 'attack', attackerInstanceId: attacker.instanceId, targetId: enemyId, chosenTargetIds } };
+                best = { score: faceScore, action: { kind: 'attack', attackerInstanceId: attacker.instanceId, targetId: enemyId } };
             }
         }
 
         for (const defender of legalDefenders) {
             const score = scoreAttack(state, aiId, attacker, defender, lethalAvailable) + triggerScore;
             if (!best || score > best.score) {
-                best = { score, action: { kind: 'attack', attackerInstanceId: attacker.instanceId, targetId: defender.instanceId, chosenTargetIds } };
+                best = { score, action: { kind: 'attack', attackerInstanceId: attacker.instanceId, targetId: defender.instanceId } };
             }
         }
     }
@@ -82,9 +82,9 @@ export function decideOpponentAction(state: GameState): AIAction | null {
         const definition = CARD_DEFINITIONS[minion.definitionId];
         (definition?.paidAbilities ?? []).forEach((ability, abilityIndex) => {
             if (ai.mana < ability.cost) return; // mirrors TurnStateMachine.activateAbility's own guard
-            const { score, targetIds } = scorePaidAbility(state, aiId, ability, lethalAvailable);
+            const score = scorePaidAbility(state, aiId, ability, lethalAvailable);
             if (!best || score > best.score) {
-                best = { score, action: { kind: 'activateAbility', instanceId: minion.instanceId, abilityIndex, targetIds } };
+                best = { score, action: { kind: 'activateAbility', instanceId: minion.instanceId, abilityIndex } };
             }
         });
     }
@@ -95,4 +95,25 @@ export function decideOpponentAction(state: GameState): AIAction | null {
     }
     console.log('[OpponentAI] decided action', { aiId, score: best.score, action: best.action });
     return best.action;
+}
+
+/**
+ * Resolves the AI's currently-pending target prompt (state.pendingTarget) reactively, whatever
+ * declared it — the played card/ability/attacker's own chosen-target action, or a board-wide
+ * Channel/Muster/Vigil/Curfew reaction the AI didn't itself choose to trigger (e.g. the opponent's
+ * own Vigil phase, which can begin synchronously inside either player's endTurn() call — see
+ * CardGame/index.ts's drainOpponentTargeting). Unlike decideOpponentAction, this doesn't rank
+ * alternatives — it just picks the best target for the one prompt currently up, via the exact same
+ * scoreChosenTarget dispatch scorePlayCard/scorePaidAbility/scoreAttackTriggers already use for
+ * ranking, so the two never disagree about what a given chosen action is worth. Returns undefined
+ * only for attack's own first step (who to attack), which isn't itself an EffectAction and is
+ * decided during ranking above instead — callers handle that step separately.
+ */
+export function decideOpponentTarget(state: GameState): string | undefined {
+    const pendingTarget = state.pendingTarget;
+    if (!pendingTarget?.action) return undefined;
+    const aiId = state.activePlayer;
+    const enemy = state.players[opponentOf(aiId)];
+    const lethalAvailable = computePotentialFaceDamage(state, aiId) >= enemy.health;
+    return scoreChosenTarget(state, aiId, pendingTarget.action, lethalAvailable).targetId;
 }

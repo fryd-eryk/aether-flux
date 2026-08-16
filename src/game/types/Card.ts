@@ -114,7 +114,7 @@ export interface CardAura {
  * whatever the nearest earlier `target: 'chosen'` action in the same actions[] list resolved to,
  * instead of prompting for a fresh target — e.g. "Target minion gets +1/+2 and Divine Shield"
  * is one prompt, not two. Must not be set on the first chosen-target action in a list (nothing to
- * reuse yet) — see validateCardDefinition.ts and TurnStateMachine.collectChosenRestrictions. */
+ * reuse yet) — see validateCardDefinition.ts and TurnStateMachine.collectPendingPrompts. */
 
 /**
  * A time-limited keyword grant or stat buff riding on a CardInstance, decremented once per

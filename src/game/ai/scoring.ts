@@ -102,14 +102,6 @@ export interface ScoredTarget {
     targetId?: string;
 }
 
-/** Result of scoring a whole card play or ability activation, which may have zero, one, or many
- * `target: 'chosen'` actions — one id per such action, in the traversal order they'll be prompted
- * for (see TurnStateMachine.collectChosenRestrictions). */
-export interface ScoredAction {
-    score: number;
-    targetIds?: string[];
-}
-
 /** Board count for AOE scoring, narrowed to `tribeFilter` when the action sets one (see EffectAction.tribeFilter) — otherwise the whole board. */
 function tribeFilteredCount(board: CardInstance[], tribeFilter: Tribe | undefined): number {
     if (!tribeFilter) return board.length;
@@ -283,8 +275,11 @@ function estimateReuseTargetValue(action: EffectAction, state: GameState, aiId: 
     }
 }
 
-/** Scores + picks a target for the one chosen-target effect a card is allowed (see TurnStateMachine.needsChosenTarget). */
-function scoreChosenTarget(state: GameState, aiId: PlayerId, action: EffectAction, lethalAvailable: boolean): ScoredTarget {
+/** Scores + picks a target for one chosen-target action, dispatching on its `kind` — shared by
+ * every caller that needs to resolve a chosen-target prompt, whether ranking a card/ability/attack
+ * up front (scorePlayCard/scorePaidAbility/scoreAttackTriggers/channelBoardValue/musterBoardValue)
+ * or resolving one reactively off the live GameState.pendingTarget (OpponentAI.decideOpponentTarget). */
+export function scoreChosenTarget(state: GameState, aiId: PlayerId, action: EffectAction, lethalAvailable: boolean): ScoredTarget {
     if (action.kind === 'damage') {
         return scoreDamageSpell(state, aiId, resolveEffectValue(action.amount, aiId, state), lethalAvailable, action.chosenRestriction);
     }
@@ -306,13 +301,27 @@ function scoreChosenTarget(state: GameState, aiId: PlayerId, action: EffectActio
     return { score: 0 };
 }
 
+/** Sums a block's actions[] the way effectActionsValue does, except a `target: 'chosen'` action is
+ * valued via scoreChosenTarget (the *best achievable* target's score) instead of
+ * estimateEffectValue's flat 0 punt — shared by channelBoardValue/musterBoardValue/boardWideTriggerValue
+ * below, none of which pick the actual target themselves (that happens later, reactively, once the
+ * real prompt appears — see OpponentAI.decideOpponentTarget). A `reuseTarget: true` action is
+ * estimated the same way scorePlayCard/scorePaidAbility do for their own reuseTarget actions. */
+function chosenAwareActionsValue(actions: EffectAction[], state: GameState, aiId: PlayerId, lethalAvailable: boolean): number {
+    return actions.reduce((sum, action) => {
+        if (!('target' in action) || action.target !== 'chosen') return sum + estimateEffectValue(action, state, aiId);
+        if ('reuseTarget' in action && action.reuseTarget) return sum + estimateReuseTargetValue(action, state, aiId);
+        return sum + scoreChosenTarget(state, aiId, action, lethalAvailable).score;
+    }, 0);
+}
+
 /**
  * Value of every Channel (onSpellCast) effect on the AI's own board that would fire if it cast
  * a spell right now — mirrors how a card's own effects are summed in scorePlayCard, just scanned
  * across the board instead of one card's own effects[]. Momentum-gated Channel effects are
  * discounted the same way scorePlayCard discounts a card's own Momentum-gated effects.
  */
-function channelBoardValue(state: GameState, aiId: PlayerId): number {
+function channelBoardValue(state: GameState, aiId: PlayerId, lethalAvailable: boolean): number {
     const ai = state.players[aiId];
     return ai.board.reduce((sum, minion) => {
         if (minion.silenced) return sum;
@@ -321,7 +330,7 @@ function channelBoardValue(state: GameState, aiId: PlayerId): number {
         return (
             sum +
             channelEffects.reduce(
-                (s, e) => (momentumSatisfied(e, ai) ? s + effectActionsValue(e.actions, state, aiId) : s),
+                (s, e) => (momentumSatisfied(e, ai) ? s + chosenAwareActionsValue(e.actions, state, aiId, lethalAvailable) : s),
                 0
             )
         );
@@ -335,7 +344,7 @@ function channelBoardValue(state: GameState, aiId: PlayerId): number {
  * ai.board, at scoring time (TurnStateMachine itself excludes the played instance for the same
  * reason it's naturally absent here — see executePlayCard).
  */
-function musterBoardValue(state: GameState, aiId: PlayerId): number {
+function musterBoardValue(state: GameState, aiId: PlayerId, lethalAvailable: boolean): number {
     const ai = state.players[aiId];
     return ai.board.reduce((sum, minion) => {
         if (minion.silenced) return sum;
@@ -343,7 +352,7 @@ function musterBoardValue(state: GameState, aiId: PlayerId): number {
         const musterEffects = definition?.effects?.filter((e) => e.trigger === 'onFriendlyMinionCast') ?? [];
         return (
             sum +
-            musterEffects.reduce((s, e) => (momentumSatisfied(e, ai) ? s + effectActionsValue(e.actions, state, aiId) : s), 0)
+            musterEffects.reduce((s, e) => (momentumSatisfied(e, ai) ? s + chosenAwareActionsValue(e.actions, state, aiId, lethalAvailable) : s), 0)
         );
     }, 0);
 }
@@ -390,37 +399,35 @@ function woundValue(state: GameState, aiId: PlayerId, minion: CardInstance): num
     return ownerId === aiId ? value : -value;
 }
 
-/** Scores playing `card` from hand, resolving the best target for every chosen-target action
- * along the way — one scored target per such action, not just the first (see ScoredAction). */
+/** Scores playing `card` from hand, including the best achievable value of every chosen-target
+ * action it (or a board-wide Channel/Muster reaction) has — the actual target for each isn't
+ * picked here, only for ranking; see decideOpponentTarget for where it's picked reactively once
+ * the real prompt appears. */
 export function scorePlayCard(
     state: GameState,
     aiId: PlayerId,
     card: CardInstance,
     definition: CardDefinition,
     lethalAvailable: boolean
-): ScoredAction {
+): number {
     const ai = state.players[aiId];
     const effects = definition.effects ?? [];
     const onPlayEffects = effects.filter((e) => e.trigger === 'onPlay');
 
-    // One scored target per `target: 'chosen'` action across every onPlay effect's actions[], in
-    // the same traversal order TurnStateMachine's chosen-target queue prompts for them (see
-    // collectChosenRestrictions). A Momentum-gated block's chosen action still needs a real target
-    // picked (the state machine prompts for it regardless of whether the condition ends up true),
-    // but its score only counts if the block will actually fire.
+    // Best achievable value per `target: 'chosen'` action across every onPlay effect's actions[] —
+    // the actual target isn't picked here, only its score for ranking (see decideOpponentTarget for
+    // where the real target eventually gets picked, reactively, once the prompt actually appears).
+    // A Momentum-gated block's chosen action still contributes to ranking only if the block will
+    // actually fire.
     let chosenScore = 0;
-    const targetIds: string[] = [];
     for (const effect of onPlayEffects) {
-        const live = momentumSatisfied(effect, ai);
+        if (!momentumSatisfied(effect, ai)) continue;
         for (const action of effect.actions) {
             if (!('target' in action) || action.target !== 'chosen') continue;
-            if ('reuseTarget' in action && action.reuseTarget) {
-                if (live) chosenScore += estimateReuseTargetValue(action, state, aiId);
-                continue;
-            }
-            const scored = scoreChosenTarget(state, aiId, action, lethalAvailable);
-            if (live) chosenScore += scored.score;
-            if (scored.targetId) targetIds.push(scored.targetId);
+            chosenScore +=
+                'reuseTarget' in action && action.reuseTarget
+                    ? estimateReuseTargetValue(action, state, aiId)
+                    : scoreChosenTarget(state, aiId, action, lethalAvailable).score;
         }
     }
 
@@ -430,45 +437,39 @@ export function scorePlayCard(
     );
 
     if (definition.type === 'minion' || definition.type === 'token') {
-        if (ai.board.length >= MAX_BOARD_SIZE) return { score: -1 }; // board full: the minion would just be discarded, see TurnStateMachine.executePlayCard
+        if (ai.board.length >= MAX_BOARD_SIZE) return -1; // board full: the minion would just be discarded, see TurnStateMachine.executePlayCard
 
         const stats = (card.currentAttack ?? 0) + (card.currentHealth ?? 0);
         const overextendPenalty = ai.board.length >= MAX_BOARD_SIZE - 1 ? 5 : 0;
         const keywordBonus = (definition.keywords ?? []).reduce((sum, keyword) => sum + KEYWORD_VALUE[keyword], 0);
         // Casting this minion also fires Muster on every other board minion with a matching effect.
-        const musterValue = musterBoardValue(state, aiId);
-        const score = stats * 2 + flatEffectValue + chosenScore + keywordBonus - overextendPenalty + musterValue;
-        return { score, targetIds };
+        const musterValue = musterBoardValue(state, aiId, lethalAvailable);
+        return stats * 2 + flatEffectValue + chosenScore + keywordBonus - overextendPenalty + musterValue;
     }
 
     // Casting this spell also fires Channel on every board minion with a matching effect.
-    const channelValue = channelBoardValue(state, aiId);
-    if (onPlayEffects.length === 0 && channelValue === 0) return { score: 0 };
-    return { score: flatEffectValue + chosenScore + channelValue, targetIds };
+    const channelValue = channelBoardValue(state, aiId, lethalAvailable);
+    if (onPlayEffects.length === 0 && channelValue === 0) return 0;
+    return flatEffectValue + chosenScore + channelValue;
 }
 
-/** Scores activating a board minion's paid ability (see PaidAbility, Card.ts), resolving the best
- * target along the way for each chosen-target action — mirrors scorePlayCard's chosen-target
- * dispatch, just for an already-in-play minion's own ability instead of a hand card's onPlay
- * effects. Target-picking itself is fully shared via scoreChosenTarget/estimateEffectValue below,
- * neither of which cares what triggered the action. */
-export function scorePaidAbility(state: GameState, aiId: PlayerId, ability: PaidAbility, lethalAvailable: boolean): ScoredAction {
+/** Scores activating a board minion's paid ability (see PaidAbility, Card.ts) — mirrors
+ * scorePlayCard's chosen-target ranking, just for an already-in-play minion's own ability instead
+ * of a hand card's onPlay effects. */
+export function scorePaidAbility(state: GameState, aiId: PlayerId, ability: PaidAbility, lethalAvailable: boolean): number {
     let score = 0;
-    const targetIds: string[] = [];
     for (const action of ability.actions) {
         if ('target' in action && action.target === 'chosen') {
             if ('reuseTarget' in action && action.reuseTarget) {
                 score += estimateReuseTargetValue(action, state, aiId);
                 continue;
             }
-            const scored = scoreChosenTarget(state, aiId, action, lethalAvailable);
-            score += scored.score;
-            if (scored.targetId) targetIds.push(scored.targetId);
+            score += scoreChosenTarget(state, aiId, action, lethalAvailable).score;
         } else {
             score += estimateEffectValue(action, state, aiId);
         }
     }
-    return { score, targetIds };
+    return score;
 }
 
 function scoreDamageSpell(
@@ -744,45 +745,20 @@ function scoreGrantKeywordSpell(
  * Scores + picks target(s) for `attacker`'s own `onAttack` effect(s) (e.g. Nythis's "When Nythis
  * attacks, destroy target minion") — separate from scoreAttack's combat-trade math below, since
  * these fire unconditionally on declaring the attack regardless of who's being attacked (see
- * TurnStateMachine.executeAttack) and need their own target(s) picked the same way
- * scorePlayCard/scorePaidAbility do for onPlay/ability actions. Callers add `.score` to the
- * relevant scoreAttack result and thread `.targetIds` through as AIAction's `chosenTargetIds` —
- * see OpponentAI.decideOpponentAction. A silenced attacker's onAttack effects never fire (see
- * TurnStateMachine.triggerEffects' guard), so nothing is scored or targeted for one.
+ * TurnStateMachine.executeAttack). Callers add this to the relevant scoreAttack result — see
+ * OpponentAI.decideOpponentAction. The actual target isn't picked here (see decideOpponentTarget).
+ * A silenced attacker's onAttack effects never fire (see TurnStateMachine.triggerEffects' guard),
+ * so nothing is scored for one.
  */
-export function scoreAttackTriggers(
-    state: GameState,
-    aiId: PlayerId,
-    attacker: CardInstance,
-    lethalAvailable: boolean
-): ScoredAction {
-    if (attacker.silenced) return { score: 0 };
+export function scoreAttackTriggers(state: GameState, aiId: PlayerId, attacker: CardInstance, lethalAvailable: boolean): number {
+    if (attacker.silenced) return 0;
     const definition = CARD_DEFINITIONS[attacker.definitionId];
     const onAttackEffects = definition?.effects?.filter((e) => e.trigger === 'onAttack') ?? [];
 
-    let score = 0;
-    const targetIds: string[] = [];
-    for (const effect of onAttackEffects) {
-        // Momentum-gated onAttack effects still need a real target picked up front (the state
-        // machine prompts for it regardless — see TurnStateMachine.collectAttackChosenRestrictions),
-        // but only count toward the score if the block will actually fire, mirroring scorePlayCard.
-        const live = momentumSatisfied(effect, state.players[aiId]);
-        for (const action of effect.actions) {
-            if ('target' in action && action.target === 'chosen') {
-                if ('reuseTarget' in action && action.reuseTarget) {
-                    if (live) score += estimateReuseTargetValue(action, state, aiId);
-                    continue;
-                }
-                const scored = scoreChosenTarget(state, aiId, action, lethalAvailable);
-                if (live) score += scored.score;
-                if (scored.targetId) targetIds.push(scored.targetId);
-            } else if (live) {
-                score += estimateEffectValue(action, state, aiId);
-            }
-        }
-    }
-
-    return { score, targetIds };
+    return onAttackEffects.reduce(
+        (sum, effect) => (momentumSatisfied(effect, state.players[aiId]) ? sum + chosenAwareActionsValue(effect.actions, state, aiId, lethalAvailable) : sum),
+        0
+    );
 }
 
 /** Scores attacking `target` (a specific enemy minion, or 'face' for the enemy hero) with `attacker`. */

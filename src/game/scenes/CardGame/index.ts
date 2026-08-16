@@ -1,15 +1,17 @@
 import { Geom, Scene } from 'phaser';
 
-import { decideOpponentAction } from '../../ai/OpponentAI';
+import { decideOpponentAction, decideOpponentTarget } from '../../ai/OpponentAI';
 import { CARD_DEFINITIONS } from '../../data/cards';
 import { generateDeck } from '../../data/deckGenerator';
+import { KEYWORD_METADATA } from '../../data/keywordMetadata';
 import { EventBus } from '../../EventBus';
 import { resolveCardText } from '../../state/counters';
 import { canDeclareAttack, hasKeyword } from '../../state/keywordRules';
 import { createInitialState } from '../../state/createInitialState';
 import { TurnStateMachine } from '../../state/TurnStateMachine';
+import type { EffectAction } from '../../types/Card';
 import type { PlayerId } from '../../types/common';
-import type { GameState, PlayerState } from '../../types/GameState';
+import type { GameState, PendingTarget, PlayerState } from '../../types/GameState';
 import { TurnPhase } from '../../types/GameState';
 import {
     BOARD_ZONE_W,
@@ -68,10 +70,12 @@ import {
     SMALL_STYLE,
     SPOTLIGHT_X,
     statStyle,
+    TOOLTIP_BG_RADIUS,
 } from './cardLayout';
 import { beginFlightTilt, endFlightTilt, type FlightTiltHandle, updateFlightTilt, updateFlightTiltFromPointer } from './cardFlightTilt';
 import { CardView } from './CardView';
 import { HelpBoxController } from './HelpBoxController';
+import { CardPickerController } from './CardPickerController';
 import { PileViewController } from './PileViewController';
 
 /** A hand card's idle "slot" — its arced position/rotation/scale/depth when nothing is happening to it. See handCardSlot. */
@@ -131,6 +135,7 @@ export class CardGame extends Scene
     private cardView!: CardView;
     private helpBoxController!: HelpBoxController;
     private pileView!: PileViewController;
+    private cardPicker!: CardPickerController;
 
     private renderedObjects: Phaser.GameObjects.GameObject[] = [];
     private cardInstanceByContainer = new Map<Phaser.GameObjects.Container, string>();
@@ -149,8 +154,17 @@ export class CardGame extends Scene
     private turnBannerText!: Phaser.GameObjects.Text;
     private endTurnButton!: Phaser.GameObjects.Container;
     private cancelButton!: Phaser.GameObjects.Container;
+    private drawCardButton!: Phaser.GameObjects.Container;
+    private fullManaButton!: Phaser.GameObjects.Container;
     private playerManaText!: Phaser.GameObjects.Text;
     private opponentManaText!: Phaser.GameObjects.Text;
+    // Named targeting prompt ("Choose a target for Silence") — centered under the spotlighted
+    // card while one's held (see playTargetBeginAnimation), or screen-centered otherwise (attack's
+    // own target step, a board-wide Channel/Muster/Vigil/Curfew reaction, a paid ability). Same
+    // visual treatment as HelpBoxController's tooltip background — see updateTargetPromptBox.
+    private targetPromptBox!: Phaser.GameObjects.Container;
+    private targetPromptBg!: Phaser.GameObjects.Graphics;
+    private targetPromptText!: Phaser.GameObjects.Text;
 
     // The hand card currently being dragged, if any — excluded from per-card peek handling (see
     // the 'pointermove' listener in create() that walks handPeekZones) so a peek firing mid-drag
@@ -642,32 +656,47 @@ export class CardGame extends Scene
         {
             console.log('[CardGame] opponent passes, ending turn');
             this.machine.endTurn();
+            // Covers the opponent's own Curfew (endOfTurn) phase, which endTurn() may have just
+            // entered synchronously above (activePlayer is still 'opponent' at that point) — see
+            // drainOpponentTargeting.
+            this.drainOpponentTargeting();
             return;
         }
 
         console.log('[CardGame] opponent action', action);
         if (action.kind === 'playCard') this.machine.playCard(action.instanceId);
-        else if (action.kind === 'attack') this.machine.declareAttack(action.attackerInstanceId);
+        else if (action.kind === 'attack')
+        {
+            this.machine.declareAttack(action.attackerInstanceId);
+            // Attack's own first target-selection step (who to attack) was already decided during
+            // ranking (scoreAttack) — every subsequent prompt (the attacker's own onAttack chosen
+            // action, if any) is resolved generically by drainOpponentTargeting below.
+            if (this.machine.state.phase === TurnPhase.AwaitingTarget) this.machine.selectTarget(action.targetId);
+        }
         else this.machine.activateAbility(action.instanceId, action.abilityIndex);
 
-        if (action.kind === 'attack')
-        {
-            if (this.machine.state.phase === TurnPhase.AwaitingTarget) this.machine.selectTarget(action.targetId);
-            // The attacker's own onAttack effect(s) (e.g. Nythis's destroy) prompt for further
-            // target(s) right after — same guarded loop shape as the playCard/ability case below.
-            for (const targetId of action.chosenTargetIds ?? [])
-            {
-                if (this.machine.state.phase !== TurnPhase.AwaitingTarget) break;
-                this.machine.selectTarget(targetId);
-            }
-            return;
-        }
+        this.drainOpponentTargeting();
+    }
 
-        // A card/ability with multiple `target: 'chosen'` actions prompts once per action, in
-        // sequence, staying in AwaitingTarget between prompts — see TurnStateMachine.selectTarget.
-        for (const targetId of action.targetIds ?? [])
+    /**
+     * Resolves every AwaitingTarget prompt left over after issuing one opponent action (or ending
+     * its turn), one at a time, via decideOpponentTarget — covers the played card/ability/
+     * attacker's own chosen-target effect(s) and any board-wide Channel/Muster/Curfew/Vigil
+     * reaction the action triggered, uniformly, since TurnStateMachine collects every prompt for a
+     * declared action (or turn transition) up front before resolving it — see
+     * TurnStateMachine.beginTargeting/collectPendingPrompts. Also covers the opponent's own
+     * startTurn/Vigil phase, which can begin synchronously inside this.machine.endTurn() when
+     * called from the *player's* End Turn button (see that handler, below) — nothing else in this
+     * file would otherwise ever resume that prompt.
+     */
+    private drainOpponentTargeting (): void
+    {
+        while (this.machine.state.phase === TurnPhase.AwaitingTarget && this.machine.state.activePlayer === 'opponent')
         {
-            if (this.machine.state.phase !== TurnPhase.AwaitingTarget) break;
+            const targetId = decideOpponentTarget(this.machine.state);
+            // Shouldn't happen (every scoreXSpell helper has an own-board fallback), but avoids a
+            // hang rather than relying on that.
+            if (targetId === undefined) break;
             this.machine.selectTarget(targetId);
         }
     }
@@ -685,19 +714,19 @@ export class CardGame extends Scene
         // finished game into the next one.
         this.cardView = new CardView(this);
         this.helpBoxController = new HelpBoxController(this, () => this.draggedContainer);
-        // Playtesting-only cheat wiring (debugDrawCard) — see SPEC.md's "Playtesting-only
-        // features" section for why this exists and where it needs to be ripped out. Unlike every
-        // other TurnStateMachine call the player can trigger, debugDrawCard fires no
-        // 'state:phase-change' (it isn't part of the normal turn flow), so nothing would otherwise
-        // schedule the renderNow() that re-lays the hand fan and rewires the new card's
-        // interactivity — requestRender() here both enqueues the draw animation itself (see its
-        // pendingDrawIds check, fed synchronously by debugDrawCard's 'state:card-drawn' emit) and
-        // queues that rebuild for once it drains, exactly like a real draw gets via its own
-        // eventual phase change.
-        this.pileView = new PileViewController(this, this.cardView, this.helpBoxController,
-            (playerId, instanceId) =>
+        this.pileView = new PileViewController(this, this.cardView, this.helpBoxController);
+        // Playtesting-only cheat wiring (debugAddCard) — see SPEC.md's "Playtesting-only features"
+        // section for why this exists and where it needs to be ripped out. Unlike every other
+        // TurnStateMachine call the player can trigger, debugAddCard fires no 'state:phase-change'
+        // (it isn't part of the normal turn flow), so nothing would otherwise schedule the
+        // renderNow() that re-lays the hand fan and rewires the new card's interactivity —
+        // requestRender() here both enqueues the draw animation itself (see its pendingDrawIds
+        // check, fed synchronously by debugAddCard's 'state:card-drawn' emit) and queues that
+        // rebuild for once it drains, exactly like a real draw gets via its own eventual phase change.
+        this.cardPicker = new CardPickerController(this, this.cardView, this.helpBoxController,
+            (definitionId) =>
             {
-                this.machine.debugDrawCard(playerId, instanceId);
+                this.machine.debugAddCard('player', definitionId);
                 this.requestRender();
             });
 
@@ -721,8 +750,11 @@ export class CardGame extends Scene
 
         this.createEndTurnButton();
         this.createCancelButton();
+        this.createDrawCardButton();
+        this.createFullManaButton();
+        this.createTargetPromptBox();
         this.wireDragEvents();
-        this.input.keyboard?.on('keydown-ESC', () => this.pileView.close());
+        this.input.keyboard?.on('keydown-ESC', () => { this.pileView.close(); this.cardPicker.close(); });
 
         // Drives hand-card peek hover for every currently-rendered card in one place, using a
         // manual rectangle check against handPeekZones (populated by renderHand) rather than
@@ -873,7 +905,7 @@ export class CardGame extends Scene
         container.add([bg, text]);
         container.setSize(160, 65);
         container.setInteractive({ useHandCursor: true });
-        container.on('pointerup', this.guarded(() => this.machine.endTurn()));
+        container.on('pointerup', this.guarded(() => { this.machine.endTurn(); this.drainOpponentTargeting(); }));
         this.endTurnButton = container;
     }
 
@@ -890,9 +922,66 @@ export class CardGame extends Scene
         this.cancelButton = container;
     }
 
+    /** Named targeting prompt's box — same visual treatment as HelpBoxController's tooltip
+     * background (black @ 90% opacity, TOOLTIP_BG_RADIUS rounded corners, no border/stroke), just
+     * on its own Container/Graphics rather than sharing HelpBoxController's instance, since this
+     * one is chrome (updated in updateChrome, alongside turnBannerText) rather than hover-driven.
+     * Sized and positioned per-update in updateTargetPromptBox, since both depend on the prompt's
+     * text content and whether a card is currently spotlighted. */
+    private createTargetPromptBox (): void
+    {
+        const bg = this.add.graphics();
+        const text = this.add.text(0, 0, '', { fontFamily: 'Arial', fontSize: '20px', color: '#ffffff' }).setOrigin(0.5);
+        const container = this.add.container(0, 0, [bg, text]);
+        container.setDepth(2600); // above the spotlighted card's depth (2500) while one's held
+        container.setVisible(false);
+        this.targetPromptBg = bg;
+        this.targetPromptText = text;
+        this.targetPromptBox = container;
+    }
+
+    /**
+     * Playtesting-only cheat control — see SPEC.md's "Playtesting-only features" section. Bottom-
+     * right corner, clear of the player's graveyard pile hit-area (centered ~(1860, 915)) below it.
+     * Distinct purple palette (vs. End Turn's blue / Cancel's red) so it reads as a debug control,
+     * not a real gameplay button. Always interactive — mirrors debugAddCard's own "no phase/turn
+     * gating, callable any time" — just guarded() like every other button here so a click mid-
+     * animation is ignored rather than firing on stale state.
+     */
+    private createDrawCardButton (): void
+    {
+        const container = this.add.container(55, 990);
+        const bg = this.add.rectangle(0, 0, 110, 30, 0x4a2f5c).setStrokeStyle(2, 0xb08fd6);
+        const text = this.add.text(0, 0, 'Cards', SMALL_STYLE).setOrigin(0.5);
+        container.add([bg, text]);
+        container.setSize(110, 30);
+        container.setInteractive({ useHandCursor: true });
+        container.on('pointerup', this.guarded(() => this.cardPicker.open(this.machine.state)));
+        this.drawCardButton = container;
+    }
+
+    /**
+     * Playtesting-only cheat control — see SPEC.md's "Playtesting-only features" section. Sits
+     * immediately to Draw Card's left, same row/size/purple palette, reading as a matching pair of
+     * debug tools. No animation/render-queue involvement (unlike debugAddCard) since a mana change
+     * has nothing to fly across the screen — requestRender() just refreshes the mana readout text
+     * directly (updateChrome runs synchronously since nothing is animating at the time this fires).
+     */
+    private createFullManaButton (): void
+    {
+        const container = this.add.container(180, 990);
+        const bg = this.add.rectangle(0, 0, 110, 30, 0x4a2f5c).setStrokeStyle(2, 0xb08fd6);
+        const text = this.add.text(0, 0, 'Max Mana', SMALL_STYLE).setOrigin(0.5);
+        container.add([bg, text]);
+        container.setSize(110, 30);
+        container.setInteractive({ useHandCursor: true });
+        container.on('pointerup', this.guarded(() => { this.machine.debugSetMaxMana('player'); this.requestRender(); }));
+        this.fullManaButton = container;
+    }
+
     // --- render ------------------------------------------------------------------
 
-    /** Banner text, health/mana readouts, and End Turn/Cancel button state — cheap, and safe to refresh immediately even while the heavy board rebuild below is deferred behind an in-flight animation. */
+    /** Banner text, health/mana readouts, and End Turn/Cancel/target-prompt state — cheap, and safe to refresh immediately even while the heavy board rebuild below is deferred behind an in-flight animation. */
     private updateChrome (state: GameState): void
     {
         this.turnBannerText.setText(this.describePhase(state));
@@ -902,6 +991,76 @@ export class CardGame extends Scene
 
         this.updateEndTurnButton(state);
         this.updateCancelButton(state);
+        this.updateTargetPromptBox(state);
+    }
+
+    /** Named targeting prompt (e.g. "Choose a target for Silence") — see targetPromptBox's own
+     * doc comment. Always horizontally anchored at SPOTLIGHT_X (the same x a spotlighted card
+     * sits at) so the prompt reads consistently as "the left-side targeting slot" regardless of
+     * trigger source. Vertically: below the spotlighted card when the current prompt's source is
+     * one (a card held from the player's own hand — the only case that gets the spotlight
+     * treatment at all; an attacker, an activating board minion, or a board-wide
+     * Channel/Muster/Vigil/Curfew reaction's source never leaves the board — see
+     * TurnStateMachine.beginTargeting's 'state:target-begin' emit, playCard-only), otherwise
+     * screen-vertically-centered. Never shown for the opponent's own targeting — that always
+     * resolves reactively within a single synchronous call (see drainOpponentTargeting) before
+     * the Scene ever renders an AwaitingTarget frame for it. */
+    private updateTargetPromptBox (state: GameState): void
+    {
+        const pendingTarget = state.pendingTarget;
+        if (state.phase !== TurnPhase.AwaitingTarget || state.activePlayer !== 'player' || !pendingTarget)
+        {
+            this.targetPromptBox.setVisible(false);
+            return;
+        }
+
+        this.targetPromptText.setText(this.describeTargetPrompt(pendingTarget));
+
+        const padX = 22;
+        const padY = 14;
+        const w = this.targetPromptText.width + padX * 2;
+        const h = this.targetPromptText.height + padY * 2;
+        this.targetPromptBg.clear();
+        this.targetPromptBg.fillStyle(0x000000, 0.9);
+        this.targetPromptBg.fillRoundedRect(-w / 2, -h / 2, w, h, TOOLTIP_BG_RADIUS);
+
+        const spotlighted = state.players.player.hand.some((c) => c.instanceId === pendingTarget.sourceInstanceId);
+        const gapBelowSpotlight = 36;
+        this.targetPromptBox.setPosition(
+            SPOTLIGHT_X,
+            spotlighted ? CENTER_Y + (CARD_H * 1.25) / 2 + gapBelowSpotlight : CENTER_Y
+        );
+        this.targetPromptBox.setVisible(true);
+    }
+
+    private describeTargetPrompt (pendingTarget: PendingTarget): string
+    {
+        // pendingTarget.action is absent only for attack's own first step (who to attack) — every
+        // other prompt is a real EffectAction (see PendingTarget's doc comment, GameState.ts).
+        const base = pendingTarget.action ? `Choose a target for ${this.describeEffectAction(pendingTarget.action)}` : 'Choose an attack target';
+        return pendingTarget.totalSteps > 1 ? `${base} (${pendingTarget.step} of ${pendingTarget.totalSteps})` : base;
+    }
+
+    /** Short display label for an EffectAction's kind — grantKeyword reuses KEYWORD_METADATA's own
+     * label (e.g. "Divine Shield") rather than a generic "Grant Keyword", so the prompt reads the
+     * same way the card's own rule text/keyword badge would. draw/summon never actually reach
+     * AwaitingTarget (neither kind has a `target`, so collectPendingPrompts never produces a
+     * prompt for one) — covered here only for switch exhaustiveness. */
+    private describeEffectAction (action: EffectAction): string
+    {
+        switch (action.kind)
+        {
+            case 'damage': return 'Damage';
+            case 'heal': return 'Heal';
+            case 'buff': return 'Buff';
+            case 'freeze': return 'Freeze';
+            case 'silence': return 'Silence';
+            case 'destroy': return 'Destroy';
+            case 'grantKeyword': return KEYWORD_METADATA[action.keyword].label;
+            case 'draw':
+            case 'summon':
+                return 'Effect';
+        }
     }
 
     private renderNow (): void
@@ -932,7 +1091,10 @@ export class CardGame extends Scene
 
         // Repaint last so the overlay lands on top of, and re-reads, the board just rebuilt above —
         // an open pile therefore keeps showing live contents as cards are drawn or die beneath it.
+        // cardPicker's content never depends on state, but it still needs the same treatment to
+        // survive teardown (e.g. across the opponent's 600ms-paced rebuilds) the same way pileView does.
         this.pileView.render(state);
+        this.cardPicker.render(state);
 
         // The opponent's turn is only picked up here — the one place the board is guaranteed to
         // actually reflect state.phase === MainIdle — rather than off the phase-change event
@@ -947,6 +1109,7 @@ export class CardGame extends Scene
     {
         this.helpBoxController.hideHelpBox();
         this.pileView.clear();
+        this.cardPicker.clear();
         for (const obj of this.renderedObjects) obj.destroy();
         this.renderedObjects = [];
         this.cardInstanceByContainer.clear();
@@ -962,13 +1125,10 @@ export class CardGame extends Scene
         {
             return state.winner === 'player' ? 'You win!' : 'You lose!';
         }
+        // AwaitingTarget no longer gets its own banner text here — targetPromptBox (see
+        // updateTargetPromptBox) now owns that messaging with a named, better-placed prompt, so
+        // this just keeps reading as an ordinary turn indicator underneath it.
         const whoseTurn = state.activePlayer === 'player' ? 'Your' : "Opponent's";
-        if (state.phase === TurnPhase.AwaitingTarget)
-        {
-            const { step, totalSteps } = state.pendingTarget ?? { step: 1, totalSteps: 1 };
-            const suffix = totalSteps > 1 ? ` (${step} of ${totalSteps})` : '';
-            return `${whoseTurn} turn — choose a target${suffix}`;
-        }
         return `${whoseTurn} turn (Turn ${state.turnNumber})`;
     }
 
@@ -1414,7 +1574,7 @@ export class CardGame extends Scene
 
     private updateCancelButton (state: GameState): void
     {
-        this.cancelButton.setVisible(state.phase === TurnPhase.AwaitingTarget);
+        this.cancelButton.setVisible(state.phase === TurnPhase.AwaitingTarget && state.pendingTarget?.cancellable !== false);
     }
 
     private showGameOver (winner?: PlayerId): void

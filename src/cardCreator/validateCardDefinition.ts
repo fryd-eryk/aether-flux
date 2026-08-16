@@ -17,7 +17,7 @@ const TRIBE_FILTERABLE_TARGETS = ['allMinions', 'allEnemyMinions', 'allFriendlyM
 
 /** Validates one actions[] list in traversal order, tracking whether an earlier action in the
  * same list already resolved a real (non-reuseTarget) chosen target — reuseTarget on the very
- * first chosen action has nothing to reuse (see TurnStateMachine.collectChosenRestrictions). */
+ * first chosen action has nothing to reuse (see TurnStateMachine.collectPendingPrompts). */
 function validateActions(actions: EffectAction[], prefix: string, errors: FieldErrors): void {
     let hasEarlierChosenTarget = false;
     actions.forEach((action, index) => {

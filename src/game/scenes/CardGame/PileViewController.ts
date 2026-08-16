@@ -11,7 +11,7 @@ import {
     CARD_W,
     CENTER_X,
     CENTER_Y,
-    GAME_HEIGHT,
+    createOverlayChrome,
     GAME_WIDTH,
     getPileCards,
     PILE_VIEW_BOTTOM,
@@ -37,18 +37,10 @@ export class PileViewController
     private objects: Phaser.GameObjects.GameObject[] = [];
     private openPile?: { playerId: PlayerId; zone: PileZone };
 
-    /**
-     * onDebugDraw is the playtesting-only "click a card in your own deck view to draw it" cheat
-     * (see TurnStateMachine.debugDrawCard and SPEC.md's "Playtesting-only features" section) — a
-     * callback rather than a TurnStateMachine reference so this class stays state-machine-agnostic
-     * everywhere else, matching how open()/render() already take GameState as a parameter instead
-     * of owning a machine reference themselves.
-     */
     constructor (
         private scene: Scene,
         private cardView: CardView,
-        private helpBox: HelpBoxController,
-        private onDebugDraw: (playerId: PlayerId, instanceId: string) => void
+        private helpBox: HelpBoxController
     ) {}
 
     /** Opens (or switches) the overlay and paints it immediately — called directly rather than via CardGame's deferred requestRender(), since the overlay must appear on the click that opened it. */
@@ -85,37 +77,13 @@ export class PileViewController
         const style = PILE_STYLES[zone];
         const cards = this.pileViewCards(playerId, zone, state);
 
-        // Interactive so a click anywhere off a card dismisses the view — and, more importantly,
-        // so the board underneath cannot be clicked through it. Phaser's InputPlugin is topOnly by
-        // default, so this full-screen rect swallows every pointer event below PILE_VIEW_DEPTH.
-        const dimmer = this.scene.add.rectangle(CENTER_X, CENTER_Y, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.82)
-            .setDepth(PILE_VIEW_DEPTH)
-            .setInteractive();
-        dimmer.on('pointerup', () => this.close());
-        this.objects.push(dimmer);
-
-        // Playtesting-only cheat: only your own deck (not the graveyard, not the opponent's deck)
-        // draws on click — see the constructor's onDebugDraw doc and SPEC.md's "Playtesting-only
-        // features" section.
-        const debugDrawable = playerId === 'player' && zone === 'deck';
-
         const owner = playerId === 'player' ? 'Your' : "Opponent's";
-        const titleSuffix = debugDrawable ? ' — click a card to draw it (playtesting)' : '';
-        const title = this.scene.add.text(CENTER_X, 52, `${owner} ${style.title} — ${cards.length} card${cards.length === 1 ? '' : 's'}${titleSuffix}`, {
-            fontFamily: 'Arial Black', fontSize: '36px', color: '#ffffff',
-        }).setOrigin(0.5, 0).setDepth(PILE_VIEW_DEPTH + 1);
-        this.objects.push(title);
-
-        const close = this.scene.add.text(GAME_WIDTH - 48, 52, '✕ Close', {
-            fontFamily: 'Arial', fontSize: '24px', color: '#ffffff', backgroundColor: '#3a4a6b',
-        }).setOrigin(1, 0).setPadding(16, 9, 16, 9).setDepth(PILE_VIEW_DEPTH + 1).setInteractive({ useHandCursor: true });
-        close.on('pointerup', () => this.close());
-        this.objects.push(close);
-
-        const hint = this.scene.add.text(CENTER_X, GAME_HEIGHT - 34, 'Click anywhere or press Esc to close', {
-            fontFamily: 'Arial', fontSize: '16px', color: '#8fa8d6',
-        }).setOrigin(0.5, 1).setDepth(PILE_VIEW_DEPTH + 1);
-        this.objects.push(hint);
+        const chrome = createOverlayChrome(
+            this.scene,
+            `${owner} ${style.title} — ${cards.length} card${cards.length === 1 ? '' : 's'}`,
+            () => this.close()
+        );
+        this.objects.push(chrome.dimmer, chrome.title, chrome.close, chrome.hint);
 
         if (cards.length === 0)
         {
@@ -126,7 +94,7 @@ export class PileViewController
             return;
         }
 
-        this.renderGrid(cards, state, debugDrawable ? { playerId } : undefined);
+        this.renderGrid(cards, state);
     }
 
     /**
@@ -149,15 +117,10 @@ export class PileViewController
 
     /**
      * Lays the cards out in a centered grid, scaled down just far enough that the whole pile fits
-     * on one screen — no scrolling, however big the zone gets. `debugDraw`, when present, is the
-     * playtesting-only "click to draw" cheat (see the constructor doc) — each card additionally
-     * gets a hand cursor and a pointerup that draws it, then re-renders this same overlay in place
-     * (off the still-live `state` reference) so the drawn card disappears from the grid and the
-     * count updates without closing the view, letting a playtester draw several cards in a row.
-     * `state` is always passed (not just for the debug-draw case) so every card's tooltip/rule
-     * text can resolve any live counter — see counters.ts's resolveCardText.
+     * on one screen — no scrolling, however big the zone gets. `state` is passed through so every
+     * card's tooltip/rule text can resolve any live counter — see counters.ts's resolveCardText.
      */
-    private renderGrid (cards: CardInstance[], state: GameState, debugDraw?: { playerId: PlayerId }): void
+    private renderGrid (cards: CardInstance[], state: GameState): void
     {
         const columns = Math.min(PILE_VIEW_MAX_COLUMNS, cards.length);
         const rows = Math.ceil(cards.length / columns);
@@ -191,20 +154,9 @@ export class PileViewController
                 // scale applies to the hit area too, so this needs no scale compensation of its own.
                 hitArea: new Geom.Rectangle(0, 0, CARD_W, CARD_H),
                 hitAreaCallback: Geom.Rectangle.Contains,
-                useHandCursor: !!debugDraw,
             });
             // Pile-view cards render in 'full' mode and already print their cost on-card.
             this.helpBox.attachKeywordHover(card, instance, false, resolveCardText(instance, state));
-
-            if (debugDraw)
-            {
-                const { playerId } = debugDraw;
-                card.on('pointerup', () =>
-                {
-                    this.onDebugDraw(playerId, instance.instanceId);
-                    this.render(state);
-                });
-            }
 
             this.objects.push(card);
         });

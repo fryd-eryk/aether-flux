@@ -1,7 +1,7 @@
 import { CARD_DEFINITIONS } from '../data/cards';
 import { createCardInstance } from '../data/cardFactory';
 import { EventBus } from '../EventBus';
-import type { CardAura, CardInstance, ChosenTargetRestriction, EffectAction, EffectTrigger, Keyword, TargetSelector, Tribe } from '../types/Card';
+import type { CardAura, CardEffect, CardInstance, ChosenTargetRestriction, EffectAction, EffectTrigger, Keyword, TargetSelector, Tribe } from '../types/Card';
 import type { PlayerId } from '../types/common';
 import type { GameState, PendingTarget, PlayerState } from '../types/GameState';
 import { TurnPhase } from '../types/GameState';
@@ -12,13 +12,28 @@ import { minionHasTribe, restrictionTribe } from './tribes';
 type PendingAction =
     | { type: 'playCard'; instanceId: string }
     | { type: 'attack'; attackerInstanceId: string }
-    | { type: 'ability'; instanceId: string; abilityIndex: number };
+    | { type: 'ability'; instanceId: string; abilityIndex: number }
+    | { type: 'endTurn' }
+    | { type: 'startTurn' };
 
 /** Consumed left-to-right as triggerEffects/executeAbility walk a block's actions[] in order —
- * see collectChosenRestrictions, which builds `ids` in that same traversal order up front.
+ * see collectPendingPrompts, which builds `ids` in that same traversal order up front.
  * `last` is the most recently resolved *real* (non-reuseTarget) chosen id, for `reuseTarget`
  * actions to read instead of consuming another entry from `ids`. */
 type ChosenTargetCursor = { ids: string[]; index: number; last?: string };
+
+/** One still-to-prompt-for chosen target: which source card it belongs to (so the collected id
+ * can be routed back to the right per-source ChosenTargetCursor once targeting finishes — see
+ * buildCursorMap) and the actual EffectAction generating it (so the UI/AI know what this prompt
+ * is, not just its restriction). Built once per beginTargeting call by collectPendingPrompts, in
+ * the exact order triggerEffects/triggerBoardWide will later walk them for real. Source order
+ * matters for a *different* reason than within a single source's own actions[]: an earlier
+ * source's own chosen action (e.g. a spell's own onPlay destroy) can make a later pre-walked
+ * source ineligible (dead or silenced) by the time its own trigger actually fires — see SPEC.md's
+ * "Board-wide chosen-target triggers" note. Keying the real cursor by source (buildCursorMap),
+ * rather than one shared flat FIFO, means that only wastes that one source's own reserved
+ * target(s) rather than desyncing every other source's. */
+type PendingPrompt = { sourceInstanceId: string; action: Extract<EffectAction, { target: TargetSelector }> };
 
 /**
  * Pure game-state driver, no Phaser dependency. A Scene forwards player input into
@@ -33,9 +48,9 @@ export class TurnStateMachine {
 
     private gameState: GameState;
     private pendingAction?: PendingAction;
-    /** Ordered chosen-target restrictions still to prompt for, and the ids already resolved so
-     * far — see beginTargeting/collectChosenRestrictions. Reset on every beginTargeting call. */
-    private pendingChosenQueue: (ChosenTargetRestriction | undefined)[] = [];
+    /** Ordered prompts still to come, and the ids already resolved so far — see
+     * beginTargeting/collectPendingPrompts. Reset on every beginTargeting call. */
+    private pendingPrompts: PendingPrompt[] = [];
     private pendingChosenTargets: string[] = [];
     /** For a pending 'attack' action only: undefined while the attack's own target (who Nythis
      * hits) is still being chosen, then set once it is — distinguishing that fixed first step from
@@ -58,7 +73,7 @@ export class TurnStateMachine {
                 this.drawCard(playerId);
             }
         }
-        this.startTurn(this.gameState.activePlayer);
+        this.beginStartTurn(this.gameState.activePlayer);
     }
 
     playCard(instanceId: string): void {
@@ -80,7 +95,7 @@ export class TurnStateMachine {
             return;
         }
 
-        if (this.needsChosenTarget({ type: 'playCard', instanceId }, player.id)) {
+        if (this.collectPendingPrompts({ type: 'playCard', instanceId }, player.id).length > 0) {
             console.log('[TurnStateMachine] playCard needs target, entering AwaitingTarget', { instanceId, definitionId: card.definitionId });
             this.beginTargeting({ type: 'playCard', instanceId }, player.id);
             return;
@@ -131,7 +146,7 @@ export class TurnStateMachine {
             return;
         }
 
-        if (this.needsChosenTarget({ type: 'ability', instanceId, abilityIndex }, player.id)) {
+        if (this.collectPendingPrompts({ type: 'ability', instanceId, abilityIndex }, player.id).length > 0) {
             console.log('[TurnStateMachine] activateAbility needs target, entering AwaitingTarget', { instanceId, abilityIndex });
             this.beginTargeting({ type: 'ability', instanceId, abilityIndex }, player.id);
             return;
@@ -156,10 +171,10 @@ export class TurnStateMachine {
         if (action.type === 'attack') {
             if (this.pendingAttackTargetId === undefined) {
                 // Step 1: who Nythis (or any attacker) hits. If its onAttack effect(s) also need a
-                // chosen target (see collectAttackChosenRestrictions), stay in AwaitingTarget and
-                // advance to that step instead of resolving immediately.
+                // chosen target (see collectPendingPrompts), stay in AwaitingTarget and advance to
+                // that step instead of resolving immediately.
                 this.pendingAttackTargetId = targetId;
-                if (this.pendingChosenQueue.length > 0) {
+                if (this.pendingPrompts.length > 0) {
                     this.gameState.pendingTarget = this.currentPendingTarget(action, this.gameState.activePlayer);
                     this.setPhase(TurnPhase.AwaitingTarget);
                     return;
@@ -170,41 +185,50 @@ export class TurnStateMachine {
 
             // Step 2+: the attacker's own chosen-target onAttack effect(s) (e.g. Nythis's destroy).
             this.pendingChosenTargets.push(targetId);
-            if (this.pendingChosenTargets.length < this.pendingChosenQueue.length) {
+            if (this.pendingChosenTargets.length < this.pendingPrompts.length) {
                 this.gameState.pendingTarget = this.currentPendingTarget(action, this.gameState.activePlayer);
                 this.setPhase(TurnPhase.AwaitingTarget);
                 return;
             }
-            this.executeAttack(action.attackerInstanceId, this.pendingAttackTargetId, this.pendingChosenTargets);
+            this.executeAttack(action.attackerInstanceId, this.pendingAttackTargetId, this.buildCursorMap(this.pendingChosenTargets));
             return;
         }
 
         this.pendingChosenTargets.push(targetId);
-        if (this.pendingChosenTargets.length < this.pendingChosenQueue.length) {
-            // More chosen-target actions in this block still need their own target — stay in
-            // AwaitingTarget and re-prompt for the next one. setPhase always re-emits
-            // 'state:phase-change' even when the phase value doesn't change, so the Scene still
-            // re-renders with the next step's valid-target highlighting.
+        if (this.pendingChosenTargets.length < this.pendingPrompts.length) {
+            // More prompts still need their own target — stay in AwaitingTarget and re-prompt for
+            // the next one. setPhase always re-emits 'state:phase-change' even when the phase
+            // value doesn't change, so the Scene still re-renders with the next step's
+            // valid-target highlighting.
             this.gameState.pendingTarget = this.currentPendingTarget(action, this.gameState.activePlayer);
             this.setPhase(TurnPhase.AwaitingTarget);
             return;
         }
 
+        const cursors = this.buildCursorMap(this.pendingChosenTargets);
         if (action.type === 'playCard') {
-            this.executePlayCard(action.instanceId, this.pendingChosenTargets);
+            this.executePlayCard(action.instanceId, cursors);
+        } else if (action.type === 'ability') {
+            this.executeAbility(action.instanceId, action.abilityIndex, cursors);
+        } else if (action.type === 'endTurn') {
+            this.executeEndTurn(cursors);
         } else {
-            this.executeAbility(action.instanceId, action.abilityIndex, this.pendingChosenTargets);
+            this.executeStartTurn(cursors);
         }
     }
 
     cancelTarget(): void {
         if (this.gameState.phase !== TurnPhase.AwaitingTarget) return;
+        if (this.gameState.pendingTarget?.cancellable === false) {
+            console.log('[TurnStateMachine] cancelTarget rejected: not cancellable at this step');
+            return;
+        }
         const pendingAction = this.pendingAction;
         const activePlayerId = this.gameState.activePlayer;
         console.log('[TurnStateMachine] cancelTarget', { pendingAction });
         this.pendingAction = undefined;
         this.gameState.pendingTarget = undefined;
-        this.pendingChosenQueue = [];
+        this.pendingPrompts = [];
         this.pendingChosenTargets = [];
         this.pendingAttackTargetId = undefined;
         // Only a card pulled out of hand (not an attacker choosing its target) gets the Scene's
@@ -221,11 +245,25 @@ export class TurnStateMachine {
             return;
         }
         const player = this.gameState.players[this.gameState.activePlayer];
-        console.log('[TurnStateMachine] endTurn', { playerId: player.id, turnNumber: this.gameState.turnNumber });
 
+        if (this.collectPendingPrompts({ type: 'endTurn' }, player.id).length > 0) {
+            console.log('[TurnStateMachine] endTurn needs target (Curfew), entering AwaitingTarget', { playerId: player.id });
+            this.beginTargeting({ type: 'endTurn' }, player.id);
+            return;
+        }
+
+        console.log('[TurnStateMachine] endTurn', { playerId: player.id, turnNumber: this.gameState.turnNumber });
+        this.executeEndTurn(new Map());
+    }
+
+    /** Curfew (endOfTurn) resolves here, once any of its own chosen targets are already in hand —
+     * see endTurn. Ends by handing off to beginStartTurn for the new active player's own Vigil
+     * (startOfTurn) targeting phase, chained the same way. */
+    private executeEndTurn(cursors: Map<string, ChosenTargetCursor>): void {
+        const player = this.gameState.players[this.gameState.activePlayer];
         this.setPhase(TurnPhase.TurnEnd);
+        this.triggerBoardWide('endOfTurn', player.id, player.board, cursors);
         for (const card of player.board) {
-            this.triggerEffects(card, 'endOfTurn', player.id);
             // A minion frozen on an earlier turn only reaches this point once its own controller's
             // turn (the one it was blocked for) is ending — see keywordRules.canDeclareAttack.
             card.frozen = false;
@@ -238,12 +276,12 @@ export class TurnStateMachine {
 
         this.gameState.activePlayer = this.opponentOf(player.id);
         this.gameState.turnNumber += 1;
-        this.startTurn(this.gameState.activePlayer);
+        this.beginStartTurn(this.gameState.activePlayer);
     }
 
     // --- resolution ---------------------------------------------------------
 
-    private executePlayCard(instanceId: string, chosenTargetIds: string[] = []): void {
+    private executePlayCard(instanceId: string, cursors: Map<string, ChosenTargetCursor> = new Map()): void {
         const player = this.gameState.players[this.gameState.activePlayer];
         const card = player.hand.find((c) => c.instanceId === instanceId);
         if (!card) return;
@@ -270,7 +308,7 @@ export class TurnStateMachine {
         }
 
         this.setPhase(TurnPhase.Resolving);
-        this.triggerEffects(card, 'onPlay', player.id, { ids: chosenTargetIds, index: 0 });
+        this.triggerEffects(card, 'onPlay', player.id, cursors.get(instanceId));
         // Counted after this card's own onPlay resolves (so a Momentum effect on the card itself
         // reads "how many were played before it"), but before Channel fires below (so a Channel
         // minion's own Momentum condition correctly counts this card as already played).
@@ -279,14 +317,14 @@ export class TurnStateMachine {
         if (definition.type !== 'minion' && definition.type !== 'token') {
             // Channel (onSpellCast) — every minion on the caster's own board with a matching
             // effect reacts, distinct from the single-instance onPlay trigger just fired above.
-            this.triggerBoardWide('onSpellCast', player.id, player.board);
+            this.triggerBoardWide('onSpellCast', player.id, player.board, cursors);
             this.sweepDeaths();
         } else {
             // Muster (onFriendlyMinionCast) — the mirror image of Channel above, for casting a minion
             // instead of a spell. The played minion is already sitting in player.board by this
             // point (pushed above), so it's filtered out here — otherwise it would react to its
             // own cast, which is exactly what the single-instance onPlay trigger already covers.
-            this.triggerBoardWide('onFriendlyMinionCast', player.id, player.board.filter((c) => c.instanceId !== card.instanceId));
+            this.triggerBoardWide('onFriendlyMinionCast', player.id, player.board.filter((c) => c.instanceId !== card.instanceId), cursors);
             this.sweepDeaths();
         }
         // Catch-all: keeps any dynamic-counter aura (e.g. "+1/+1 per Demon you control") correct
@@ -302,7 +340,7 @@ export class TurnStateMachine {
      * target is still being chosen. Doesn't touch cardsPlayedThisTurn (not "playing a card", so it
      * shouldn't feed Momentum) and doesn't call triggerEffects (no onPlay/Channel/Muster — those
      * are for cards entering play, not an already-in-play minion's activated ability). */
-    private executeAbility(instanceId: string, abilityIndex: number, chosenTargetIds: string[] = []): void {
+    private executeAbility(instanceId: string, abilityIndex: number, cursors: Map<string, ChosenTargetCursor> = new Map()): void {
         const player = this.gameState.players[this.gameState.activePlayer];
         const card = player.board.find((c) => c.instanceId === instanceId);
         if (!card) return;
@@ -314,7 +352,7 @@ export class TurnStateMachine {
         player.mana -= ability.cost;
 
         this.setPhase(TurnPhase.Resolving);
-        const cursor: ChosenTargetCursor = { ids: chosenTargetIds, index: 0 };
+        const cursor: ChosenTargetCursor = cursors.get(instanceId) ?? { ids: [], index: 0 };
         for (const action of ability.actions) {
             const chosenTargetId = this.resolveChosenCursor(action, cursor);
             this.applyEffectAction(action, player.id, card.instanceId, chosenTargetId);
@@ -325,7 +363,7 @@ export class TurnStateMachine {
         this.finishResolving();
     }
 
-    private executeAttack(attackerInstanceId: string, targetId: string, chosenTargetIds: string[] = []): void {
+    private executeAttack(attackerInstanceId: string, targetId: string, cursors: Map<string, ChosenTargetCursor> = new Map()): void {
         const player = this.gameState.players[this.gameState.activePlayer];
         const attacker = player.board.find((c) => c.instanceId === attackerInstanceId);
         if (!attacker) return;
@@ -337,7 +375,7 @@ export class TurnStateMachine {
         // in dealDamage. Strike (onAttack) fires unconditionally here, before any damage resolves
         // either way, so it's unaffected by whether the hit lands or either side survives it.
         attacker.keywords.delete('veiled');
-        this.triggerEffects(attacker, 'onAttack', player.id, { ids: chosenTargetIds, index: 0 });
+        this.triggerEffects(attacker, 'onAttack', player.id, cursors.get(attackerInstanceId));
 
         const defender = !this.isPlayerId(targetId) ? this.findMinion(targetId) : undefined;
         // Initiative (MTG's First Strike): the side that ALONE has it hits first, and the other
@@ -390,10 +428,13 @@ export class TurnStateMachine {
         this.setPhase(TurnPhase.MainIdle);
     }
 
-    private startTurn(playerId: PlayerId): void {
+    /** Mana refresh/sickness-reset/draw (none of which depend on targeting) up front, then checks
+     * whether the new active player's board has a chosen-target Vigil (startOfTurn) effect to
+     * prompt for before actually resolving it — see executeStartTurn. */
+    private beginStartTurn(playerId: PlayerId): void {
         this.setPhase(TurnPhase.TurnStart);
         const player = this.gameState.players[playerId];
-        console.log('[TurnStateMachine] startTurn', { playerId, turnNumber: this.gameState.turnNumber, maxMana: Math.min(TurnStateMachine.MAX_MANA, player.maxMana + 1) });
+        console.log('[TurnStateMachine] beginStartTurn', { playerId, turnNumber: this.gameState.turnNumber, maxMana: Math.min(TurnStateMachine.MAX_MANA, player.maxMana + 1) });
 
         player.maxMana = Math.min(TurnStateMachine.MAX_MANA, player.maxMana + 1);
         player.mana = player.maxMana;
@@ -406,9 +447,21 @@ export class TurnStateMachine {
 
         this.drawCard(playerId);
 
-        for (const card of player.board) {
-            this.triggerEffects(card, 'startOfTurn', playerId);
+        if (this.collectPendingPrompts({ type: 'startTurn' }, playerId).length > 0) {
+            console.log('[TurnStateMachine] startTurn needs target (Vigil), entering AwaitingTarget', { playerId });
+            this.beginTargeting({ type: 'startTurn' }, playerId);
+            return;
         }
+
+        this.executeStartTurn(new Map());
+    }
+
+    /** Vigil (startOfTurn) resolves here, once any of its own chosen targets are already in hand —
+     * see beginStartTurn. Not cancellable (see PendingTarget.cancellable) — by this point mana has
+     * already refreshed and a card's already been drawn for the turn, so there's no clean "undo". */
+    private executeStartTurn(cursors: Map<string, ChosenTargetCursor>): void {
+        const player = this.gameState.players[this.gameState.activePlayer];
+        this.triggerBoardWide('startOfTurn', player.id, player.board, cursors);
         this.sweepDeaths();
         // Catch-all — a startOfTurn effect (e.g. hero damage/heal) can change a counter an aura's
         // magnitude depends on without any minion dying.
@@ -428,22 +481,37 @@ export class TurnStateMachine {
     }
 
     /**
-     * Playtesting-only cheat: pulls one specific card out of a player's deck by id and puts it
-     * straight into their hand, bypassing the random top-of-deck draw. No phase/turn gating,
-     * unlike every other player-facing method here — it's meant to be callable at any time from
-     * the deck-inspect overlay. Reuses drawCard's own 'state:card-drawn' emit so the existing fly-
-     * to-hand animation plays unmodified. See SPEC.md's "Playtesting-only features" section —
-     * remove this (and PileViewController's wiring to it) before release.
+     * Playtesting-only cheat: conjures a brand-new copy of any card definition in the game
+     * straight into a player's hand — no deck involvement at all, unlike drawCard. Reuses
+     * createCardInstance (the same factory summonMinion uses to conjure a fresh instance onto the
+     * board) for a proper fresh instanceId/stats, and drawCard's own 'state:card-drawn' emit so the
+     * existing fly-to-hand animation plays unmodified. No phase/turn gating, unlike every other
+     * player-facing method here — it's meant to be callable at any time from the debug card-picker
+     * overlay. See SPEC.md's "Playtesting-only features" section — remove this (and
+     * CardPickerController) before release.
      */
-    debugDrawCard(playerId: PlayerId, instanceId: string): void {
-        const player = this.gameState.players[playerId];
-        const index = player.deck.findIndex((c) => c.instanceId === instanceId);
-        if (index === -1) return;
+    debugAddCard(playerId: PlayerId, definitionId: string): void {
+        const definition = CARD_DEFINITIONS[definitionId];
+        if (!definition) return;
 
-        const [card] = player.deck.splice(index, 1);
+        const player = this.gameState.players[playerId];
+        const card = createCardInstance(definition, playerId);
         card.zone = 'hand';
         player.hand.push(card);
         EventBus.emit('state:card-drawn', { playerId, instanceId: card.instanceId });
+    }
+
+    /**
+     * Playtesting-only cheat: fills a player's mana to MAX_MANA/MAX_MANA (10/10) instantly. No
+     * phase/turn gating, same as debugAddCard — callable any time from the "Full Mana" button. No
+     * event to emit here (unlike debugAddCard/drawCard) since there's no animation tied to a mana
+     * change — CardGame's button callback just calls requestRender() directly to refresh the
+     * mana readout. See SPEC.md's "Playtesting-only features" section — remove this before release.
+     */
+    debugSetMaxMana(playerId: PlayerId): void {
+        const player = this.gameState.players[playerId];
+        player.maxMana = TurnStateMachine.MAX_MANA;
+        player.mana = TurnStateMachine.MAX_MANA;
     }
 
     // --- targeting -----------------------------------------------------------
@@ -452,10 +520,7 @@ export class TurnStateMachine {
         this.pendingAction = action;
         this.pendingChosenTargets = [];
         this.pendingAttackTargetId = undefined;
-        this.pendingChosenQueue =
-            action.type === 'attack'
-                ? this.collectAttackChosenRestrictions(action.attackerInstanceId, ownerId)
-                : this.collectChosenRestrictions(action, ownerId);
+        this.pendingPrompts = this.collectPendingPrompts(action, ownerId);
         this.gameState.pendingTarget = this.currentPendingTarget(action, ownerId);
         // A card pulled out of hand gets held at the Scene's spotlight while the player picks a
         // target (see CardGame's targetBeginHandler) — an attacker choosing its target never left
@@ -467,36 +532,42 @@ export class TurnStateMachine {
         this.setPhase(TurnPhase.AwaitingTarget);
     }
 
-    /** Valid targets (plus step/totalSteps) for whichever slot targeting is currently on — the
-     * attacker's fixed single slot, or the current head of pendingChosenQueue. Callable both when
-     * first entering AwaitingTarget and when advancing to the next chosen-target prompt within
-     * the same play/ability (see selectTarget). */
+    /** Valid targets (plus step/totalSteps/action/cancellable) for whichever slot targeting is
+     * currently on — the attacker's fixed single slot, or the current head of pendingPrompts.
+     * Callable both when first entering AwaitingTarget and when advancing to the next prompt
+     * within the same action (see selectTarget). */
     private currentPendingTarget(action: PendingAction, ownerId: PlayerId): PendingTarget {
+        const cancellable = action.type !== 'startTurn';
         if (action.type === 'attack') {
-            const totalSteps = 1 + this.pendingChosenQueue.length;
+            const totalSteps = 1 + this.pendingPrompts.length;
             if (this.pendingAttackTargetId === undefined) {
                 return {
                     sourceInstanceId: action.attackerInstanceId,
                     validTargetIds: this.computeAttackTargets(ownerId),
                     step: 1,
                     totalSteps,
+                    cancellable,
                 };
             }
-            const restriction = this.pendingChosenQueue[this.pendingChosenTargets.length];
+            const prompt = this.pendingPrompts[this.pendingChosenTargets.length];
             return {
-                sourceInstanceId: action.attackerInstanceId,
-                validTargetIds: this.computeValidTargetsForRestriction(restriction, ownerId),
+                sourceInstanceId: prompt.sourceInstanceId,
+                validTargetIds: this.computeValidTargetsForRestriction(prompt.action.chosenRestriction, ownerId),
+                action: prompt.action,
                 step: 1 + this.pendingChosenTargets.length + 1,
                 totalSteps,
+                cancellable,
             };
         }
 
-        const restriction = this.pendingChosenQueue[this.pendingChosenTargets.length];
+        const prompt = this.pendingPrompts[this.pendingChosenTargets.length];
         return {
-            sourceInstanceId: action.instanceId,
-            validTargetIds: this.computeValidTargetsForRestriction(restriction, ownerId),
+            sourceInstanceId: prompt.sourceInstanceId,
+            validTargetIds: this.computeValidTargetsForRestriction(prompt.action.chosenRestriction, ownerId),
+            action: prompt.action,
             step: this.pendingChosenTargets.length + 1,
-            totalSteps: this.pendingChosenQueue.length,
+            totalSteps: this.pendingPrompts.length,
+            cancellable,
         };
     }
 
@@ -524,48 +595,73 @@ export class TurnStateMachine {
         return [ownerId, opponentId, ...allMinions.map((c) => c.instanceId)];
     }
 
-    /** Every `target: 'chosen'` action's restriction across the relevant actions[] list(s), in
-     * the exact order triggerEffects/executeAbility will later walk them — one target prompt per
-     * entry, not one prompt shared across the whole block/card (see selectTarget). A 'playCard'
-     * action walks the hand card's onPlay effects in array order, then each effect's actions in
-     * array order; an 'ability' action walks one paidAbilities entry's actions. Deliberately
-     * ignores `condition` (Momentum) — a Momentum-gated chosen action still gets prompted for up
-     * front even if it goes unused because the condition ends up false at resolution time (see
-     * triggerEffects's matching cursor-advance-even-when-skipped comment). A `reuseTarget: true`
-     * action is excluded entirely — it isn't its own prompt, it reads the nearest earlier action's
-     * resolved id at execution time instead (see ChosenTargetCursor.last). */
-    /** Mirrors collectChosenRestrictions below but for an attacker's own `onAttack` effects (e.g.
-     * Nythis's "When Nythis attacks, destroy target minion") — one prompt per chosen-target
-     * onAttack action, in the traversal order executeAttack's ChosenTargetCursor will later
-     * consume them. A silenced attacker's onAttack effects never fire (see triggerEffects' guard),
-     * so nothing is collected — the player isn't prompted for a target that would go unused. */
-    private collectAttackChosenRestrictions(attackerInstanceId: string, ownerId: PlayerId): (ChosenTargetRestriction | undefined)[] {
-        const attacker = this.gameState.players[ownerId].board.find((c) => c.instanceId === attackerInstanceId);
-        if (!attacker || attacker.silenced) return [];
-        const definition = CARD_DEFINITIONS[attacker.definitionId];
-        const onAttackEffects = definition?.effects?.filter((e) => e.trigger === 'onAttack') ?? [];
+    /** Every prompt still needed for `action`, in the exact order triggerEffects/triggerBoardWide/
+     * executeAbility will later walk them — one prompt per `target: 'chosen'` action, not one
+     * prompt shared across a whole block/card (see selectTarget). Deliberately ignores `condition`
+     * (Momentum) — a Momentum-gated chosen action still gets prompted for up front even if it goes
+     * unused because the condition ends up false at resolution time (see triggerEffects's matching
+     * cursor-advance-even-when-skipped comment). A `reuseTarget: true` action is excluded entirely
+     * — it isn't its own prompt, it reads the nearest earlier action's resolved id at execution
+     * time instead (see ChosenTargetCursor.last).
+     *
+     * A 'playCard'/'attack' action's own single source (the played card / the attacker) is walked
+     * first, exactly as before; 'playCard' additionally walks every OTHER non-silenced board
+     * minion's matching board-wide reaction (Channel for a spell, Muster for a minion/token — both
+     * read `player.board` before the card is added to it, so no self-exclusion special-casing is
+     * needed). 'endTurn'/'startTurn' are pure board-wide passes (Curfew/Vigil respectively) with no
+     * single source of their own. A silenced source is skipped everywhere (mirrors triggerEffects'
+     * own guard) so nothing prompts for a target that would go unused. */
+    private collectPendingPrompts(action: PendingAction, ownerId: PlayerId): PendingPrompt[] {
         const needsPrompt = (a: EffectAction): a is Extract<EffectAction, { target: TargetSelector }> =>
             'target' in a && a.target === 'chosen' && !('reuseTarget' in a && a.reuseTarget);
-        return onAttackEffects.flatMap((e) => e.actions).filter(needsPrompt).map((a) => a.chosenRestriction);
-    }
+        const promptsFor = (sourceInstanceId: string, effects: CardEffect[] | undefined): PendingPrompt[] =>
+            (effects ?? []).flatMap((e) => e.actions).filter(needsPrompt).map((a) => ({ sourceInstanceId, action: a }));
+        const boardWidePrompts = (trigger: EffectTrigger, board: CardInstance[]): PendingPrompt[] =>
+            board
+                .filter((c) => !c.silenced)
+                .flatMap((c) => promptsFor(c.instanceId, CARD_DEFINITIONS[c.definitionId]?.effects?.filter((e) => e.trigger === trigger)));
 
-    private collectChosenRestrictions(action: Exclude<PendingAction, { type: 'attack' }>, ownerId: PlayerId): (ChosenTargetRestriction | undefined)[] {
-        const needsPrompt = (a: EffectAction): a is Extract<EffectAction, { target: TargetSelector }> =>
-            'target' in a && a.target === 'chosen' && !('reuseTarget' in a && a.reuseTarget);
-        if (action.type === 'ability') {
-            const card = this.gameState.players[ownerId].board.find((c) => c.instanceId === action.instanceId);
-            const definition = card ? CARD_DEFINITIONS[card.definitionId] : undefined;
-            const ability = definition?.paidAbilities?.[action.abilityIndex];
-            return (ability?.actions ?? []).filter(needsPrompt).map((a) => a.chosenRestriction);
+        switch (action.type) {
+            case 'ability': {
+                const card = this.gameState.players[ownerId].board.find((c) => c.instanceId === action.instanceId);
+                const definition = card ? CARD_DEFINITIONS[card.definitionId] : undefined;
+                const ability = definition?.paidAbilities?.[action.abilityIndex];
+                return (ability?.actions ?? []).filter(needsPrompt).map((a) => ({ sourceInstanceId: action.instanceId, action: a }));
+            }
+            case 'playCard': {
+                const card = this.gameState.players[ownerId].hand.find((c) => c.instanceId === action.instanceId);
+                const definition = card ? CARD_DEFINITIONS[card.definitionId] : undefined;
+                if (!definition) return [];
+                const own = promptsFor(action.instanceId, definition.effects?.filter((e) => e.trigger === 'onPlay'));
+                const boardWide =
+                    definition.type === 'minion' || definition.type === 'token'
+                        ? boardWidePrompts('onFriendlyMinionCast', this.gameState.players[ownerId].board)
+                        : boardWidePrompts('onSpellCast', this.gameState.players[ownerId].board);
+                return [...own, ...boardWide];
+            }
+            case 'attack': {
+                const attacker = this.gameState.players[ownerId].board.find((c) => c.instanceId === action.attackerInstanceId);
+                if (!attacker || attacker.silenced) return [];
+                return promptsFor(action.attackerInstanceId, CARD_DEFINITIONS[attacker.definitionId]?.effects?.filter((e) => e.trigger === 'onAttack'));
+            }
+            case 'endTurn':
+                return boardWidePrompts('endOfTurn', this.gameState.players[ownerId].board);
+            case 'startTurn':
+                return boardWidePrompts('startOfTurn', this.gameState.players[ownerId].board);
         }
-        const card = this.gameState.players[ownerId].hand.find((c) => c.instanceId === action.instanceId);
-        const definition = card ? CARD_DEFINITIONS[card.definitionId] : undefined;
-        const onPlayEffects = definition?.effects?.filter((e) => e.trigger === 'onPlay') ?? [];
-        return onPlayEffects.flatMap((e) => e.actions).filter(needsPrompt).map((a) => a.chosenRestriction);
     }
 
-    private needsChosenTarget(action: Exclude<PendingAction, { type: 'attack' }>, ownerId: PlayerId): boolean {
-        return this.collectChosenRestrictions(action, ownerId).length > 0;
+    /** Zips the fully-collected `ids` (one per pendingPrompts entry, same order) back apart by
+     * source, building the per-source cursor map triggerEffects/triggerBoardWide will consume from
+     * — see PendingPrompt's doc comment for why per-source (not one shared FIFO) matters. */
+    private buildCursorMap(ids: string[]): Map<string, ChosenTargetCursor> {
+        const map = new Map<string, ChosenTargetCursor>();
+        this.pendingPrompts.forEach((prompt, i) => {
+            const cursor = map.get(prompt.sourceInstanceId) ?? { ids: [], index: 0 };
+            cursor.ids.push(ids[i]);
+            map.set(prompt.sourceInstanceId, cursor);
+        });
+        return map;
     }
 
     // --- effects ---------------------------------------------------------------
@@ -583,7 +679,7 @@ export class TurnStateMachine {
             // guard above.
             const satisfied = effect.condition?.type !== 'momentum' || cardsPlayedThisTurn >= effect.condition.minCount;
             for (const action of effect.actions) {
-                // The chosen-target queue (collectChosenRestrictions) is built ignoring Momentum, so
+                // The chosen-target queue (collectPendingPrompts) is built ignoring Momentum, so
                 // the cursor must still advance (for a real, non-reuseTarget chosen action) here even
                 // when this block is skipped below — otherwise every chosen action after a skipped
                 // Momentum block would silently consume the wrong id.
@@ -606,12 +702,15 @@ export class TurnStateMachine {
         return chosenTargetId;
     }
 
-    /** Fires `trigger` for every minion in `board` via the ordinary single-instance triggerEffects —
-     * the shared shape for board-wide triggers (Channel/onSpellCast, Mourn/onFriendlyMinionDeath) that react
-     * to *another* card's event rather than their own. */
-    private triggerBoardWide(trigger: EffectTrigger, ownerId: PlayerId, board: CardInstance[]): void {
+    /** Fires `trigger` for every minion in `board` via the ordinary single-instance triggerEffects,
+     * each looking up its own cursor (if any) from `cursors` by instanceId — the shared shape for
+     * board-wide triggers (Channel/onSpellCast, Muster/onFriendlyMinionCast, Vigil/startOfTurn,
+     * Curfew/endOfTurn, and Mourn/onFriendlyMinionDeath) that react to another card's event rather
+     * than their own. Omitting `cursors` (as sweepDeaths' Mourn call still does — the deferred
+     * Tier-2 case) means every chosen action silently no-ops, same as today. */
+    private triggerBoardWide(trigger: EffectTrigger, ownerId: PlayerId, board: CardInstance[], cursors?: Map<string, ChosenTargetCursor>): void {
         for (const card of board) {
-            this.triggerEffects(card, trigger, ownerId);
+            this.triggerEffects(card, trigger, ownerId, cursors?.get(card.instanceId));
         }
     }
 
