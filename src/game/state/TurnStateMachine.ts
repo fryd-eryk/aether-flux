@@ -1,7 +1,7 @@
 import { CARD_DEFINITIONS } from '../data/cards';
 import { createCardInstance } from '../data/cardFactory';
 import { EventBus } from '../EventBus';
-import type { CardInstance, ChosenTargetRestriction, EffectAction, EffectTrigger, Keyword, TargetSelector, Tribe } from '../types/Card';
+import type { CardAura, CardInstance, ChosenTargetRestriction, EffectAction, EffectTrigger, Keyword, TargetSelector, Tribe } from '../types/Card';
 import type { PlayerId } from '../types/common';
 import type { GameState, PendingTarget, PlayerState } from '../types/GameState';
 import { TurnPhase } from '../types/GameState';
@@ -205,6 +205,9 @@ export class TurnStateMachine {
         }
         this.tickTemporaryEffects();
         this.sweepDeaths();
+        // Catch-all (see recalculateAuras' doc comment) — endOfTurn effects can change a counter
+        // without any minion dying.
+        this.recalculateAuras();
 
         this.gameState.activePlayer = this.opponentOf(player.id);
         this.gameState.turnNumber += 1;
@@ -230,6 +233,7 @@ export class TurnStateMachine {
             if (player.board.length < TurnStateMachine.MAX_BOARD_SIZE) {
                 card.zone = 'board';
                 player.board.push(card);
+                this.recalculateAuras();
             } else {
                 // Board full: the minion is discarded rather than played, since it has nowhere to be summoned.
                 this.moveToGraveyard(card, player);
@@ -258,6 +262,10 @@ export class TurnStateMachine {
             this.triggerBoardWide('onFriendlyMinionCast', player.id, player.board.filter((c) => c.instanceId !== card.instanceId));
             this.sweepDeaths();
         }
+        // Catch-all: keeps any dynamic-counter aura (e.g. "+1/+1 per Demon you control") correct
+        // even when this action changed a counter (hand/graveyard/deck size, hero health) without
+        // changing board membership — the internal calls above only cover membership changes.
+        this.recalculateAuras();
         EventBus.emit('state:card-played', { instanceId, playerId: player.id });
         this.finishResolving();
     }
@@ -285,6 +293,7 @@ export class TurnStateMachine {
             this.applyEffectAction(action, player.id, card.instanceId, chosenTargetId);
         }
         this.sweepDeaths();
+        this.recalculateAuras();
         EventBus.emit('state:ability-activated', { instanceId, abilityIndex, playerId: player.id });
         this.finishResolving();
     }
@@ -325,6 +334,9 @@ export class TurnStateMachine {
         }
 
         this.sweepDeaths();
+        // Catch-all (see recalculateAuras' doc comment) — combat can change hero health without
+        // any minion dying, which sweepDeaths' own internal call wouldn't otherwise catch.
+        this.recalculateAuras();
         EventBus.emit('state:attack', { attackerInstanceId, targetId });
         this.finishResolving();
     }
@@ -370,6 +382,9 @@ export class TurnStateMachine {
             this.triggerEffects(card, 'startOfTurn', playerId);
         }
         this.sweepDeaths();
+        // Catch-all — a startOfTurn effect (e.g. hero damage/heal) can change a counter an aura's
+        // magnitude depends on without any minion dying.
+        this.recalculateAuras();
 
         if (this.checkWinCondition()) return;
         this.setPhase(TurnPhase.MainIdle);
@@ -634,6 +649,7 @@ export class TurnStateMachine {
         instance.zone = 'board';
         instance.summoningSick = true;
         player.board.push(instance);
+        this.recalculateAuras();
     }
 
     // --- damage / death --------------------------------------------------------
@@ -645,6 +661,9 @@ export class TurnStateMachine {
             card.currentAttack = definition.attack;
             card.currentHealth = definition.health;
             card.maxHealth = definition.health;
+            card.auraAttack = 0;
+            card.auraHealth = 0;
+            card.auraKeywords.clear();
         }
         card.zone = 'graveyard';
         player.graveyard.push(card);
@@ -692,12 +711,20 @@ export class TurnStateMachine {
         if (found) found.instance.frozen = true;
     }
 
-    /** Clears the target's keywords and permanently suppresses its own future trigger effects — see triggerEffects. */
+    /** Clears the target's keywords (printed and temporarily-granted alike) and permanently
+     * suppresses its own future trigger effects — see triggerEffects. Also stops it granting any
+     * Aura it has (recalculateAuras skips silenced sources) — a silenced minion *receiving* an aura
+     * keeps both the stat bonus and any Keyword the aura grants, matching each other: only what
+     * this minion's own text/temporary grants provide is cleared, not what an outside Aura
+     * currently supplies (`auraKeywords`, kept as-is here — recalculateAuras owns adding/removing
+     * from it as the aura landscape actually changes, not Silence). */
     private silenceMinion(targetId: string): void {
         const found = this.findMinion(targetId);
         if (found) {
-            found.instance.keywords.clear();
-            found.instance.silenced = true;
+            const instance = found.instance;
+            instance.keywords = new Set([...instance.keywords].filter((k) => instance.auraKeywords.has(k)));
+            instance.silenced = true;
+            this.recalculateAuras();
         }
     }
 
@@ -738,6 +765,82 @@ export class TurnStateMachine {
         if (found) {
             found.instance.keywords.add(keyword);
             if (duration) found.instance.temporaryEffects.push({ kind: 'keyword', keyword, turnsRemaining: duration });
+        }
+    }
+
+    /** Whether `aura` (granted by `source`) reaches `recipient` — target selector resolved relative
+     * to `source`'s own owner (auras are source-relative, not viewer-relative), plus tribeFilter. A
+     * source matching its own aura's criteria buffs itself too, no self-exclusion special-casing —
+     * the literal reading of "All Demon you control". */
+    private auraApplies(aura: CardAura, source: CardInstance, recipient: CardInstance): boolean {
+        if (aura.tribeFilter && !minionHasTribe(CARD_DEFINITIONS[recipient.definitionId], aura.tribeFilter)) return false;
+        switch (aura.target) {
+            case 'allFriendlyMinions':
+                return recipient.owner === source.owner;
+            case 'allEnemyMinions':
+                return recipient.owner !== source.owner;
+            case 'allMinions':
+                return true;
+        }
+    }
+
+    /** Recomputes every board minion's total *received* aura bonus from scratch and applies just the
+     * delta to currentAttack/currentHealth/maxHealth (the same three fields buff() mutates) — there's
+     * no stored base stat anywhere at runtime (see CardInstance's doc comments), so a full
+     * recompute-and-diff against the previous total (auraAttack/auraHealth) is how a continuously-
+     * active Aura stays correct as board membership, silence status, or a live counter it depends on
+     * changes. Keywords (auraKeywords) get the same recompute-and-diff treatment as a Set: newly
+     * granted keywords are added, and a keyword that's no longer granted is removed *unless* it's
+     * still printed on the definition or still covered by a surviving (non-aura) temporary grant —
+     * mirrors tickTemporaryEffects' own printed/stillGranted carve-out, so an aura going away never
+     * strips a keyword some other legitimate source is still providing. A silenced source contributes
+     * nothing (its auras stop granting, stat or keyword alike); a silenced recipient still receives
+     * both normally — see silenceMinion's doc comment. Called after every state change that could
+     * affect an aura's presence or magnitude: see call sites in executePlayCard, summonMinion,
+     * sweepDeaths, silenceMinion, and once more at the end of every public execute-* action / endTurn
+     * as a catch-all for counters (e.g. hero health) that can change without a board-membership
+     * change. */
+    private recalculateAuras(): void {
+        const boards = Object.values(this.gameState.players);
+        for (const recipientPlayer of boards) {
+            for (const recipient of recipientPlayer.board) {
+                let newAttack = 0;
+                let newHealth = 0;
+                const newKeywords = new Set<Keyword>();
+                for (const sourcePlayer of boards) {
+                    for (const source of sourcePlayer.board) {
+                        if (source.silenced) continue;
+                        for (const aura of CARD_DEFINITIONS[source.definitionId]?.auras ?? []) {
+                            if (!this.auraApplies(aura, source, recipient)) continue;
+                            newAttack += resolveEffectValue(aura.attack ?? 0, source.owner, this.gameState);
+                            newHealth += resolveEffectValue(aura.health ?? 0, source.owner, this.gameState);
+                            for (const keyword of aura.keywords ?? []) newKeywords.add(keyword);
+                        }
+                    }
+                }
+
+                const deltaAttack = newAttack - (recipient.auraAttack ?? 0);
+                const deltaHealth = newHealth - (recipient.auraHealth ?? 0);
+                if (deltaAttack !== 0 || deltaHealth !== 0) {
+                    recipient.currentAttack = (recipient.currentAttack ?? 0) + deltaAttack;
+                    recipient.currentHealth = (recipient.currentHealth ?? 0) + deltaHealth;
+                    recipient.maxHealth = (recipient.maxHealth ?? 0) + deltaHealth;
+                }
+                recipient.auraAttack = newAttack;
+                recipient.auraHealth = newHealth;
+
+                const recipientDefinition = CARD_DEFINITIONS[recipient.definitionId];
+                for (const keyword of newKeywords) {
+                    if (!recipient.auraKeywords.has(keyword)) recipient.keywords.add(keyword);
+                }
+                for (const keyword of recipient.auraKeywords) {
+                    if (newKeywords.has(keyword)) continue;
+                    const printed = recipientDefinition?.keywords?.includes(keyword) ?? false;
+                    const stillGranted = recipient.temporaryEffects.some((e) => e.kind === 'keyword' && e.keyword === keyword);
+                    if (!printed && !stillGranted) recipient.keywords.delete(keyword);
+                }
+                recipient.auraKeywords = newKeywords;
+            }
         }
     }
 
@@ -794,6 +897,9 @@ export class TurnStateMachine {
                 }
             }
         }
+        // Every board-removal path in this codebase funnels through here, so this single call
+        // covers all of them (combat deaths, spell/effect kills, onDamaged-triggered deaths).
+        this.recalculateAuras();
     }
 
     private checkWinCondition(): boolean {

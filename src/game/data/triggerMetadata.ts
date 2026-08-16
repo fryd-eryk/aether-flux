@@ -13,6 +13,10 @@ export const TRIGGER_METADATA: Record<EffectTrigger, { color: number; label: str
     onFriendlyMinionCast: { color: 0x6fae4f, label: 'Muster' },
 };
 
+/** Status pill for a minion with a CardAura (see Card.ts) — unlike TRIGGER_METADATA there's only
+ * one visual variant, since "Aura" alone (not which stat/tribe) is what's useful at a glance. */
+export const AURA_PILL: { color: number; label: string } = { color: 0xb08a3f, label: 'Aura' };
+
 /** Distinct triggers present in a card's effects, in first-seen order — a card with two onPlay effects still yields one "Anthem" entry. */
 export function distinctTriggers(effects: CardEffect[] | undefined): EffectTrigger[]
 {

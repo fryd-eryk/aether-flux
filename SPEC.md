@@ -105,11 +105,13 @@ A `CardEffect`'s numeric magnitude doesn't have to be a flat, hand-authored
 number — `damage`/`heal`'s `amount`, `draw`'s `count`, and `buff`'s
 `attack`/`health` are typed as `EffectValue = number | { counter: CounterKind;
 multiplier?: number; offset?: number; tribe?: Tribe }` (`Card.ts`).
-`CounterKind` covers six live readouts: `allMinionCount`/
+`CounterKind` covers twelve live readouts: `allMinionCount`/
 `friendlyMinionCount`/`enemyMinionCount`, `friendlyHeroHealth`/
-`enemyHeroHealth`, and `allTribeMinionCount` (a chosen tribe's minion count
+`enemyHeroHealth`, `allTribeMinionCount` (a chosen tribe's minion count
 across both boards — the only kind that reads the `tribe` field, and the only
-one requiring a Card Creator sub-choice beyond the kind itself).
+one requiring a Card Creator sub-choice beyond the kind itself),
+`friendlyHandCount`/`enemyHandCount`, `friendlyGraveyardCount`/
+`enemyGraveyardCount`, and `friendlyDeckCount`/`enemyDeckCount`.
 `summon.count` deliberately stays a plain `number` — a board-count-scaled
 summon count wasn't a requested use case and would be an unusual design;
 trivial to extend later if needed.

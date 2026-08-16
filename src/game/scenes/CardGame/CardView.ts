@@ -3,7 +3,7 @@ import type { Scene } from "phaser";
 import { CARD_DEFINITIONS } from "../../data/cards";
 import { KEYWORD_METADATA } from "../../data/keywordMetadata";
 import { RARITY_METADATA, TOKEN_RARITY_COLOR } from "../../data/rarityMetadata";
-import { distinctTriggers, TRIGGER_METADATA } from "../../data/triggerMetadata";
+import { AURA_PILL, distinctTriggers, TRIGGER_METADATA } from "../../data/triggerMetadata";
 import { TRIBE_METADATA } from "../../data/tribeMetadata";
 import type { CardDefinition, CardInstance } from "../../types/Card";
 import {
@@ -588,7 +588,11 @@ export class CardView {
     private createStatusPills(instance: CardInstance, definition: CardDefinition): Phaser.GameObjects.GameObject[] {
         const entries = instance.silenced
             ? [{ label: 'Silenced', color: 0x808080 }]
-            : [...[...instance.keywords].map((keyword) => KEYWORD_METADATA[keyword]), ...distinctTriggers(definition.effects).map((trigger) => TRIGGER_METADATA[trigger])];
+            : [
+                  ...[...instance.keywords].map((keyword) => KEYWORD_METADATA[keyword]),
+                  ...distinctTriggers(definition.effects).map((trigger) => TRIGGER_METADATA[trigger]),
+                  ...(definition.auras && definition.auras.length > 0 ? [AURA_PILL] : []),
+              ];
         if (entries.length === 0) return [];
 
         const objects: Phaser.GameObjects.GameObject[] = [];

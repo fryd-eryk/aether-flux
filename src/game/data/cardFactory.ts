@@ -16,6 +16,7 @@ export function createCardInstance(definition: CardDefinition, owner: PlayerId):
         frozen: false,
         silenced: false,
         temporaryEffects: [],
+        auraKeywords: new Set(),
     };
 }
 

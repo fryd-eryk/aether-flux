@@ -1,4 +1,4 @@
-import type { CardDefinition, CardEffect, EffectAction, EffectValue, PaidAbility } from '../game/types/Card';
+import type { CardAura, CardDefinition, CardEffect, EffectAction, EffectValue, PaidAbility } from '../game/types/Card';
 import { hasDanglingMarkdownMarker } from '../game/scenes/CardGame/richTextParser';
 
 /**
@@ -36,6 +36,16 @@ function validateEffect(effect: CardEffect, prefix: string, errors: FieldErrors)
     if (effect.condition && (!Number.isInteger(effect.condition.minCount) || effect.condition.minCount < 1)) {
         errors[`${prefix}.condition`] = 'Momentum count must be a positive integer.';
     }
+}
+
+function validateAura(aura: CardAura, prefix: string, errors: FieldErrors): void {
+    if (aura.attack === undefined && aura.health === undefined && (!aura.keywords || aura.keywords.length === 0)) {
+        errors[`${prefix}.attack`] = 'Set at least one of attack, health, or a keyword.';
+    }
+    // No min — a negative aura (a debuff, e.g. "enemy minions have -1/-1") is a legitimate case,
+    // same reasoning as the `buff` action's own unclamped attack/health.
+    if (aura.attack !== undefined) validateEffectValue(aura.attack, prefix, 'attack', errors);
+    if (aura.health !== undefined) validateEffectValue(aura.health, prefix, 'health', errors);
 }
 
 function validatePaidAbility(ability: PaidAbility, prefix: string, errors: FieldErrors): void {
@@ -173,6 +183,7 @@ export function validateCardDefinition(
         if (def.health !== undefined) errors.health = 'Spells cannot have health.';
         if (def.tribes && def.tribes.length > 0) errors.tribes = 'Only minions can have tribes.';
         if (def.paidAbilities && def.paidAbilities.length > 0) errors.paidAbilities = 'Only minions can have paid abilities.';
+        if (def.auras && def.auras.length > 0) errors.auras = 'Only minions can have an aura.';
     }
 
     if (def.type === 'token') {
@@ -183,6 +194,10 @@ export function validateCardDefinition(
 
     (def.effects ?? []).forEach((effect, index) => {
         validateEffect(effect, `effects.${index}`, errors);
+    });
+
+    (def.auras ?? []).forEach((aura, index) => {
+        validateAura(aura, `auras.${index}`, errors);
     });
 
     (def.paidAbilities ?? []).forEach((ability, index) => {

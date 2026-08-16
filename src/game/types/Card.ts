@@ -46,7 +46,19 @@ export type ChosenTargetRestriction = 'minion' | 'hero' | Tribe;
 
 /** Live game-state readouts an EffectValue can scale off — see counters.ts's resolveCounter.
  * 'allTribeMinionCount' counts a chosen tribe across both boards — see EffectValue's `tribe` field. */
-export type CounterKind = 'allMinionCount' | 'friendlyMinionCount' | 'enemyMinionCount' | 'friendlyHeroHealth' | 'enemyHeroHealth' | 'allTribeMinionCount';
+export type CounterKind =
+    | 'allMinionCount'
+    | 'friendlyMinionCount'
+    | 'enemyMinionCount'
+    | 'friendlyHeroHealth'
+    | 'enemyHeroHealth'
+    | 'allTribeMinionCount'
+    | 'friendlyHandCount'
+    | 'enemyHandCount'
+    | 'friendlyGraveyardCount'
+    | 'enemyGraveyardCount'
+    | 'friendlyDeckCount'
+    | 'enemyDeckCount';
 
 /**
  * Either a flat authored number, or a magnitude computed live from game state when the effect
@@ -76,6 +88,27 @@ export type EffectAction =
     | { kind: 'destroy'; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe; reuseTarget?: boolean }
     /** `duration` (in turns) makes this a temporary grant — absent means permanent. See TemporaryEffect / TurnStateMachine.tickTemporaryEffects. */
     | { kind: 'grantKeyword'; keyword: Keyword; target: TargetSelector; chosenRestriction?: ChosenTargetRestriction; tribeFilter?: Tribe; duration?: number; reuseTarget?: boolean };
+
+/** Continuous board-wide selectors an Aura can target — a subset of TargetSelector: no
+ * 'chosen'/'self'/hero selectors, since an aura isn't resolved once at cast time, it's
+ * re-evaluated live for as long as the source is alive/on board/unsilenced. */
+export type AuraTarget = 'allFriendlyMinions' | 'allEnemyMinions' | 'allMinions';
+
+/**
+ * A passive, continuously-active stat buff granted by a minion to matching minions on the
+ * board, for as long as this minion is alive, on board, and not silenced — e.g. "All Demon
+ * you control have +1/+1." Re-evaluated live by TurnStateMachine.recalculateAuras whenever
+ * board membership or silence status changes, unlike CardEffect, which is trigger-driven and
+ * resolves once. `attack`/`health` may be a live counter (see EffectValue), re-resolved on
+ * every recalculation, not just once.
+ */
+export interface CardAura {
+    target: AuraTarget;
+    tribeFilter?: Tribe;
+    attack?: EffectValue;
+    health?: EffectValue;
+    keywords?: Keyword[];
+}
 
 /** `reuseTarget: true` (only meaningful when `target === 'chosen'`) means this action targets
  * whatever the nearest earlier `target: 'chosen'` action in the same actions[] list resolved to,
@@ -137,6 +170,8 @@ export interface CardDefinition {
     attack?: number;
     health?: number;
     effects?: CardEffect[];
+    /** Minion/token-only passive, continuously-active buffs — see CardAura's doc comment. */
+    auras?: CardAura[];
     /** Minion/token-only activated abilities — see PaidAbility's doc comment. */
     paidAbilities?: PaidAbility[];
     keywords?: Keyword[];
@@ -169,4 +204,17 @@ export interface CardInstance {
     silenced: boolean;
     /** Time-limited keyword grants/buffs still counting down — see TemporaryEffect and TurnStateMachine.tickTemporaryEffects. */
     temporaryEffects: TemporaryEffect[];
+    /** This instance's current total *received* aura bonus, tracked so recalculateAuras can diff
+     * old vs. new and apply just the delta to currentAttack/currentHealth/maxHealth — there's no
+     * stored base stat anywhere at runtime, so this is what makes the diff possible. Absent/0 means
+     * no active aura bonus. */
+    auraAttack?: number;
+    auraHealth?: number;
+    /** Keywords currently granted purely by an active Aura (see CardAura.keywords), tracked
+     * separately from `keywords` itself so recalculateAuras can tell which of this instance's
+     * current keywords it's responsible for — needed to know which ones to strip when an aura
+     * stops applying (without also stripping a printed or temporarily-granted keyword) and which
+     * to leave alone when Silence clears `keywords`, since an aura-granted keyword survives Silence
+     * exactly like an aura stat bonus does — see silenceMinion. */
+    auraKeywords: Set<Keyword>;
 }

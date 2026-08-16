@@ -99,16 +99,40 @@ design, not a bug fix.
   it silently accepts illegal targets — see SPEC.md's "Card design
   conventions" before adding a new targeted effect.
 - **Every new rule (keyword, effect kind, targeting behavior) must be checked
-  against the opponent AI, not just the player-facing path.** `ai/scoring.ts`
+  against the opponent AI, not just the player-facing path — and `ai/scoring.ts`
+  / `OpponentAI.ts` must be updated so the AI plays the new mechanic at the best-play
+  level, not merely without crashing or misplaying it.** `ai/scoring.ts`
   (`scorePlayCard`, `scoreAttack`, `computePotentialFaceDamage`) and
   `OpponentAI.ts` are hand-authored heuristics — they don't infer new mechanics
   from `TurnStateMachine`/`keywordRules.ts` automatically, so the opponent can
   silently misplay (or soft-lock) a new rule that renders and enforces
   correctly for the player. This applies whether the new card/rule was added
   by hand or via the Card Creator (`/card-creator`) — that tool only edits
-  `cards.ts`, it never touches `ai/scoring.ts`. Actually watch the AI play the
-  new card (or trace it through `scoring.ts` by hand) before considering the
-  change done.
+  `cards.ts`, it never touches `ai/scoring.ts`. Watching the AI play the new
+  card (or tracing it through `scoring.ts` by hand) is the minimum bar, enough
+  to catch outright misplays or soft-locks — it is not sufficient on its own.
+  If the mechanic has any strategic weight (e.g. a continuously-active Aura
+  whose value depends on board state, or a new targeting shape), the relevant
+  scoring function needs an explicit term for it so the AI's evaluation
+  approximates the best play a skilled human would make. A mechanic that
+  renders and enforces correctly, and that the AI doesn't outright misplay,
+  but that it still doesn't know how to *value*, is not done.
+- **Every card mechanic must be fully wired into the Card Creator
+  (`/card-creator`, `src/cardCreator/`) in the same change that adds it to the
+  simulation — not left as a hand-`cards.ts`-only capability.** All cards are
+  now authored exclusively through the Card Creator, never by hand-editing
+  `cards.ts` (see Architecture's "Card authoring" note), so a new effect kind,
+  targeting behavior, or authoring concept (e.g. Aura) is unusable in practice
+  until the editor can express it. In the same change: add a form field/section
+  for it (`src/cardCreator/components/`), a `validateCardDefinition.ts` check,
+  and — easy to miss — a `serializeCardDefinitions.ts` case that actually
+  writes it into `cards.ts` on save; that file hand-serializes each
+  `CardDefinition` field individually rather than using a generic serializer,
+  so a field with no case silently vanishes on save even though the form and
+  live preview both looked correct. The live preview (real `CardView` code)
+  must also render the new mechanic 1:1 with what happens in a match — what
+  the form lets an author configure, what the preview shows, and what
+  actually happens in-game must all agree.
 - **Initiative (MTG's First Strike) resolves simultaneously when both sides
   of a combat have it, or when neither does** — only a *sole* Initiative
   side hits first and can deny the other side's return hit. This matches
@@ -117,6 +141,10 @@ design, not a bug fix.
   Initiative side hit first anyway. `TurnStateMachine.executeAttack` and
   `ai/scoring.ts`'s `scoreAttack` implement this identically — keep them in
   sync if this logic changes.
+- **Silence doesn't strip what an Aura grants a minion** (stat bonus or
+  keyword) — only that minion's own printed/temporarily-granted keywords and
+  triggers are suppressed. `TurnStateMachine.silenceMinion` clears `keywords`
+  down to whatever's currently tracked in `auraKeywords`, not to empty.
 
 ## Gotchas & Lessons Learned
 

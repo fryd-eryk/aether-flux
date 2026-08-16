@@ -254,29 +254,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "top",
     },
-    "ashfang-assassin": {
-        id: "ashfang-assassin",
-        name: "Ashfang Assassin",
-        cost: 3,
-        type: "minion",
-        text: "**Strike:** Deal 1 damage to the enemy player.",
-        attack: 3,
-        health: 1,
-        tribes: ["human","underworld"],
-        effects: [
-            {
-                trigger: "onAttack",
-                actions: [
-                    {
-                        kind: "damage",
-                        amount: 1,
-                        target: "enemyHero",
-                    },
-                ],
-            },
-        ],
-        rarity: "common",
-    },
     "starbound-seer": {
         id: "starbound-seer",
         name: "Starbound Seer",
@@ -384,6 +361,30 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         keywords: ["charge"],
         tribes: ["animal"],
         rarity: "common",
+    },
+    "shirvaan-assassin": {
+        id: "shirvaan-assassin",
+        name: "Shirvaan Assassin",
+        cost: 3,
+        type: "minion",
+        text: "**Strike:** Deal 1 damage to the enemy player.",
+        attack: 3,
+        health: 1,
+        tribes: ["human","underworld"],
+        effects: [
+            {
+                trigger: "onAttack",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 1,
+                        target: "enemyHero",
+                    },
+                ],
+            },
+        ],
+        rarity: "common",
+        artVerticalAlign: "center",
     },
     "wandering-cleric": {
         id: "wandering-cleric",
@@ -1376,11 +1377,19 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Atraxalys, Rampant Agony",
         cost: 8,
         type: "minion",
-        text: "TODO",
-        attack: 6,
+        text: "All your *Demon* get +2/+0.",
+        attack: 4,
         health: 6,
         keywords: ["lifesteal"],
         tribes: ["demon"],
+        auras: [
+            {
+                target: "allFriendlyMinions",
+                tribeFilter: "demon",
+                attack: 2,
+                health: 0,
+            },
+        ],
         rarity: "legendary",
         artVerticalAlign: "top",
     },
@@ -1436,40 +1445,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "mythical",
         artVerticalAlign: "bottom",
     },
-    "thos-reaper-of-worlds": {
-        id: "thos-reaper-of-worlds",
-        name: "Thos, Reaper of Worlds",
-        cost: 8,
-        type: "minion",
-        text: "**Deathcry:** Deal 6 damage to the enemy player.\n**Momentum(1):** When Thos attacks, draw a card.",
-        attack: 7,
-        health: 8,
-        keywords: ["veiled"],
-        tribes: ["underworld"],
-        effects: [
-            {
-                trigger: "onDeath",
-                actions: [
-                    {
-                        kind: "damage",
-                        amount: 6,
-                        target: "enemyHero",
-                    },
-                ],
-            },
-            {
-                trigger: "onAttack",
-                actions: [
-                    {
-                        kind: "draw",
-                        count: 1,
-                    },
-                ],
-                condition: { type: "momentum", minCount: 1 },
-            },
-        ],
-        rarity: "mythical",
-    },
     "selia-new-dawn-foretold": {
         id: "selia-new-dawn-foretold",
         name: "Selia, New Dawn Foretold",
@@ -1517,6 +1492,31 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "mythical",
         artVerticalAlign: "bottom",
+    },
+    "nythis-god-of-sorrow-and-panic": {
+        id: "nythis-god-of-sorrow-and-panic",
+        name: "Nythis, God of Sorrow and Panic",
+        cost: 9,
+        type: "minion",
+        text: "When Nythis attacks, destroy target minion.",
+        attack: 7,
+        health: 7,
+        keywords: ["veiled"],
+        tribes: ["underworld"],
+        effects: [
+            {
+                trigger: "onAttack",
+                actions: [
+                    {
+                        kind: "destroy",
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                ],
+            },
+        ],
+        rarity: "mythical",
+        artVerticalAlign: "top",
     },
 
     // --- Tokens (not collectible — `type: "token"`, so deckGenerator.ts never draws them) ---

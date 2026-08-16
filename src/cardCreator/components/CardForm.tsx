@@ -4,6 +4,7 @@ import { KEYWORD_METADATA } from '@/game/data/keywordMetadata';
 import { TRIBE_METADATA } from '@/game/data/tribeMetadata';
 import type { FieldErrors } from '../validateCardDefinition';
 import { toggleMarkdownStyle, type MarkdownStyle } from '../markdownTextEditing';
+import { AuraEditor } from './AuraEditor';
 import { EffectsEditor } from './EffectsEditor';
 import { PaidAbilitiesEditor } from './PaidAbilitiesEditor';
 import styles from '@/styles/CardCreator.module.css';
@@ -275,7 +276,7 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
             )}
 
             <section className={styles.formSection}>
-                <h3 className={styles.formSectionTitle}>Effects</h3>
+                <h3 className={styles.formSectionTitle}>Triggered Effects</h3>
                 <EffectsEditor
                     effects={draft.effects ?? []}
                     onChange={(effects) => onChange({ ...draft, effects: effects.length > 0 ? effects : undefined })}
@@ -283,6 +284,17 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                     allCards={allCards}
                 />
             </section>
+
+            {(draft.type === 'minion' || draft.type === 'token') && (
+                <section className={styles.formSection}>
+                    <h3 className={styles.formSectionTitle}>Aura</h3>
+                    <AuraEditor
+                        auras={draft.auras ?? []}
+                        onChange={(auras) => onChange({ ...draft, auras: auras.length > 0 ? auras : undefined })}
+                        errors={errors}
+                    />
+                </section>
+            )}
 
             {(draft.type === 'minion' || draft.type === 'token') && (
                 <section className={styles.formSection}>

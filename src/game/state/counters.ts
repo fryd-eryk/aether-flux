@@ -29,6 +29,18 @@ export function resolveCounter(value: Exclude<EffectValue, number>, ownerId: Pla
             const matchesTribe = (c: CardInstance) => minionHasTribe(CARD_DEFINITIONS[c.definitionId], tribe);
             return owner.board.filter(matchesTribe).length + enemy.board.filter(matchesTribe).length;
         }
+        case 'friendlyHandCount':
+            return owner.hand.length;
+        case 'enemyHandCount':
+            return enemy.hand.length;
+        case 'friendlyGraveyardCount':
+            return owner.graveyard.length;
+        case 'enemyGraveyardCount':
+            return enemy.graveyard.length;
+        case 'friendlyDeckCount':
+            return owner.deck.length;
+        case 'enemyDeckCount':
+            return enemy.deck.length;
     }
 }
 

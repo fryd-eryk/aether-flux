@@ -21,5 +21,6 @@ export function buildPreviewInstance(definition: CardDefinition): CardInstance {
         frozen: false,
         silenced: false,
         temporaryEffects: [],
+        auraKeywords: new Set(),
     };
 }

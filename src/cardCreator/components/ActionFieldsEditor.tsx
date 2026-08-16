@@ -59,7 +59,7 @@ interface TribeFilterFieldProps {
 /** "Tribe filter" listbox for an AOE minion target (allMinions/allEnemyMinions/allFriendlyMinions)
  * — narrows the action to minions of one tribe, e.g. "Destroy all Elemental minions". Only rendered
  * when the action's target is one of TRIBE_FILTERABLE_TARGETS (see isTribeFilterable below). */
-function TribeFilterField({ value, onChange, error }: TribeFilterFieldProps) {
+export function TribeFilterField({ value, onChange, error }: TribeFilterFieldProps) {
     return (
         <div className={styles.field}>
             <label className={styles.fieldLabel}>Tribe filter</label>

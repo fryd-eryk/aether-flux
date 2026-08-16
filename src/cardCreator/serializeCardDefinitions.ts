@@ -1,4 +1,4 @@
-import type { CardDefinition, CardEffect, CardRarity, EffectAction, EffectValue, PaidAbility } from '../game/types/Card';
+import type { CardAura, CardDefinition, CardEffect, CardRarity, EffectAction, EffectValue, PaidAbility } from '../game/types/Card';
 
 /**
  * Regenerates `src/game/data/cards.ts`'s source text from an in-memory
@@ -122,6 +122,20 @@ function serializeEffect(effect: CardEffect, level: number): string {
     return lines.join('\n');
 }
 
+function serializeAura(aura: CardAura, level: number): string {
+    const lines: string[] = [`${indent(level)}target: ${JSON.stringify(aura.target)},`];
+    if (aura.tribeFilter) lines.push(`${indent(level)}tribeFilter: ${JSON.stringify(aura.tribeFilter)},`);
+    if (aura.attack !== undefined) lines.push(`${indent(level)}attack: ${serializeEffectValue(aura.attack)},`);
+    if (aura.health !== undefined) lines.push(`${indent(level)}health: ${serializeEffectValue(aura.health)},`);
+    if (aura.keywords && aura.keywords.length > 0) lines.push(`${indent(level)}keywords: ${JSON.stringify(aura.keywords)},`);
+    return `{\n${lines.join('\n')}\n${indent(level - 1)}}`;
+}
+
+function serializeAuras(auras: CardAura[], level: number): string {
+    const entries = auras.map((aura) => `${indent(level + 1)}${serializeAura(aura, level + 2)}`).join(',\n');
+    return `[\n${entries},\n${indent(level)}]`;
+}
+
 function serializePaidAbility(ability: PaidAbility, level: number): string {
     const lines = [
         `${indent(level)}{`,
@@ -150,6 +164,9 @@ function serializeCardDefinition(def: CardDefinition, level: number): string {
     if (def.effects && def.effects.length > 0) {
         const effectsSrc = def.effects.map((effect) => serializeEffect(effect, level + 1)).join(',\n');
         lines.push(`${indent(level)}effects: [\n${effectsSrc},\n${indent(level)}],`);
+    }
+    if (def.auras && def.auras.length > 0) {
+        lines.push(`${indent(level)}auras: ${serializeAuras(def.auras, level)},`);
     }
     if (def.paidAbilities && def.paidAbilities.length > 0) {
         const abilitiesSrc = def.paidAbilities.map((ability) => serializePaidAbility(ability, level + 1)).join(',\n');
