@@ -11,8 +11,8 @@ export default function Home() {
     return (
         <>
             <Head>
-                <title>Card Game</title>
-                <meta name="description" content="A simplified Hearthstone-style card game built with Phaser and Next.js." />
+                <title>Aether Flux</title>
+                <meta name="description" content="Aether Flux, a simplified Hearthstone-style card game built with Phaser and Next.js." />
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
                 <link rel="icon" href="/favicon.png" />
             </Head>

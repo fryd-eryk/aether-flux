@@ -1,4 +1,4 @@
-# Card Game
+# Aether Flux
 
 A simplified 2D card game (MTG / Hearthstone), built with [Phaser 4](https://github.com/phaserjs/phaser)
 and [Next.js](https://github.com/vercel/next.js), started from Phaser Studio's official
@@ -112,7 +112,8 @@ After `npm run build`, the game is a static bundle in `dist/`. Upload its conten
 ## About log.js
 
 `log.js` makes a single silent API call to `gryzor.co` (owned by Phaser
-Studio Inc.), sending only: the template name, whether the build was 'dev' or
-'prod', and the Phaser version — no personal data. Use `npm run dev-nolog` /
+Studio Inc.), sending only: the project name (`aether-flux`), whether the
+build was 'dev' or 'prod', and the Phaser version — no personal data. Use
+`npm run dev-nolog` /
 `npm run build-nolog` to skip it, or delete `log.js` and its references in
 `package.json`'s `scripts` to disable it entirely.
