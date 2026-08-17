@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (22) ---
+    // --- Common rarity (23) ---
     "pocket-sand": {
         id: "pocket-sand",
         name: "Pocket Sand",
@@ -69,9 +69,19 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 1,
         health: 2,
         keywords: ["taunt"],
-        tribes: ["humanoid","holy"],
+        tribes: ["humanoid"],
         rarity: "common",
         artVerticalAlign: "bottom",
+    },
+    "aetheric-gorger": {
+        id: "aetheric-gorger",
+        name: "Aetheric Gorger",
+        cost: 1,
+        type: "minion",
+        text: "TODO",
+        attack: 1,
+        health: 1,
+        rarity: "common",
     },
     "stonemoss-walker": {
         id: "stonemoss-walker",
@@ -439,6 +449,29 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "rare",
         artVerticalAlign: "bottom",
     },
+    "celestial-chaser": {
+        id: "celestial-chaser",
+        name: "Celestial Chaser",
+        cost: 1,
+        type: "minion",
+        text: "When Celestial Chaser attacks, draw X cards where X is the number of minions the opponent controls.",
+        attack: 1,
+        health: 2,
+        tribes: ["cosmic"],
+        effects: [
+            {
+                trigger: "onAttack",
+                actions: [
+                    {
+                        kind: "draw",
+                        count: { counter: "enemyMinionCount" },
+                    },
+                ],
+            },
+        ],
+        rarity: "rare",
+        artVerticalAlign: "bottom",
+    },
     "infectious-imp": {
         id: "infectious-imp",
         name: "Infectious Imp",
@@ -462,29 +495,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "rare",
-    },
-    "celestial-chaser": {
-        id: "celestial-chaser",
-        name: "Celestial Chaser",
-        cost: 2,
-        type: "minion",
-        text: "When Celestial Chaser attacks, draw X cards where X is the number of minions the opponent controls.",
-        attack: 1,
-        health: 2,
-        tribes: ["cosmic"],
-        effects: [
-            {
-                trigger: "onAttack",
-                actions: [
-                    {
-                        kind: "draw",
-                        count: { counter: "enemyMinionCount" },
-                    },
-                ],
-            },
-        ],
-        rarity: "rare",
-        artVerticalAlign: "bottom",
     },
     "primal-stampede": {
         id: "primal-stampede",
@@ -744,7 +754,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Starthief Sniper",
         cost: 4,
         type: "minion",
-        text: "(4): Deal X damage to a minion, where X is the number of minion you control.",
+        text: "(4): Deal X damage to a minion, where X is the number of cards in your hand.",
         attack: 1,
         health: 3,
         tribes: ["cosmic"],
@@ -754,7 +764,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 actions: [
                     {
                         kind: "damage",
-                        amount: { counter: "friendlyMinionCount" },
+                        amount: { counter: "friendlyHandCount" },
                         target: "chosen",
                         chosenRestriction: "minion",
                     },
@@ -970,7 +980,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "top",
     },
 
-    // --- Exotic rarity (14) ---
+    // --- Exotic rarity (15) ---
     "blood-moon-ritual": {
         id: "blood-moon-ritual",
         name: "Blood Moon Ritual",
@@ -1167,6 +1177,29 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "exotic",
         artVerticalAlign: "bottom",
     },
+    "teacher-of-fenhs-way": {
+        id: "teacher-of-fenhs-way",
+        name: "Teacher of Fenh's Way",
+        cost: 5,
+        type: "minion",
+        text: "When Teacher of Fenh's Ways attacks, it deals X damage to the opponent, where X is the number of cards in their hand.",
+        attack: 4,
+        health: 4,
+        tribes: ["holy"],
+        effects: [
+            {
+                trigger: "onAttack",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: { counter: "enemyHandCount" },
+                        target: "enemyHero",
+                    },
+                ],
+            },
+        ],
+        rarity: "exotic",
+    },
     "cinderplume-phoenix": {
         id: "cinderplume-phoenix",
         name: "Cinderplume Phoenix",
@@ -1333,7 +1366,45 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Legendary rarity (5) ---
+    // --- Legendary rarity (7) ---
+    "stargazer-bladd": {
+        id: "stargazer-bladd",
+        name: "Stargazer Bladd",
+        cost: 2,
+        type: "minion",
+        text: "**Mourn:** draw a card. You lose 1 Health.\n**Curfew:** Summon a 0/1 Fractal Fragment token.",
+        attack: 2,
+        health: 2,
+        tribes: ["humanoid","cosmic"],
+        effects: [
+            {
+                trigger: "endOfTurn",
+                actions: [
+                    {
+                        kind: "summon",
+                        definitionId: "fractal-fragment",
+                        count: 1,
+                    },
+                ],
+            },
+            {
+                trigger: "onFriendlyMinionDeath",
+                actions: [
+                    {
+                        kind: "draw",
+                        count: 1,
+                    },
+                    {
+                        kind: "damage",
+                        amount: 1,
+                        target: "friendlyHero",
+                    },
+                ],
+            },
+        ],
+        rarity: "legendary",
+        artVerticalAlign: "center",
+    },
     "deep-fathoms-strike": {
         id: "deep-fathoms-strike",
         name: "Deep Fathoms Strike",
@@ -1410,6 +1481,17 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "legendary",
     },
+    "new-card": {
+        id: "new-card",
+        name: "Absheron, Deepcrypt Keeper",
+        cost: 7,
+        type: "minion",
+        text: "TODO",
+        attack: 6,
+        health: 6,
+        tribes: ["holy","underworld"],
+        rarity: "legendary",
+    },
     "fiend-warlord": {
         id: "fiend-warlord",
         name: "Fiend Warlord",
@@ -1459,9 +1541,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     },
 
     // --- Mythical rarity (4) ---
-    "eldonnyr-hollow-sovereign": {
-        id: "eldonnyr-hollow-sovereign",
-        name: "Eldonnyr, Hollow Sovereign",
+    "eldonnyr-fractal-sovereign": {
+        id: "eldonnyr-fractal-sovereign",
+        name: "Eldonnyr, Fractal Sovereign",
         cost: 7,
         type: "minion",
         text: "(9): Destroy all minions.",
@@ -1481,20 +1563,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "mythical",
-        artVerticalAlign: "bottom",
-    },
-    "selia-new-dawn-foretold": {
-        id: "selia-new-dawn-foretold",
-        name: "Selia, New Dawn Foretold",
-        cost: 9,
-        type: "minion",
-        text: "",
-        attack: 7,
-        health: 7,
-        keywords: ["charge","divineShield","lifesteal","initiative"],
-        tribes: ["holy"],
-        rarity: "mythical",
-        artVerticalAlign: "bottom",
+        artVerticalAlign: "center",
     },
     "nythis-god-of-sorrow-and-panic": {
         id: "nythis-god-of-sorrow-and-panic",
@@ -1521,6 +1590,19 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "mythical",
         artVerticalAlign: "top",
     },
+    "solem-new-dawn-foretold": {
+        id: "solem-new-dawn-foretold",
+        name: "Solem, New Dawn Foretold",
+        cost: 9,
+        type: "minion",
+        text: "",
+        attack: 7,
+        health: 7,
+        keywords: ["charge","divineShield","lifesteal","initiative"],
+        tribes: ["holy"],
+        rarity: "mythical",
+        artVerticalAlign: "bottom",
+    },
     "theredas-farorias-last-hope": {
         id: "theredas-farorias-last-hope",
         name: "Theredas, Faroria's Last Hope",
@@ -1528,9 +1610,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         type: "minion",
         text: "**Curfew:** Restore 3 Health to you.\n**Deathcry:** Summon Theredas, the Plaguewoven.",
         attack: 4,
-        health: 6,
+        health: 5,
         keywords: ["taunt","divineShield"],
-        tribes: ["humanoid","holy"],
+        tribes: ["humanoid"],
         effects: [
             {
                 trigger: "endOfTurn",
@@ -1598,6 +1680,29 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                         kind: "damage",
                         amount: 1,
                         target: "allOtherMinions",
+                    },
+                ],
+            },
+        ],
+    },
+    "fractal-fragment": {
+        id: "fractal-fragment",
+        name: "Fractal Fragment",
+        cost: 1,
+        type: "token",
+        text: "When you cast a spell, gains +1/+0.",
+        attack: 0,
+        health: 1,
+        tribes: ["cosmic"],
+        effects: [
+            {
+                trigger: "onSpellCast",
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: 1,
+                        target: "self",
+                        duration: 1,
                     },
                 ],
             },
