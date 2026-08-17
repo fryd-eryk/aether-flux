@@ -33,6 +33,7 @@ export type TargetSelector =
     | 'allEnemyMinions'
     | 'allFriendlyMinions'
     | 'allMinions'
+    | 'allOtherMinions'
     | 'allHeroes';
 
 /**
@@ -91,8 +92,11 @@ export type EffectAction =
 
 /** Continuous board-wide selectors an Aura can target — a subset of TargetSelector: no
  * 'chosen'/'self'/hero selectors, since an aura isn't resolved once at cast time, it's
- * re-evaluated live for as long as the source is alive/on board/unsilenced. */
-export type AuraTarget = 'allFriendlyMinions' | 'allEnemyMinions' | 'allMinions';
+ * re-evaluated live for as long as the source is alive/on board/unsilenced. 'allOtherMinions' is
+ * the one deliberate exception to auraApplies' "a source matching its own aura's criteria buffs
+ * itself too, no self-exclusion special-casing" rule — every other target here still includes the
+ * source in its own aura's effect. */
+export type AuraTarget = 'allFriendlyMinions' | 'allEnemyMinions' | 'allMinions' | 'allOtherMinions';
 
 /**
  * A passive, continuously-active stat buff granted by a minion to matching minions on the

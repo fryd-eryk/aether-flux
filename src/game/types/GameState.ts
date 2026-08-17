@@ -15,6 +15,16 @@ export enum TurnPhase {
 export interface PendingTarget {
     sourceInstanceId: string;
     validTargetIds: string[];
+    /** Who actually gets to answer this prompt — the controller of the card whose effect raised
+     * it. For a Tier-1 prompt (a card's own onPlay/ability/onAttack, or a board-wide Channel/
+     * Muster/Vigil/Curfew reaction) this is always state.activePlayer, since beginTargeting is
+     * only ever called on the active player's own action. It is NOT always activePlayer for a
+     * Tier-2 prompt (onDeath/onDamaged/onFriendlyMinionDeath, raised reactively from inside
+     * sweepDeaths/dealDamage — see TurnStateMachine.driveResolution): e.g. the opponent's attack
+     * can kill the human's own minion, whose Deathcry is still the human's choice even though
+     * activePlayer is 'opponent' at that moment. UI/AI routing must key off this field, not
+     * activePlayer — see CardGame/index.ts's isValidTarget checks and drainOpponentTargeting. */
+    ownerId: PlayerId;
     /** The chosen-target EffectAction generating this prompt — absent only for an attack's own
      * first step (who to attack), which isn't itself an EffectAction. Lets the AI dispatch the
      * right scoring heuristic (scoreChosenTarget) for a prompt it may not have declared itself —

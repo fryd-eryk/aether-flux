@@ -4,7 +4,7 @@ import type { FieldErrors } from '../validateCardDefinition';
 import styles from '@/styles/CardCreator.module.css';
 import { EffectValueInput, TribeFilterField } from './ActionFieldsEditor';
 
-const AURA_TARGETS: AuraTarget[] = ['allFriendlyMinions', 'allEnemyMinions', 'allMinions'];
+const AURA_TARGETS: AuraTarget[] = ['allFriendlyMinions', 'allEnemyMinions', 'allMinions', 'allOtherMinions'];
 const KEYWORDS = Object.keys(KEYWORD_METADATA) as Keyword[];
 
 function defaultAura(): CardAura {

@@ -37,8 +37,8 @@ function opponentOf(id: PlayerId): PlayerId {
 
 /** Sums estimateEffectValue across a whole block's actions[] — the block-level total that fires
  * together, not any single action's value. */
-function effectActionsValue(actions: EffectAction[], state: GameState, ownerId: PlayerId): number {
-    return actions.reduce((sum, action) => sum + estimateEffectValue(action, state, ownerId), 0);
+function effectActionsValue(actions: EffectAction[], state: GameState, ownerId: PlayerId, sourceId?: string): number {
+    return actions.reduce((sum, action) => sum + estimateEffectValue(action, state, ownerId, sourceId), 0);
 }
 
 /** True if `effect`'s Momentum(N) condition (if any) is satisfied given `owner`'s cards played so far this turn. */
@@ -140,16 +140,24 @@ function wipesAFreeFaceAttacker(
  * one). Chosen-target damage/heal is intentionally excluded here (returns 0) — those are scored
  * precisely by scoreChosenTarget instead, which also picks which target to hit.
  */
-function estimateEffectValue(action: EffectAction, state: GameState, aiId: PlayerId): number {
+function estimateEffectValue(action: EffectAction, state: GameState, aiId: PlayerId, sourceId?: string): number {
     const ai = state.players[aiId];
     const enemy = state.players[opponentOf(aiId)];
+    // 'allOtherMinions' is exactly 'allMinions' minus the acting instance — precomputed once here
+    // so every case below can treat the two targets as the same arithmetic branch, just over a
+    // self-excluded board slice. A no-op when sourceId is absent/not on either board (e.g.
+    // scorePlayCard scoring a card still in hand, not yet part of ai.board — see its call site).
+    const isAllOtherMinions = 'target' in action && action.target === 'allOtherMinions';
+    const aiBoard = isAllOtherMinions ? ai.board.filter((c) => c.instanceId !== sourceId) : ai.board;
+    const enemyBoard = isAllOtherMinions ? enemy.board.filter((c) => c.instanceId !== sourceId) : enemy.board;
+    const hitsAllMinions = isAllOtherMinions || ('target' in action && action.target === 'allMinions');
 
     switch (action.kind) {
         case 'damage': {
             if (action.target === 'chosen') return 0;
             const amount = resolveEffectValue(action.amount, aiId, state);
-            const aiCount = tribeFilteredCount(ai.board, action.tribeFilter);
-            const enemyCount = tribeFilteredCount(enemy.board, action.tribeFilter);
+            const aiCount = tribeFilteredCount(aiBoard, action.tribeFilter);
+            const enemyCount = tribeFilteredCount(enemyBoard, action.tribeFilter);
             // Wound (onDamaged): every minion this actually hits (amount > 0, unshielded) that has
             // its own Wound effect also fires it — summed signed from the AI's perspective (see
             // woundValue) alongside the raw damage math below.
@@ -167,13 +175,14 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
             // should swing that attacker at an open face first, then this AOE scores normally again
             // once it's no longer attack-eligible (decideOpponentAction re-evaluates every action).
             const wouldDie = (c: CardInstance) => !hasKeyword(c, 'divineShield') && (c.currentHealth ?? 0) <= amount;
-            if ((action.target === 'allMinions' || friendlyMinionsHit) && wipesAFreeFaceAttacker(state, aiId, ai.board, action.tribeFilter, wouldDie)) {
+            if ((hitsAllMinions || friendlyMinionsHit) && wipesAFreeFaceAttacker(state, aiId, aiBoard, action.tribeFilter, wouldDie)) {
                 return -Infinity;
             }
-            // allMinions/allHeroes hit both sides — net the boards against each other (and halve a
-            // mutual face hit) rather than a flat per-target count, so the AI disfavors nuking a
-            // board/face split that actually favors the enemy. See CLAUDE.md's Apocalypse precedent.
-            if (action.target === 'allMinions') return amount * (enemyCount - aiCount) + hitWoundValue(ai.board) + hitWoundValue(enemy.board);
+            // allMinions/allOtherMinions/allHeroes hit both sides — net the boards against each
+            // other (and halve a mutual face hit) rather than a flat per-target count, so the AI
+            // disfavors nuking a board/face split that actually favors the enemy. See CLAUDE.md's
+            // Apocalypse precedent.
+            if (hitsAllMinions) return amount * (enemyCount - aiCount) + hitWoundValue(aiBoard) + hitWoundValue(enemyBoard);
             if (action.target === 'allHeroes') return amount * 0.5;
             return (
                 amount * (enemyMinionsHit ? Math.max(1, enemyCount) : 1) +
@@ -184,18 +193,18 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
         case 'heal': {
             if (action.target === 'chosen') return 0;
             const amount = resolveEffectValue(action.amount, aiId, state);
-            const aiCount = tribeFilteredCount(ai.board, action.tribeFilter);
-            const enemyCount = tribeFilteredCount(enemy.board, action.tribeFilter);
-            if (action.target === 'allMinions') return amount * 0.5 * (aiCount - enemyCount);
+            const aiCount = tribeFilteredCount(aiBoard, action.tribeFilter);
+            const enemyCount = tribeFilteredCount(enemyBoard, action.tribeFilter);
+            if (hitsAllMinions) return amount * 0.5 * (aiCount - enemyCount);
             return amount * (action.target === 'allFriendlyMinions' ? Math.max(1, aiCount) : 1) * 0.5;
         }
         case 'buff': {
             if (action.target === 'chosen') return 0;
             let magnitude = resolveEffectValue(action.attack ?? 0, aiId, state) + resolveEffectValue(action.health ?? 0, aiId, state);
             if (action.duration) magnitude *= TEMPORARY_EFFECT_DISCOUNT;
-            const aiCount = tribeFilteredCount(ai.board, action.tribeFilter);
-            const enemyCount = tribeFilteredCount(enemy.board, action.tribeFilter);
-            if (action.target === 'allMinions') return magnitude * (aiCount - enemyCount);
+            const aiCount = tribeFilteredCount(aiBoard, action.tribeFilter);
+            const enemyCount = tribeFilteredCount(enemyBoard, action.tribeFilter);
+            if (hitsAllMinions) return magnitude * (aiCount - enemyCount);
             return magnitude * (action.target === 'allFriendlyMinions' ? Math.max(1, aiCount) : 1);
         }
         case 'draw':
@@ -204,16 +213,16 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
             return action.count * 4;
         case 'freeze': {
             if (action.target === 'chosen') return 0;
-            const aiCount = tribeFilteredCount(ai.board, action.tribeFilter);
-            const enemyCount = tribeFilteredCount(enemy.board, action.tribeFilter);
-            if (action.target === 'allMinions') return 3 * (enemyCount - aiCount);
+            const aiCount = tribeFilteredCount(aiBoard, action.tribeFilter);
+            const enemyCount = tribeFilteredCount(enemyBoard, action.tribeFilter);
+            if (hitsAllMinions) return 3 * (enemyCount - aiCount);
             return 3 * (action.target === 'allEnemyMinions' ? Math.max(1, enemyCount) : 1);
         }
         case 'silence': {
             if (action.target === 'chosen') return 0;
-            const aiCount = tribeFilteredCount(ai.board, action.tribeFilter);
-            const enemyCount = tribeFilteredCount(enemy.board, action.tribeFilter);
-            if (action.target === 'allMinions') return 4 * (enemyCount - aiCount);
+            const aiCount = tribeFilteredCount(aiBoard, action.tribeFilter);
+            const enemyCount = tribeFilteredCount(enemyBoard, action.tribeFilter);
+            if (hitsAllMinions) return 4 * (enemyCount - aiCount);
             return 4 * (action.target === 'allEnemyMinions' ? Math.max(1, enemyCount) : 1);
         }
         case 'destroy': {
@@ -222,24 +231,24 @@ function estimateEffectValue(action: EffectAction, state: GameState, aiId: Playe
             // well above freeze/silence's temporary denial, as a rough stand-in for an average
             // minion's card value. Tunable, same as the 3/4 constants above.
             const DESTROY_WEIGHT = 6;
-            const aiCount = tribeFilteredCount(ai.board, action.tribeFilter);
-            const enemyCount = tribeFilteredCount(enemy.board, action.tribeFilter);
+            const aiCount = tribeFilteredCount(aiBoard, action.tribeFilter);
+            const enemyCount = tribeFilteredCount(enemyBoard, action.tribeFilter);
             // forceKill bypasses Divine Shield/health entirely, so every eligible attacker it
             // targets dies unconditionally — same deferral as the damage case above.
-            const hitsOwnBoard = action.target === 'allMinions' || action.target === 'allFriendlyMinions';
-            if (hitsOwnBoard && wipesAFreeFaceAttacker(state, aiId, ai.board, action.tribeFilter, () => true)) {
+            const hitsOwnBoard = hitsAllMinions || action.target === 'allFriendlyMinions';
+            if (hitsOwnBoard && wipesAFreeFaceAttacker(state, aiId, aiBoard, action.tribeFilter, () => true)) {
                 return -Infinity;
             }
-            if (action.target === 'allMinions') return DESTROY_WEIGHT * (enemyCount - aiCount);
+            if (hitsAllMinions) return DESTROY_WEIGHT * (enemyCount - aiCount);
             return DESTROY_WEIGHT * (action.target === 'allEnemyMinions' ? Math.max(1, enemyCount) : 1);
         }
         case 'grantKeyword': {
             if (action.target === 'chosen') return 0;
             const value = KEYWORD_VALUE[action.keyword] * (action.duration ? TEMPORARY_EFFECT_DISCOUNT : 1);
-            const aiCount = tribeFilteredCount(ai.board, action.tribeFilter);
-            const enemyCount = tribeFilteredCount(enemy.board, action.tribeFilter);
+            const aiCount = tribeFilteredCount(aiBoard, action.tribeFilter);
+            const enemyCount = tribeFilteredCount(enemyBoard, action.tribeFilter);
             // Mirrors 'buff's own AOE weighting exactly — a keyword grant is just a differently-shaped buff.
-            if (action.target === 'allMinions') return value * (aiCount - enemyCount);
+            if (hitsAllMinions) return value * (aiCount - enemyCount);
             return value * (action.target === 'allFriendlyMinions' ? Math.max(1, aiCount) : 1);
         }
     }
@@ -307,9 +316,9 @@ export function scoreChosenTarget(state: GameState, aiId: PlayerId, action: Effe
  * below, none of which pick the actual target themselves (that happens later, reactively, once the
  * real prompt appears — see OpponentAI.decideOpponentTarget). A `reuseTarget: true` action is
  * estimated the same way scorePlayCard/scorePaidAbility do for their own reuseTarget actions. */
-function chosenAwareActionsValue(actions: EffectAction[], state: GameState, aiId: PlayerId, lethalAvailable: boolean): number {
+function chosenAwareActionsValue(actions: EffectAction[], state: GameState, aiId: PlayerId, lethalAvailable: boolean, sourceId?: string): number {
     return actions.reduce((sum, action) => {
-        if (!('target' in action) || action.target !== 'chosen') return sum + estimateEffectValue(action, state, aiId);
+        if (!('target' in action) || action.target !== 'chosen') return sum + estimateEffectValue(action, state, aiId, sourceId);
         if ('reuseTarget' in action && action.reuseTarget) return sum + estimateReuseTargetValue(action, state, aiId);
         return sum + scoreChosenTarget(state, aiId, action, lethalAvailable).score;
     }, 0);
@@ -330,7 +339,7 @@ function channelBoardValue(state: GameState, aiId: PlayerId, lethalAvailable: bo
         return (
             sum +
             channelEffects.reduce(
-                (s, e) => (momentumSatisfied(e, ai) ? s + chosenAwareActionsValue(e.actions, state, aiId, lethalAvailable) : s),
+                (s, e) => (momentumSatisfied(e, ai) ? s + chosenAwareActionsValue(e.actions, state, aiId, lethalAvailable, minion.instanceId) : s),
                 0
             )
         );
@@ -352,7 +361,7 @@ function musterBoardValue(state: GameState, aiId: PlayerId, lethalAvailable: boo
         const musterEffects = definition?.effects?.filter((e) => e.trigger === 'onFriendlyMinionCast') ?? [];
         return (
             sum +
-            musterEffects.reduce((s, e) => (momentumSatisfied(e, ai) ? s + chosenAwareActionsValue(e.actions, state, aiId, lethalAvailable) : s), 0)
+            musterEffects.reduce((s, e) => (momentumSatisfied(e, ai) ? s + chosenAwareActionsValue(e.actions, state, aiId, lethalAvailable, minion.instanceId) : s), 0)
         );
     }, 0);
 }
@@ -370,7 +379,7 @@ function mournBoardValue(state: GameState, aiId: PlayerId, excludeInstanceId: st
         const mournEffects = definition?.effects?.filter((e) => e.trigger === 'onFriendlyMinionDeath') ?? [];
         return (
             sum +
-            mournEffects.reduce((s, e) => (momentumSatisfied(e, ai) ? s + effectActionsValue(e.actions, state, aiId) : s), 0)
+            mournEffects.reduce((s, e) => (momentumSatisfied(e, ai) ? s + effectActionsValue(e.actions, state, aiId, minion.instanceId) : s), 0)
         );
     }, 0);
 }
@@ -393,7 +402,7 @@ function woundValue(state: GameState, aiId: PlayerId, minion: CardInstance): num
     const ownerId = minion.owner;
     const owner = state.players[ownerId];
     const value = woundEffects.reduce(
-        (sum, e) => (momentumSatisfied(e, owner) ? sum + effectActionsValue(e.actions, state, ownerId) : sum),
+        (sum, e) => (momentumSatisfied(e, owner) ? sum + effectActionsValue(e.actions, state, ownerId, minion.instanceId) : sum),
         0
     );
     return ownerId === aiId ? value : -value;
@@ -432,7 +441,7 @@ export function scorePlayCard(
     }
 
     const flatEffectValue = effects.reduce(
-        (sum, e) => (momentumSatisfied(e, ai) ? sum + effectActionsValue(e.actions, state, aiId) : sum),
+        (sum, e) => (momentumSatisfied(e, ai) ? sum + effectActionsValue(e.actions, state, aiId, card.instanceId) : sum),
         0
     );
 
@@ -455,8 +464,11 @@ export function scorePlayCard(
 
 /** Scores activating a board minion's paid ability (see PaidAbility, Card.ts) — mirrors
  * scorePlayCard's chosen-target ranking, just for an already-in-play minion's own ability instead
- * of a hand card's onPlay effects. */
-export function scorePaidAbility(state: GameState, aiId: PlayerId, ability: PaidAbility, lethalAvailable: boolean): number {
+ * of a hand card's onPlay effects. `sourceId` (the ability-owning minion's own instance id) matters
+ * here in a way it doesn't for scorePlayCard's flatEffectValue — unlike a hand card, this minion is
+ * already on `ai.board` at scoring time, so an 'allOtherMinions' action needs it to avoid counting
+ * itself in its own friendly-board tally. */
+export function scorePaidAbility(state: GameState, aiId: PlayerId, ability: PaidAbility, lethalAvailable: boolean, sourceId?: string): number {
     let score = 0;
     for (const action of ability.actions) {
         if ('target' in action && action.target === 'chosen') {
@@ -466,7 +478,7 @@ export function scorePaidAbility(state: GameState, aiId: PlayerId, ability: Paid
             }
             score += scoreChosenTarget(state, aiId, action, lethalAvailable).score;
         } else {
-            score += estimateEffectValue(action, state, aiId);
+            score += estimateEffectValue(action, state, aiId, sourceId);
         }
     }
     return score;
@@ -756,7 +768,10 @@ export function scoreAttackTriggers(state: GameState, aiId: PlayerId, attacker: 
     const onAttackEffects = definition?.effects?.filter((e) => e.trigger === 'onAttack') ?? [];
 
     return onAttackEffects.reduce(
-        (sum, effect) => (momentumSatisfied(effect, state.players[aiId]) ? sum + chosenAwareActionsValue(effect.actions, state, aiId, lethalAvailable) : sum),
+        (sum, effect) =>
+            momentumSatisfied(effect, state.players[aiId])
+                ? sum + chosenAwareActionsValue(effect.actions, state, aiId, lethalAvailable, attacker.instanceId)
+                : sum,
         0
     );
 }

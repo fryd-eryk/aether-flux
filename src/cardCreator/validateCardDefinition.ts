@@ -13,7 +13,7 @@ export type FieldErrors = Record<string, string>;
 const INVALID_ID_CHARS = /["\n\r]/;
 
 /** Targets a `tribeFilter` can narrow — see EffectAction.tribeFilter in Card.ts. */
-const TRIBE_FILTERABLE_TARGETS = ['allMinions', 'allEnemyMinions', 'allFriendlyMinions'];
+const TRIBE_FILTERABLE_TARGETS = ['allMinions', 'allEnemyMinions', 'allFriendlyMinions', 'allOtherMinions'];
 
 /** Validates one actions[] list in traversal order, tracking whether an earlier action in the
  * same list already resolved a real (non-reuseTarget) chosen target — reuseTarget on the very

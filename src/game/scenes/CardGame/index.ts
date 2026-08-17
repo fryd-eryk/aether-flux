@@ -679,8 +679,8 @@ export class CardGame extends Scene
     }
 
     /**
-     * Resolves every AwaitingTarget prompt left over after issuing one opponent action (or ending
-     * its turn), one at a time, via decideOpponentTarget — covers the played card/ability/
+     * Resolves every AwaitingTarget prompt whose true owner is the AI (state.pendingTarget.ownerId
+     * === 'opponent'), one at a time, via decideOpponentTarget — covers the played card/ability/
      * attacker's own chosen-target effect(s) and any board-wide Channel/Muster/Curfew/Vigil
      * reaction the action triggered, uniformly, since TurnStateMachine collects every prompt for a
      * declared action (or turn transition) up front before resolving it — see
@@ -688,10 +688,19 @@ export class CardGame extends Scene
      * startTurn/Vigil phase, which can begin synchronously inside this.machine.endTurn() when
      * called from the *player's* End Turn button (see that handler, below) — nothing else in this
      * file would otherwise ever resume that prompt.
+     *
+     * Gates on pendingTarget.ownerId, not state.activePlayer: a Tier-2 (onDeath/onDamaged/
+     * onFriendlyMinionDeath) prompt's true owner can differ from whoever's turn it currently is —
+     * e.g. the human's own attack can kill the AI's Deathcry minion mid-player-turn — so this is
+     * called after every player-initiated action too (see the playCard/activateAbility/
+     * selectTarget call sites below), not just after the opponent's own actions. The loop stops
+     * correctly at a human-owned prompt (ownerId === 'player') even when raised reactively during
+     * the opponent's own turn, leaving it for the Scene to render normally instead of auto-resolving
+     * the human's own choice.
      */
     private drainOpponentTargeting (): void
     {
-        while (this.machine.state.phase === TurnPhase.AwaitingTarget && this.machine.state.activePlayer === 'opponent')
+        while (this.machine.state.phase === TurnPhase.AwaitingTarget && this.machine.state.pendingTarget?.ownerId === 'opponent')
         {
             const targetId = decideOpponentTarget(this.machine.state);
             // Shouldn't happen (every scoreXSpell helper has an own-board fallback), but avoids a
@@ -871,7 +880,12 @@ export class CardGame extends Scene
                 // returns — nothing below touches it again, so that's safe.
                 endHandle();
                 const instanceId = this.cardInstanceByContainer.get(container);
-                if (instanceId) this.machine.playCard(instanceId);
+                // A card with no Tier-1 target to pick resolves fully synchronously here and can
+                // itself cascade into an opponent-owned Tier-2 prompt (e.g. its onPlay damage kills
+                // the AI's own Deathcry minion) — drain it reactively. A no-op when playCard instead
+                // entered AwaitingTarget for its own Tier-1 target, since that prompt is always
+                // player-owned. See drainOpponentTargeting's doc comment.
+                if (instanceId) { this.machine.playCard(instanceId); this.drainOpponentTargeting(); }
                 return;
             }
 
@@ -1002,13 +1016,15 @@ export class CardGame extends Scene
      * treatment at all; an attacker, an activating board minion, or a board-wide
      * Channel/Muster/Vigil/Curfew reaction's source never leaves the board — see
      * TurnStateMachine.beginTargeting's 'state:target-begin' emit, playCard-only), otherwise
-     * screen-vertically-centered. Never shown for the opponent's own targeting — that always
-     * resolves reactively within a single synchronous call (see drainOpponentTargeting) before
-     * the Scene ever renders an AwaitingTarget frame for it. */
+     * screen-vertically-centered. Never shown for the opponent's own targeting (pendingTarget.
+     * ownerId === 'opponent') — that always resolves reactively via drainOpponentTargeting before
+     * the Scene ever renders an AwaitingTarget frame for it, regardless of whose turn it currently
+     * is (see drainOpponentTargeting's doc comment for why ownerId, not activePlayer, is the right
+     * gate here). */
     private updateTargetPromptBox (state: GameState): void
     {
         const pendingTarget = state.pendingTarget;
-        if (state.phase !== TurnPhase.AwaitingTarget || state.activePlayer !== 'player' || !pendingTarget)
+        if (state.phase !== TurnPhase.AwaitingTarget || pendingTarget?.ownerId !== 'player')
         {
             this.targetPromptBox.setVisible(false);
             return;
@@ -1247,18 +1263,23 @@ export class CardGame extends Scene
 
         this.heroContainers.set(id, container);
 
-        // pendingTarget's owner is always state.activePlayer (beginTargeting is only ever called
-        // from playCard/declareAttack on the active player's own card) — gating on that here stops
+        // Gate on pendingTarget.ownerId, not state.activePlayer — a Tier-2 (onDeath/onDamaged/
+        // onFriendlyMinionDeath) prompt's true owner can differ from whoever's turn it currently is
+        // (see PendingTarget's doc comment, GameState.ts). Gating on the actual owner here stops
         // the human from resolving the opponent's pending target (or vice versa) by clicking through
         // it, which is otherwise indistinguishable from a legitimate target prompt for either side.
         const isValidTarget =
             state.phase === TurnPhase.AwaitingTarget &&
-            state.activePlayer === 'player' &&
+            state.pendingTarget?.ownerId === 'player' &&
             state.pendingTarget?.validTargetIds.includes(id);
         if (isValidTarget)
         {
             this.addShimmeringOutline(container, HERO_SIZE, HERO_SIZE, OUTLINE_COLOR_TARGETABLE);
-            container.on('pointerup', this.guarded(() => this.machine.selectTarget(id)));
+            // Resolving this prompt can itself cascade into a new Tier-2 prompt owned by the
+            // opponent (e.g. this chosen action kills the AI's own Deathcry minion) — drain it
+            // reactively rather than leaving the state machine stuck in AwaitingTarget with no one
+            // ever calling selectTarget for it. See drainOpponentTargeting's doc comment.
+            container.on('pointerup', this.guarded(() => { this.machine.selectTarget(id); this.drainOpponentTargeting(); }));
         }
 
         this.renderedObjects.push(container);
@@ -1505,11 +1526,11 @@ export class CardGame extends Scene
             // 'simplified' mode never prints cost on-card — the tooltip is the only place to see it.
             this.helpBoxController.attachKeywordHover(container, instance, true, resolveCardText(instance, state));
 
-            // See the matching comment in renderHero — only the player whose pending action this is
-            // (always state.activePlayer) may resolve its target.
+            // See the matching comment in renderHero — only the true owner of this pending prompt
+            // (state.pendingTarget.ownerId, not necessarily state.activePlayer) may resolve it.
             const isValidTarget =
                 state.phase === TurnPhase.AwaitingTarget &&
-                state.activePlayer === 'player' &&
+                state.pendingTarget?.ownerId === 'player' &&
                 state.pendingTarget?.validTargetIds.includes(instance.instanceId);
             const canAttack =
                 state.phase === TurnPhase.MainIdle &&
@@ -1520,7 +1541,9 @@ export class CardGame extends Scene
             if (isValidTarget)
             {
                 this.addShimmeringOutline(container, CARD_W, CARD_H, OUTLINE_COLOR_TARGETABLE);
-                container.on('pointerup', this.guarded(() => this.machine.selectTarget(instance.instanceId)));
+                // See the matching comment on the hero's own selectTarget handler — this can
+                // cascade into a new opponent-owned Tier-2 prompt that needs draining too.
+                container.on('pointerup', this.guarded(() => { this.machine.selectTarget(instance.instanceId); this.drainOpponentTargeting(); }));
             }
             else if (canAttack)
             {
@@ -1557,7 +1580,10 @@ export class CardGame extends Scene
                     if (canActivateAbilities && affordable)
                     {
                         zone.setInteractive({ useHandCursor: true });
-                        zone.on('pointerup', this.guarded(() => this.machine.activateAbility(instance.instanceId, abilityIndex)));
+                        // A no-target-needed ability resolves fully synchronously here and can
+                        // itself cascade into an opponent-owned Tier-2 prompt (e.g. it kills the
+                        // AI's own Deathcry minion) — drain it reactively, same as playCard below.
+                        zone.on('pointerup', this.guarded(() => { this.machine.activateAbility(instance.instanceId, abilityIndex); this.drainOpponentTargeting(); }));
                     }
                 });
             }

@@ -42,8 +42,11 @@ type PendingPrompt = { sourceInstanceId: string; action: Extract<EffectAction, {
  * collected up front by collectPendingPrompts before resolution starts, so resolveChosenTargetId's
  * fast (cursor-already-has-it) path always applies. onDeath/onDamaged/onFriendlyMinionDeath fire
  * from inside sweepDeaths/dealDamage instead, where the full set of firing sources can only be
- * discovered by resolving an earlier chosen target for real — hence the yield/resume mechanism. */
-type TargetRequest = { sourceInstanceId: string; action: Extract<EffectAction, { target: TargetSelector }>; validTargetIds: string[] };
+ * discovered by resolving an earlier chosen target for real — hence the yield/resume mechanism.
+ * `ownerId` is the dying/damaged card's controller, which is who actually gets to answer — it can
+ * differ from gameState.activePlayer (e.g. the opponent's attack killing the human's own minion),
+ * so it has to travel with the request rather than being inferred downstream. */
+type TargetRequest = { sourceInstanceId: string; action: Extract<EffectAction, { target: TargetSelector }>; validTargetIds: string[]; ownerId: PlayerId };
 
 /**
  * Pure game-state driver, no Phaser dependency. A Scene forwards player input into
@@ -342,6 +345,13 @@ export class TurnStateMachine {
         }
 
         this.setPhase(TurnPhase.Resolving);
+        // Emitted here, before any yield point below, rather than at this generator's tail (where
+        // it used to sit, alongside finishResolving) — see executeAttack's matching comment for why:
+        // CardGame's cardPlayedHandler needs to flip the Scene's isAnimating flag true before
+        // onPlay/Channel/Muster's own onDeath/onDamaged cascade gets a chance to suspend this
+        // generator for a Tier-2 chosen target, or requestRender()'s fallback flush hijacks the
+        // card's own play animation out from under it once phase flips to AwaitingTarget.
+        EventBus.emit('state:card-played', { instanceId, playerId: player.id });
         yield* this.triggerEffects(card, 'onPlay', player.id, cursors.get(instanceId));
         // Counted after this card's own onPlay resolves (so a Momentum effect on the card itself
         // reads "how many were played before it"), but before Channel fires below (so a Channel
@@ -365,7 +375,6 @@ export class TurnStateMachine {
         // even when this action changed a counter (hand/graveyard/deck size, hero health) without
         // changing board membership — the internal calls above only cover membership changes.
         this.recalculateAuras();
-        EventBus.emit('state:card-played', { instanceId, playerId: player.id });
         this.finishResolving();
     }
 
@@ -404,6 +413,17 @@ export class TurnStateMachine {
 
         console.log('[TurnStateMachine] executeAttack', { attackerInstanceId, targetId, attack: attacker.currentAttack, health: attacker.currentHealth });
         this.setPhase(TurnPhase.Resolving);
+        // Emitted here, before any yield point below, rather than at this generator's tail (where
+        // it used to sit, alongside finishResolving) — CardGame's attackHandler enqueues the lunge/
+        // hit/death-fade animation synchronously off this event, which flips the Scene's isAnimating
+        // flag true before returning. That has to happen before onDamaged (inside resolveCombatHit's
+        // dealDamage) or onDeath (sweepDeaths) gets a chance to suspend this generator for a Tier-2
+        // chosen target (e.g. this attacker's own Deathcry) — otherwise the resulting AwaitingTarget
+        // phase-change reaches CardGame's requestRender() while isAnimating is still false, and its
+        // fallback flush (meant for actions with no animation of their own) hijacks the buffered
+        // damage/death events out from under the attack animation, skipping the lunge entirely. See
+        // CardGame/index.ts's requestRender/attackHandler.
+        EventBus.emit('state:attack', { attackerInstanceId, targetId });
         attacker.attacksThisTurn += 1;
         // Veiled is lost the instant this minion attacks, mirroring how divineShield is consumed
         // in dealDamage. Strike (onAttack) fires unconditionally here, before any damage resolves
@@ -436,7 +456,6 @@ export class TurnStateMachine {
         // Catch-all (see recalculateAuras' doc comment) — combat can change hero health without
         // any minion dying, which sweepDeaths' own internal call wouldn't otherwise catch.
         this.recalculateAuras();
-        EventBus.emit('state:attack', { attackerInstanceId, targetId });
         this.finishResolving();
     }
 
@@ -581,6 +600,7 @@ export class TurnStateMachine {
                     step: 1,
                     totalSteps,
                     cancellable,
+                    ownerId,
                 };
             }
             const prompt = this.pendingPrompts[this.pendingChosenTargets.length];
@@ -591,6 +611,7 @@ export class TurnStateMachine {
                 step: 1 + this.pendingChosenTargets.length + 1,
                 totalSteps,
                 cancellable,
+                ownerId,
             };
         }
 
@@ -601,6 +622,7 @@ export class TurnStateMachine {
             action: prompt.action,
             step: this.pendingChosenTargets.length + 1,
             totalSteps: this.pendingPrompts.length,
+            ownerId,
             cancellable,
         };
     }
@@ -753,7 +775,7 @@ export class TurnStateMachine {
 
         const validTargetIds = this.computeValidTargetsForRestriction(action.chosenRestriction, ownerId);
         if (validTargetIds.length === 0) return undefined;
-        const chosenTargetId: string = yield { sourceInstanceId, action, validTargetIds };
+        const chosenTargetId: string = yield { sourceInstanceId, action, validTargetIds, ownerId };
         cursor.ids.push(chosenTargetId);
         cursor.index++;
         cursor.last = chosenTargetId;
@@ -853,6 +875,11 @@ export class TurnStateMachine {
             case 'allMinions':
                 return [...this.gameState.players[ownerId].board, ...this.gameState.players[opponentId].board]
                     .filter(matchesTribe)
+                    .map((c) => c.instanceId);
+            case 'allOtherMinions':
+                return [...this.gameState.players[ownerId].board, ...this.gameState.players[opponentId].board]
+                    .filter(matchesTribe)
+                    .filter((c) => c.instanceId !== sourceId)
                     .map((c) => c.instanceId);
             case 'allHeroes':
                 return [ownerId, opponentId];
@@ -994,7 +1021,8 @@ export class TurnStateMachine {
     /** Whether `aura` (granted by `source`) reaches `recipient` — target selector resolved relative
      * to `source`'s own owner (auras are source-relative, not viewer-relative), plus tribeFilter. A
      * source matching its own aura's criteria buffs itself too, no self-exclusion special-casing —
-     * the literal reading of "All Demon you control". */
+     * the literal reading of "All Demon you control" — except 'allOtherMinions', the one target
+     * that's deliberately self-excluding by design. */
     private auraApplies(aura: CardAura, source: CardInstance, recipient: CardInstance): boolean {
         if (aura.tribeFilter && !minionHasTribe(CARD_DEFINITIONS[recipient.definitionId], aura.tribeFilter)) return false;
         switch (aura.target) {
@@ -1004,6 +1032,8 @@ export class TurnStateMachine {
                 return recipient.owner !== source.owner;
             case 'allMinions':
                 return true;
+            case 'allOtherMinions':
+                return recipient.instanceId !== source.instanceId;
         }
     }
 
@@ -1168,8 +1198,8 @@ export class TurnStateMachine {
             return;
         }
         this.activeResolution = gen;
-        const { sourceInstanceId, action, validTargetIds } = result.value;
-        this.gameState.pendingTarget = { sourceInstanceId, validTargetIds, action, cancellable: false, step: 1, totalSteps: 1 };
+        const { sourceInstanceId, action, validTargetIds, ownerId } = result.value;
+        this.gameState.pendingTarget = { sourceInstanceId, validTargetIds, action, ownerId, cancellable: false, step: 1, totalSteps: 1 };
         this.setPhase(TurnPhase.AwaitingTarget);
     }
 

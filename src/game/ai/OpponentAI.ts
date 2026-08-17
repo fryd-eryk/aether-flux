@@ -82,7 +82,7 @@ export function decideOpponentAction(state: GameState): AIAction | null {
         const definition = CARD_DEFINITIONS[minion.definitionId];
         (definition?.paidAbilities ?? []).forEach((ability, abilityIndex) => {
             if (ai.mana < ability.cost) return; // mirrors TurnStateMachine.activateAbility's own guard
-            const score = scorePaidAbility(state, aiId, ability, lethalAvailable);
+            const score = scorePaidAbility(state, aiId, ability, lethalAvailable, minion.instanceId);
             if (!best || score > best.score) {
                 best = { score, action: { kind: 'activateAbility', instanceId: minion.instanceId, abilityIndex } };
             }
@@ -112,7 +112,11 @@ export function decideOpponentAction(state: GameState): AIAction | null {
 export function decideOpponentTarget(state: GameState): string | undefined {
     const pendingTarget = state.pendingTarget;
     if (!pendingTarget?.action) return undefined;
-    const aiId = state.activePlayer;
+    // pendingTarget.ownerId (the card's actual controller), not state.activePlayer — a Tier-2
+    // (onDeath/onDamaged/onFriendlyMinionDeath) prompt can belong to the AI even mid-player-turn
+    // (e.g. the player's attack kills the AI's own Deathcry minion) — see PendingTarget's doc
+    // comment (GameState.ts) and drainOpponentTargeting (CardGame/index.ts).
+    const aiId = pendingTarget.ownerId;
     const enemy = state.players[opponentOf(aiId)];
     const lethalAvailable = computePotentialFaceDamage(state, aiId) >= enemy.health;
     return scoreChosenTarget(state, aiId, pendingTarget.action, lethalAvailable).targetId;

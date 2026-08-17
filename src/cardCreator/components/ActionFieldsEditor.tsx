@@ -16,12 +16,12 @@ import styles from '@/styles/CardCreator.module.css';
 
 export const ACTION_KINDS: EffectAction['kind'][] = ['damage', 'heal', 'draw', 'buff', 'summon', 'freeze', 'silence', 'destroy', 'grantKeyword'];
 const KEYWORDS = Object.keys(KEYWORD_METADATA) as Keyword[];
-export const TARGETS: TargetSelector[] = ['self', 'enemyHero', 'friendlyHero', 'chosen', 'allEnemyMinions', 'allFriendlyMinions', 'allMinions', 'allHeroes'];
+export const TARGETS: TargetSelector[] = ['self', 'enemyHero', 'friendlyHero', 'chosen', 'allEnemyMinions', 'allFriendlyMinions', 'allMinions', 'allOtherMinions', 'allHeroes'];
 export const RESTRICTIONS: ChosenTargetRestriction[] = ['minion', 'hero', ...(Object.keys(TRIBE_METADATA) as Tribe[])];
 const TRIBES = Object.keys(TRIBE_METADATA) as Tribe[];
 const COUNTERS = Object.keys(COUNTER_METADATA) as CounterKind[];
 /** AOE minion targets a tribeFilter can narrow — hero/self/chosen targets are unaffected (a chosen target's tribe restriction is chosenRestriction instead). */
-export const TRIBE_FILTERABLE_TARGETS: TargetSelector[] = ['allMinions', 'allEnemyMinions', 'allFriendlyMinions'];
+export const TRIBE_FILTERABLE_TARGETS: TargetSelector[] = ['allMinions', 'allEnemyMinions', 'allFriendlyMinions', 'allOtherMinions'];
 
 export function restrictionLabel(restriction: ChosenTargetRestriction): string {
     if (restriction === 'minion' || restriction === 'hero') return restriction;

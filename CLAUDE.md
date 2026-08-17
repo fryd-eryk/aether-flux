@@ -18,6 +18,13 @@ what this project has actually already decided.
 - `npm run build` — production build, output to `dist/` (static export)
 - `npm run build-nolog` — same, without the `log.js` ping
 
+## Overall rule of conduct
+
+- Keep your replies extremely concise and focus on conveying the key informtion. No unnecessary fluff, no long code snippets.
+- Whenever working with any third-party library or something similar, you MUST look up the official documentation to ensure that you are working with up-to-date information. Use the DocsExplorer subagent for efficient gathering of documentation.
+- So not overload code files with comments. Write short and to the point comments.
+If something needs more details, points to SPEC and elaborate there.
+
 ## Testing
 
 No automated test suite or lint script is configured (`.eslintrc.json` only

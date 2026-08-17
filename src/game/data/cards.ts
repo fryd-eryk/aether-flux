@@ -57,7 +57,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 1,
         health: 1,
         keywords: ["venom"],
-        tribes: ["nature","animal"],
+        tribes: ["nature"],
         rarity: "common",
     },
     "shieldbearer-of-faroria": {
@@ -585,6 +585,27 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
     },
+    "elemental-spray": {
+        id: "elemental-spray",
+        name: "Elemental Spray",
+        cost: 3,
+        type: "spell",
+        text: "Deal X damage to a minion, where X is the number of *Elemental* minions.",
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: { counter: "allTribeMinionCount", tribe: "elemental" },
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                ],
+            },
+        ],
+        rarity: "rare",
+    },
     "sapping-leech": {
         id: "sapping-leech",
         name: "Sapping Leech",
@@ -698,19 +719,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "rare",
         artVerticalAlign: "bottom",
     },
-    "paintwister-scorpion": {
-        id: "paintwister-scorpion",
-        name: "Paintwister Scorpion",
-        cost: 4,
-        type: "minion",
-        text: "",
-        attack: 1,
-        health: 3,
-        keywords: ["windfury","venom"],
-        tribes: ["animal"],
-        rarity: "rare",
-        artVerticalAlign: "top",
-    },
     "chain-lightning": {
         id: "chain-lightning",
         name: "Chain Lightning",
@@ -755,25 +763,16 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
     },
-    "elemental-spray": {
-        id: "elemental-spray",
-        name: "Elemental Spray",
+    "spotted-scorpion": {
+        id: "spotted-scorpion",
+        name: "Spotted Scorpion",
         cost: 4,
-        type: "spell",
-        text: "Deal X damage to a minion, where X is the number of *Elemental* minions.",
-        effects: [
-            {
-                trigger: "onPlay",
-                actions: [
-                    {
-                        kind: "damage",
-                        amount: { counter: "allTribeMinionCount", tribe: "elemental" },
-                        target: "chosen",
-                        chosenRestriction: "minion",
-                    },
-                ],
-            },
-        ],
+        type: "minion",
+        text: "",
+        attack: 2,
+        health: 3,
+        keywords: ["windfury","initiative"],
+        tribes: ["nature"],
         rarity: "rare",
     },
     "squall-falconer": {
@@ -971,7 +970,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "top",
     },
 
-    // --- Exotic rarity (13) ---
+    // --- Exotic rarity (14) ---
     "blood-moon-ritual": {
         id: "blood-moon-ritual",
         name: "Blood Moon Ritual",
@@ -1019,6 +1018,18 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
         artVerticalAlign: "top",
+    },
+    "spiral-spider": {
+        id: "spiral-spider",
+        name: "Spiral Spider",
+        cost: 2,
+        type: "minion",
+        text: "TODO",
+        attack: 2,
+        health: 1,
+        keywords: ["venom"],
+        tribes: ["nature","animal"],
+        rarity: "exotic",
     },
     "forced-coronation": {
         id: "forced-coronation",
@@ -1242,9 +1253,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
     },
-    "sky-titan": {
-        id: "sky-titan",
-        name: "Sky Titan",
+    "codar-titan": {
+        id: "codar-titan",
+        name: "Codar Titan",
         cost: 8,
         type: "minion",
         text: "When you cast a spell, silence target minion.",
@@ -1257,6 +1268,26 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 actions: [
                     {
                         kind: "silence",
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                ],
+            },
+        ],
+        auras: [
+            {
+                target: "allFriendlyMinions",
+                attack: 1,
+                health: 1,
+            },
+        ],
+        paidAbilities: [
+            {
+                cost: 1,
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 1,
                         target: "chosen",
                         chosenRestriction: "minion",
                     },
@@ -1554,7 +1585,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Theredas, the Plaguewoven",
         cost: 1,
         type: "token",
-        text: "When Theredas is wounded, it deals 1 damage to all minions",
+        text: "When Theredas is wounded, it deals 1 damage to all other minions.",
         attack: 6,
         health: 4,
         keywords: ["venom"],
@@ -1566,11 +1597,10 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     {
                         kind: "damage",
                         amount: 1,
-                        target: "allMinions",
+                        target: "allOtherMinions",
                     },
                 ],
             },
         ],
-        artVerticalAlign: "bottom",
     },
 };
