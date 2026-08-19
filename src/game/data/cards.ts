@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (23) ---
+    // --- Common rarity (24) ---
     "pocket-sand": {
         id: "pocket-sand",
         name: "Pocket Sand",
@@ -72,16 +72,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         tribes: ["humanoid"],
         rarity: "common",
         artVerticalAlign: "bottom",
-    },
-    "aetheric-gorger": {
-        id: "aetheric-gorger",
-        name: "Aetheric Gorger",
-        cost: 1,
-        type: "minion",
-        text: "TODO",
-        attack: 1,
-        health: 1,
-        rarity: "common",
     },
     "stonemoss-walker": {
         id: "stonemoss-walker",
@@ -255,7 +245,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 actions: [
                     {
                         kind: "draw",
-                        count: { counter: "enemyMinionCount" },
+                        count: 1,
                     },
                 ],
             },
@@ -372,6 +362,30 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "center",
     },
+    "mind-lost-cultist": {
+        id: "mind-lost-cultist",
+        name: "Mind-lost Cultist",
+        cost: 3,
+        type: "minion",
+        text: "**Deathcry:** Deal 2 damage to target minion or player.",
+        attack: 1,
+        health: 3,
+        tribes: ["humanoid","demon"],
+        effects: [
+            {
+                trigger: "onDeath",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 2,
+                        target: "chosen",
+                    },
+                ],
+            },
+        ],
+        rarity: "common",
+        artVerticalAlign: "bottom",
+    },
     "wandering-cleric": {
         id: "wandering-cleric",
         name: "Wandering Cleric",
@@ -397,6 +411,40 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "bottom",
     },
+    "vampiric-doomcaller": {
+        id: "vampiric-doomcaller",
+        name: "Vampiric Doomcaller",
+        cost: 4,
+        type: "minion",
+        text: "**Anthem:** Deal 3 damage to the enemy player.\n**Deathcry:** Deal 3 damage to you.",
+        attack: 2,
+        health: 3,
+        keywords: ["lifesteal"],
+        tribes: ["demon"],
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 3,
+                        target: "enemyHero",
+                    },
+                ],
+            },
+            {
+                trigger: "onDeath",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 3,
+                        target: "friendlyHero",
+                    },
+                ],
+            },
+        ],
+        rarity: "common",
+    },
     "frost-behemoth": {
         id: "frost-behemoth",
         name: "Frost Behemoth",
@@ -410,21 +458,37 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "bottom",
     },
-    "bastion-sentinel": {
-        id: "bastion-sentinel",
-        name: "Bastion Sentinel",
-        cost: 5,
+    "aetheric-gorger": {
+        id: "aetheric-gorger",
+        name: "Aetheric Gorger",
+        cost: 6,
         type: "minion",
-        text: "",
-        attack: 2,
-        health: 5,
-        keywords: ["taunt"],
-        tribes: ["humanoid"],
+        text: "**Deathcry:** Draw a card. Deal 2 damage to you.",
+        attack: 4,
+        health: 4,
+        keywords: ["lifesteal"],
+        tribes: ["cosmic","demon"],
+        effects: [
+            {
+                trigger: "onDeath",
+                actions: [
+                    {
+                        kind: "draw",
+                        count: 1,
+                    },
+                    {
+                        kind: "damage",
+                        amount: 2,
+                        target: "friendlyHero",
+                    },
+                ],
+            },
+        ],
         rarity: "common",
-        artVerticalAlign: "bottom",
+        artVerticalAlign: "top",
     },
 
-    // --- Rare rarity (24) ---
+    // --- Rare rarity (22) ---
     "whelp-of-eloki-woods": {
         id: "whelp-of-eloki-woods",
         name: "Whelp of Eloki Woods",
@@ -456,7 +520,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         type: "minion",
         text: "When Celestial Chaser attacks, draw X cards where X is the number of minions the opponent controls.",
         attack: 1,
-        health: 2,
+        health: 1,
         tribes: ["cosmic"],
         effects: [
             {
@@ -541,30 +605,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                         kind: "damage",
                         amount: 1,
                         target: "friendlyHero",
-                    },
-                ],
-            },
-        ],
-        rarity: "rare",
-        artVerticalAlign: "bottom",
-    },
-    "mind-lost-cultist": {
-        id: "mind-lost-cultist",
-        name: "Mind-lost Cultist",
-        cost: 3,
-        type: "minion",
-        text: "**Deathcry:** Deal 2 damage to target minion or player.",
-        attack: 1,
-        health: 3,
-        tribes: ["humanoid","demon"],
-        effects: [
-            {
-                trigger: "onDeath",
-                actions: [
-                    {
-                        kind: "damage",
-                        amount: 2,
-                        target: "chosen",
                     },
                 ],
             },
@@ -668,40 +708,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
         artVerticalAlign: "bottom",
-    },
-    "vampiric-doomcaller": {
-        id: "vampiric-doomcaller",
-        name: "Vampiric Doomcaller",
-        cost: 4,
-        type: "minion",
-        text: "**Anthem:** Deal 3 damage to the enemy player.\n**Deathcry:** Deal 3 damage to you.",
-        attack: 2,
-        health: 3,
-        keywords: ["lifesteal"],
-        tribes: ["demon"],
-        effects: [
-            {
-                trigger: "onPlay",
-                actions: [
-                    {
-                        kind: "damage",
-                        amount: 3,
-                        target: "enemyHero",
-                    },
-                ],
-            },
-            {
-                trigger: "onDeath",
-                actions: [
-                    {
-                        kind: "damage",
-                        amount: 3,
-                        target: "friendlyHero",
-                    },
-                ],
-            },
-        ],
-        rarity: "rare",
     },
     "lichs-forgotten-hand": {
         id: "lichs-forgotten-hand",
@@ -1034,11 +1040,17 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Spiral Spider",
         cost: 2,
         type: "minion",
-        text: "TODO",
+        text: "All enemy *Animal* get -X/-0 where X is the number of *Animal* in play.",
         attack: 2,
         health: 1,
-        keywords: ["venom"],
         tribes: ["nature","animal"],
+        auras: [
+            {
+                target: "allEnemyMinions",
+                tribeFilter: "animal",
+                attack: { counter: "allTribeMinionCount", tribe: "animal" },
+            },
+        ],
         rarity: "exotic",
     },
     "forced-coronation": {
@@ -1183,7 +1195,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         cost: 5,
         type: "minion",
         text: "When Teacher of Fenh's Ways attacks, it deals X damage to the opponent, where X is the number of cards in their hand.",
-        attack: 4,
+        attack: 3,
         health: 4,
         tribes: ["holy"],
         effects: [
@@ -1208,7 +1220,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "**Anthem, Deathcry:** Summon a 1/2 Ember Fledgling.",
         attack: 3,
         health: 4,
-        keywords: ["lifesteal"],
+        keywords: ["taunt"],
         tribes: ["elemental","animal"],
         effects: [
             {
