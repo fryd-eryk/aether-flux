@@ -25,6 +25,7 @@ const TYPE_OPTIONS: FilterListboxOption[] = [
     { value: "minion", label: "Minion" },
     { value: "spell", label: "Spell" },
     { value: "token", label: "Token" },
+    { value: "aether", label: "Aether" },
 ];
 const TRIBE_OPTIONS: FilterListboxOption[] = TRIBES.map((tribe) => ({ value: tribe, label: TRIBE_METADATA[tribe].label }));
 const KEYWORD_OPTIONS: FilterListboxOption[] = KEYWORDS.map((keyword) => ({ value: keyword, label: KEYWORD_METADATA[keyword].label }));
@@ -34,10 +35,10 @@ const RARITY_OPTIONS: FilterListboxOption[] = RARITY_ORDER.map((rarity) => ({
     swatch: hexColor(RARITY_METADATA[rarity].light),
 }));
 
-// Tokens rank below common regardless of sort direction — they aren't a power tier, so
-// there's no "descending" position that makes sense for them either.
+// Tokens and Aether cards rank below common regardless of sort direction — neither is a power
+// tier, so there's no "descending" position that makes sense for either.
 function rarityRank(card: CardDefinition): number {
-    return card.type === "token" || !card.rarity ? -1 : RARITY_ORDER.indexOf(card.rarity);
+    return card.type === "token" || card.type === "aether" || !card.rarity ? -1 : RARITY_ORDER.indexOf(card.rarity);
 }
 
 // Cards without a tribe (all spells, plus any minion authored without one) sort below every
@@ -49,7 +50,7 @@ function tribeLabel(card: CardDefinition): string | null {
 
 // Same light color CardView's footer rarity dot uses (rarityMetadata.ts), as a CSS hex string.
 function rarityColor(card: CardDefinition): string {
-    const { light } = card.type === "token" || !card.rarity ? TOKEN_RARITY_COLOR : RARITY_METADATA[card.rarity];
+    const { light } = card.type === "token" || card.type === "aether" || !card.rarity ? TOKEN_RARITY_COLOR : RARITY_METADATA[card.rarity];
     return `#${light.toString(16).padStart(6, "0")}`;
 }
 
@@ -134,7 +135,7 @@ export function CardListSidebar({ cards, selectedId, dirtyIds, onSelect, onNew }
                         return a.name.localeCompare(b.name) * dir;
                     case "cost":
                     default:
-                        return (a.cost - b.cost) * dir || a.name.localeCompare(b.name);
+                        return ((a.cost?.generic ?? 0) - (b.cost?.generic ?? 0)) * dir || a.name.localeCompare(b.name);
                 }
             });
     }, [cards, search, sortField, sortDir, filterTypes, filterTribes, filterKeywords, filterRarities, filterAtkMin, filterAtkMax, filterHpMin, filterHpMax]);
@@ -202,10 +203,14 @@ export function CardListSidebar({ cards, selectedId, dirtyIds, onSelect, onNew }
                             {dirtyIds.has(card.id) && <span className={styles.cardListItemDirty}>●</span>}
                         </span>
                         <span className={styles.cardListItemRight}>
-                            <span className={styles.cardListItemTypeBadge} title={card.type === "minion" ? "Minion" : card.type === "spell" ? "Spell" : "Token"}>
-                                {card.type === "minion" ? "M" : card.type === "spell" ? "S" : "T"}
+                            <span className={styles.cardListItemTypeBadge} title={card.type === "minion" ? "Minion" : card.type === "spell" ? "Spell" : card.type === "aether" ? "Aether" : "Token"}>
+                                {card.type === "minion" ? "M" : card.type === "spell" ? "S" : card.type === "aether" ? "A" : "T"}
                             </span>
-                            <span className={styles.cardListItemCost}>{card.cost}</span>
+                            <span className={styles.cardListItemCost}>
+                                {card.type === "aether"
+                                    ? (card.aetherCategory ?? "generic")[0].toUpperCase()
+                                    : (card.cost?.generic ?? 0)}
+                            </span>
                         </span>
                     </button>
                 ))}

@@ -169,7 +169,18 @@ export function validateCardDefinition(
 
     if (!def.name.trim()) errors.name = 'Name is required.';
 
-    if (!Number.isInteger(def.cost) || def.cost < 1) errors.cost = 'Cost must be a positive integer.';
+    if (def.type === 'aether') {
+        // Aether cards have no cost of their own — see AetherCost's doc comment (Card.ts).
+        if (def.cost !== undefined) errors.cost = 'Aether cards have no cost of their own.';
+        if (!def.aetherCategory) errors.aetherCategory = 'Category is required.';
+    } else {
+        if (def.aetherCategory) errors.aetherCategory = 'Only Aether cards have a category.';
+        if (!def.cost || !Number.isInteger(def.cost.generic) || def.cost.generic < 0) {
+            errors.cost = 'Cost must be a non-negative integer.';
+        } else if (def.cost.elemental && (!Number.isInteger(def.cost.elemental.threshold) || def.cost.elemental.threshold < 1)) {
+            errors.costElementalThreshold = 'Threshold must be a positive integer.';
+        }
+    }
 
     if (def.type === 'minion' || def.type === 'token') {
         if (def.attack === undefined || !Number.isInteger(def.attack) || def.attack < 0) {
@@ -178,6 +189,14 @@ export function validateCardDefinition(
         if (def.health === undefined || !Number.isInteger(def.health) || def.health < 1) {
             errors.health = 'Health must be a positive integer.';
         }
+    } else if (def.type === 'aether') {
+        // Plain resource cards this pass — see SPEC.md's "Resource system roadmap: Aether".
+        if (def.attack !== undefined) errors.attack = 'Aether cards cannot have attack.';
+        if (def.health !== undefined) errors.health = 'Aether cards cannot have health.';
+        if (def.tribes && def.tribes.length > 0) errors.tribes = 'Aether cards cannot have tribes.';
+        if (def.paidAbilities && def.paidAbilities.length > 0) errors.paidAbilities = 'Aether cards cannot have paid abilities.';
+        if (def.auras && def.auras.length > 0) errors.auras = 'Aether cards cannot have an aura.';
+        if (def.effects && def.effects.length > 0) errors.effects = 'Aether cards cannot have effects yet.';
     } else {
         if (def.attack !== undefined) errors.attack = 'Spells cannot have attack.';
         if (def.health !== undefined) errors.health = 'Spells cannot have health.';
@@ -186,8 +205,12 @@ export function validateCardDefinition(
         if (def.auras && def.auras.length > 0) errors.auras = 'Only minions can have an aura.';
     }
 
-    if (def.type === 'token') {
-        if (def.rarity) errors.rarity = 'Tokens are not collectible and must not have a rarity.';
+    if (def.type === 'token' || def.type === 'aether') {
+        if (def.rarity) {
+            errors.rarity = def.type === 'token'
+                ? 'Tokens are not collectible and must not have a rarity.'
+                : 'Aether cards are not collectible and must not have a rarity.';
+        }
     } else if (!def.rarity) {
         errors.rarity = 'Rarity is required.';
     }

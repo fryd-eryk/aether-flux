@@ -1,4 +1,4 @@
-import type { CardAura, CardDefinition, CardEffect, CardRarity, EffectAction, EffectValue, PaidAbility } from '../game/types/Card';
+import type { AetherCost, CardAura, CardDefinition, CardEffect, CardRarity, EffectAction, EffectValue, PaidAbility } from '../game/types/Card';
 
 /**
  * Regenerates `src/game/data/cards.ts`'s source text from an in-memory
@@ -36,6 +36,18 @@ function serializeEffectValue(value: EffectValue): string {
     if (value.multiplier !== undefined && value.multiplier !== 1) parts.push(`multiplier: ${value.multiplier}`);
     if (value.offset !== undefined && value.offset !== 0) parts.push(`offset: ${value.offset}`);
     if (value.tribe !== undefined) parts.push(`tribe: ${JSON.stringify(value.tribe)}`);
+    return `{ ${parts.join(', ')} }`;
+}
+
+/** Mirrors serializeEffectValue's own union-serialization pattern — the generic amount always
+ * prints, the elemental threshold only when present. This is the one CLAUDE.md specifically
+ * warns about: `cost` used to be a plain number naively interpolated, and a naive change to this
+ * structured shape would have silently emitted "[object Object]" instead of failing loudly. */
+function serializeCost(cost: AetherCost): string {
+    const parts = [`generic: ${cost.generic}`];
+    if (cost.elemental) {
+        parts.push(`elemental: { category: ${JSON.stringify(cost.elemental.category)}, threshold: ${cost.elemental.threshold} }`);
+    }
     return `{ ${parts.join(', ')} }`;
 }
 
@@ -150,8 +162,11 @@ function serializeCardDefinition(def: CardDefinition, level: number): string {
     const lines: string[] = [];
     lines.push(`${indent(level)}id: ${JSON.stringify(def.id)},`);
     lines.push(`${indent(level)}name: ${JSON.stringify(def.name)},`);
-    lines.push(`${indent(level)}cost: ${def.cost},`);
+    // Aether cards have no cost of their own (see AetherCost's doc comment, Card.ts) — omitted
+    // rather than printing "undefined".
+    if (def.cost) lines.push(`${indent(level)}cost: ${serializeCost(def.cost)},`);
     lines.push(`${indent(level)}type: ${JSON.stringify(def.type)},`);
+    if (def.aetherCategory) lines.push(`${indent(level)}aetherCategory: ${JSON.stringify(def.aetherCategory)},`);
     lines.push(`${indent(level)}text: ${JSON.stringify(def.text)},`);
     if (def.attack !== undefined) lines.push(`${indent(level)}attack: ${def.attack},`);
     if (def.health !== undefined) lines.push(`${indent(level)}health: ${def.health},`);
@@ -182,7 +197,7 @@ function serializeGroup(label: string, defs: CardDefinition[], level: number): s
     const header = `${indent(level)}// --- ${label} ---`;
     const entries = defs
         .slice()
-        .sort((a, b) => a.cost - b.cost)
+        .sort((a, b) => (a.cost?.generic ?? 0) - (b.cost?.generic ?? 0))
         .map((def) => `${indent(level)}${serializeKey(def.id)}: {\n${serializeCardDefinition(def, level + 1)}\n${indent(level)}},`)
         .join('\n');
     return `${header}\n${entries}`;
@@ -198,10 +213,18 @@ export function serializeCardDefinitions(cards: Record<string, CardDefinition>):
         groups.push(serializeGroup(`${RARITY_LABEL[rarity]} rarity (${defs.length})`, defs, 1));
     }
 
+    // Aether cards have no rarity either, but are a real, deliberate category — not a stray/
+    // fallback case like the Tokens bucket below — so they get their own explicit group, checked
+    // first, or they'd otherwise be swept into "Tokens" by that bucket's own `!def.rarity` net.
+    const aetherCards = all.filter((def) => def.type === 'aether');
+    if (aetherCards.length > 0) {
+        groups.push(serializeGroup('Aether (resource cards — no rarity, no cost of their own)', aetherCards, 1));
+    }
+
     // Primarily type: 'token' now, per Card.ts's CardDefinition.rarity doc comment — the `!def.rarity`
     // half is a safety net so a stray rarity-less non-token definition still gets serialized
     // somewhere instead of silently dropped, rather than a supported way to mark a token.
-    const tokens = all.filter((def) => def.type === 'token' || !def.rarity);
+    const tokens = all.filter((def) => def.type !== 'aether' && (def.type === 'token' || !def.rarity));
     if (tokens.length > 0) {
         groups.push(serializeGroup('Tokens (not collectible — `type: "token"`, so deckGenerator.ts never draws them)', tokens, 1));
     }

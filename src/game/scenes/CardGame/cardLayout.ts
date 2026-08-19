@@ -1,5 +1,14 @@
-import type { CardInstance } from '../../types/Card';
+import type { AetherCategory, CardInstance, CardType } from '../../types/Card';
 import type { PlayerState } from '../../types/GameState';
+
+// Where a card's art jpg lives under public/assets, keyed by CardType — each type has its
+// own type-named subfolder (see Preloader.ts / CardCreatorPreview.ts, the two loaders).
+export const ART_FOLDER_BY_TYPE: Record<CardType, string> = {
+    minion: 'minions',
+    spell: 'spells',
+    token: 'tokens',
+    aether: 'aethers',
+};
 
 // Base game resolution — must match the `width`/`height` in game/main.ts's Scale config.
 export const GAME_WIDTH = 1920;
@@ -14,6 +23,8 @@ export const CARD_H = 260;
 
 // Shared face-down texture — key must match Preloader.ts's load.image call.
 export const CARD_BACK_KEY = 'card-back';
+// Distinct face-down texture for `type: 'aether'` cards — same load-key contract as CARD_BACK_KEY.
+export const CARD_BACK_AETHER_KEY = 'card-back-aether';
 export const HERO_RADIUS = 32;
 export const HERO_SIZE = HERO_RADIUS * 2;
 export const BOARD_ZONE_W = 1600;
@@ -110,9 +121,33 @@ export const HAND_MIN_SPACING = CARD_W + 3;
 // Deck/graveyard piles share the end-turn/cancel buttons' column, offset further right so hand
 // cards (which can extend close to x=1760 at max hand size) never overlap them.
 export const PILE_X = 1860;
-export const OPPONENT_DECK_Y = 300;
-export const PLAYER_DECK_Y = 750;
+export const OPPONENT_DECK_Y = 240;
+export const PLAYER_DECK_Y = GAME_HEIGHT - 240;
+
 export const DECK_PILE_W = 80;
+
+// The Aether Deck pile mirrors the Main Deck/Graveyard column onto the opposite (left) screen
+// edge, at the same offset from that edge and the same heights — opponent's near the top,
+// player's near the bottom ("bottom-left of the board").
+export const AETHER_PILE_X = PILE_X - DECK_PILE_W * 1.5;
+export const OPPONENT_AETHER_DECK_Y = OPPONENT_DECK_Y;
+export const PLAYER_AETHER_DECK_Y = PLAYER_DECK_Y;
+
+// Aether-in-play — each side's own resource base, rendered as one small stacked pile per category
+// present (generic, then each elemental drawn) rather than as individual cards, reusing the same
+// DECK_PILE_W/H stack-with-count-on-top visual language as the Deck/Graveyard/Aether Deck piles
+// above instead of a card row — a resource base reads at a glance, it doesn't need to look like a
+// battlefield object. Sits along the bottom-left corner (mirrored to the top-left for the
+// opponent), top-aligned with that side's own Aether Deck/Main Deck piles — same Y as those,
+// walking rightward from the screen's left edge. AETHER_ROW_X_START is the first (generic) pile's
+// center; AETHER_ROW_SPACING is the gap to each subsequent category pile — categories with zero
+// cards in play are skipped rather than drawn empty, so the row never shows a gap for a category
+// this player hasn't drawn into yet. Placement tuned by eye against the reference layout.
+export const OPPONENT_AETHER_ROW_Y = OPPONENT_DECK_Y;
+export const PLAYER_AETHER_ROW_Y = PLAYER_DECK_Y;
+export const AETHER_ROW_X_START = 100;
+export const AETHER_ROW_SPACING = 140;
+
 // Matches CARD_W:CARD_H's 2:3 ratio exactly (see that constant's comment) so coverFit's cover-fit
 // of the deck pile's card-back image never needs to crop — an earlier 80x100 (4:5) box cropped the
 // top/bottom off the card-back art since its real aspect ratio didn't match the box it was fit into.
@@ -221,6 +256,17 @@ export const OUTLINE_COLOR_READY = 0x38d97b; // "can act now" — board attack-r
 export const OUTLINE_COLOR_HOVER = 0x4fc3f7; // deck/graveyard pile hover
 export const OUTLINE_COLOR_SICK = 0x888888; // summoning-sickness border (renderBoard) — static, not shimmered like the above: it's a passive status, not an actionable prompt
 export const OUTLINE_COLOR_FROZEN = 0x6e95ac; // frozen-status border (renderBoard) — average RGB of textures/frozen-texture.jpg (via sharp .stats()), also static
+export const OUTLINE_COLOR_TAPPED = 0x8a7048; // tapped-Aether border (renderAetherInPlay) — static, same treatment as SICK/FROZEN above, a dulled bronze so it doesn't read as either of those two statuses
+
+// Per-category tint for Aether cards — the Aether-in-play row's per-category pile fills and any
+// future category tag pill both key off this one map.
+export const AETHER_CATEGORY_COLOR: Record<AetherCategory, number> = {
+    fire: 0xe8563a,
+    water: 0x3aa0e8,
+    earth: 0x8a6d3a,
+    air: 0xcfe8f0,
+    generic: 0xb8c4d9,
+};
 
 // Brief colored overlay flashed on a minion's card or hero's avatar the instant it takes damage or
 // is healed — same in/out timing for both, only the color (and target shape) differs.
@@ -363,8 +409,8 @@ export const ABILITY_BADGE_GAP = 4;
 // on insufficient mana, same as every other silent-rejection case CLAUDE.md documents).
 export const ABILITY_BADGE_DIM_ALPHA = 0.4;
 
-/** The two off-board card zones that get a pile visual and a click-to-inspect overlay. */
-export type PileZone = 'deck' | 'graveyard';
+/** The off-board card zones that get a pile visual and a click-to-inspect overlay. */
+export type PileZone = 'deck' | 'graveyard' | 'aetherDeck';
 
 /**
  * How createCardContainer renders a card. 'full' is the detailed layout (hand, deck/graveyard
@@ -394,12 +440,15 @@ export function statStyle(color: string, stroke = false, fontSize = '20px'): Pha
 export const PILE_STYLES: Record<PileZone, { fill: number; stroke: number; title: string }> = {
     deck: { fill: 0x24304a, stroke: 0x8fa8d6, title: 'Deck' },
     graveyard: { fill: 0x33262c, stroke: 0xc08a94, title: 'Graveyard' },
+    aetherDeck: { fill: 0x3a2f5c, stroke: 0xb08fd6, title: 'Aether Deck' },
 };
 
-/** The cards currently sitting in a player's deck or graveyard — shared by the board's pile visual (renderPile) and the pile-inspect overlay (PileViewController), so both read the same zone the same way. */
+/** The cards currently sitting in a player's deck, graveyard, or Aether Deck — shared by the board's pile visual (renderPile) and the pile-inspect overlay (PileViewController), so both read the same zone the same way. */
 export function getPileCards(playerState: PlayerState, zone: PileZone): CardInstance[]
 {
-    return zone === 'deck' ? playerState.deck : playerState.graveyard;
+    if (zone === 'deck') return playerState.deck;
+    if (zone === 'aetherDeck') return playerState.aetherDeck;
+    return playerState.graveyard;
 }
 
 /**

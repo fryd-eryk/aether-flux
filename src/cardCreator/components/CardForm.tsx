@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from 'react';
-import type { CardDefinition, CardRarity, CardType, Keyword, Tribe } from '@/game/types/Card';
+import type { AetherCategory, CardDefinition, CardRarity, CardType, ElementalCategory, Keyword, Tribe } from '@/game/types/Card';
 import { KEYWORD_METADATA } from '@/game/data/keywordMetadata';
 import { TRIBE_METADATA } from '@/game/data/tribeMetadata';
 import type { FieldErrors } from '../validateCardDefinition';
@@ -12,6 +12,8 @@ import styles from '@/styles/CardCreator.module.css';
 const KEYWORDS = Object.keys(KEYWORD_METADATA) as Keyword[];
 const TRIBES = Object.keys(TRIBE_METADATA) as Tribe[];
 const RARITIES: CardRarity[] = ['common', 'rare', 'exotic', 'legendary', 'mythical'];
+const AETHER_CATEGORIES: AetherCategory[] = ['generic', 'fire', 'water', 'earth', 'air'];
+const ELEMENTAL_CATEGORIES: ElementalCategory[] = ['fire', 'water', 'earth', 'air'];
 
 interface CardFormProps {
     draft: CardDefinition;
@@ -49,8 +51,23 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
     }
 
     function setType(type: CardType) {
+        if (type === 'aether') {
+            // Aether cards have no cost of their own, no rarity (deckGenerator.ts excludes them
+            // the same way it excludes tokens), and — this pass — no mechanics (effects/auras/
+            // paidAbilities/keywords/tribes/attack/health), just a category. See SPEC.md's
+            // "Resource system roadmap: Aether".
+            const { attack: _attack, health: _health, tribes: _tribes, paidAbilities: _paidAbilities, keywords: _keywords, effects: _effects, auras: _auras, rarity: _rarity, cost: _cost, ...rest } = draft;
+            onChange({ ...rest, type, aetherCategory: draft.aetherCategory ?? 'generic' });
+            return;
+        }
+
+        // Leaving 'aether' (or arriving from it) needs a cost re-added — every other type has
+        // one, and aetherCategory dropped, since it's Aether-only.
+        const { aetherCategory: _aetherCategory, ...withoutAetherCategory } = draft;
+        const withCost = { ...withoutAetherCategory, cost: withoutAetherCategory.cost ?? { generic: 1 } };
+
         if (type === 'minion' || type === 'token') {
-            const next = { ...draft, type, attack: draft.attack ?? 1, health: draft.health ?? 1 };
+            const next = { ...withCost, type, attack: withCost.attack ?? 1, health: withCost.health ?? 1 };
             if (type === 'token') {
                 // Tokens aren't collectible — type is now what excludes them from generated
                 // decks (deckGenerator.ts), so rarity is meaningless for them.
@@ -60,8 +77,17 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                 onChange(next);
             }
         } else {
-            const { attack: _attack, health: _health, tribes: _tribes, paidAbilities: _paidAbilities, keywords: _keywords, ...rest } = draft;
+            const { attack: _attack, health: _health, tribes: _tribes, paidAbilities: _paidAbilities, keywords: _keywords, ...rest } = withCost;
             onChange({ ...rest, type });
+        }
+    }
+
+    function setElementalCategory(value: string) {
+        const generic = draft.cost?.generic ?? 0;
+        if (value === '') {
+            set('cost', { generic });
+        } else {
+            set('cost', { generic, elemental: { category: value as ElementalCategory, threshold: draft.cost?.elemental?.threshold ?? 1 } });
         }
     }
 
@@ -126,30 +152,87 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                     </div>
                 </div>
                 <div className={styles.fieldRow}>
-                    <div className={styles.field}>
-                        <label className={styles.fieldLabel}>Cost</label>
-                        <input
-                            type="number"
-                            min={1}
-                            step={1}
-                            className={styles.numberInput}
-                            value={draft.cost}
-                            onChange={(e) => set('cost', Number(e.target.value))}
-                        />
-                        {errors.cost && <span className={styles.fieldError}>{errors.cost}</span>}
-                    </div>
+                    {draft.type === 'aether' ? (
+                        <div className={styles.field}>
+                            <label className={styles.fieldLabel}>Category</label>
+                            <select
+                                className={styles.selectInput}
+                                value={draft.aetherCategory ?? 'generic'}
+                                onChange={(e) => set('aetherCategory', e.target.value as AetherCategory)}
+                            >
+                                {AETHER_CATEGORIES.map((category) => (
+                                    <option key={category} value={category}>
+                                        {category === 'generic' ? 'Generic (Aether)' : category[0].toUpperCase() + category.slice(1)}
+                                    </option>
+                                ))}
+                            </select>
+                            {errors.aetherCategory && <span className={styles.fieldError}>{errors.aetherCategory}</span>}
+                        </div>
+                    ) : (
+                        <>
+                            <div className={styles.field}>
+                                <label className={styles.fieldLabel}>Cost</label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    className={styles.numberInput}
+                                    value={draft.cost?.generic ?? 0}
+                                    onChange={(e) => set('cost', { ...draft.cost, generic: Number(e.target.value) })}
+                                />
+                                {errors.cost && <span className={styles.fieldError}>{errors.cost}</span>}
+                            </div>
+                            <div className={styles.field}>
+                                <label className={styles.fieldLabel}>Elemental threshold</label>
+                                <select
+                                    className={styles.selectInput}
+                                    value={draft.cost?.elemental?.category ?? ''}
+                                    onChange={(e) => setElementalCategory(e.target.value)}
+                                >
+                                    <option value="">— none —</option>
+                                    {ELEMENTAL_CATEGORIES.map((category) => (
+                                        <option key={category} value={category}>
+                                            {category[0].toUpperCase() + category.slice(1)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            {draft.cost?.elemental && (
+                                <div className={styles.field}>
+                                    <label className={styles.fieldLabel}>Threshold amount</label>
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        step={1}
+                                        className={styles.numberInput}
+                                        value={draft.cost.elemental.threshold}
+                                        onChange={(e) =>
+                                            set('cost', {
+                                                generic: draft.cost?.generic ?? 0,
+                                                elemental: { category: draft.cost!.elemental!.category, threshold: Number(e.target.value) },
+                                            })
+                                        }
+                                    />
+                                    {errors.costElementalThreshold && <span className={styles.fieldError}>{errors.costElementalThreshold}</span>}
+                                </div>
+                            )}
+                        </>
+                    )}
                     <div className={styles.field}>
                         <label className={styles.fieldLabel}>Type</label>
                         <select className={styles.selectInput} value={draft.type} onChange={(e) => setType(e.target.value as CardType)}>
                             <option value="minion">Minion</option>
                             <option value="spell">Spell</option>
                             <option value="token">Token</option>
+                            <option value="aether">Aether</option>
                         </select>
                     </div>
-                    {draft.type === 'token' ? (
+                    {draft.type === 'token' || draft.type === 'aether' ? (
                         <div className={styles.field}>
                             <label className={styles.fieldLabel}>Rarity</label>
-                            <span className={styles.fieldHint}>Tokens aren&rsquo;t collectible — no rarity.</span>
+                            <span className={styles.fieldHint}>
+                                {draft.type === 'token' ? "Tokens aren't collectible" : 'Aether cards aren’t collectible'} — no rarity.
+                            </span>
                         </div>
                     ) : (
                         <div className={styles.field}>
@@ -239,7 +322,7 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                 </div>
             </section>
 
-            {draft.type !== 'spell' && (
+            {draft.type !== 'spell' && draft.type !== 'aether' && (
                 <section className={styles.formSection}>
                     <h3 className={styles.formSectionTitle}>Keywords</h3>
                     <div className={styles.checkboxGroup}>
@@ -275,15 +358,17 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                 </section>
             )}
 
-            <section className={styles.formSection}>
-                <h3 className={styles.formSectionTitle}>Triggered Effects</h3>
-                <EffectsEditor
-                    effects={draft.effects ?? []}
-                    onChange={(effects) => onChange({ ...draft, effects: effects.length > 0 ? effects : undefined })}
-                    errors={errors}
-                    allCards={allCards}
-                />
-            </section>
+            {draft.type !== 'aether' && (
+                <section className={styles.formSection}>
+                    <h3 className={styles.formSectionTitle}>Triggered Effects</h3>
+                    <EffectsEditor
+                        effects={draft.effects ?? []}
+                        onChange={(effects) => onChange({ ...draft, effects: effects.length > 0 ? effects : undefined })}
+                        errors={errors}
+                        allCards={allCards}
+                    />
+                </section>
+            )}
 
             {(draft.type === 'minion' || draft.type === 'token') && (
                 <section className={styles.formSection}>

@@ -151,6 +151,116 @@ Card Creator has no live board/HP to compute against, so it never attempts
 to resolve `{X}` — the preview shows it literally, by design, not as a gap;
 see "Card Creator" below.
 
+## Resource system roadmap: Aether (not yet implemented)
+
+A full replacement for the current mana system, designed in a brainstorm/
+research session, not yet built. Nothing below exists in code today — `mana`/
+`maxMana`, the `TurnStateMachine.MAX_MANA = 10` auto-ramp, and the flat
+`CardDefinition.cost: number` (`Card.ts:171`) are all still what's live; this
+section is the target design for when that gets replaced outright, not an
+addition alongside it. It also assumes a proper custom deckbuilding UI exists
+(currently: `deckGenerator.ts` builds one random 30-card deck per player at
+game start, no player-facing deckbuilder) — that's a co-requisite, not
+optional, since the whole system is deckbuilding-driven.
+
+**Two decks.** A player's deck splits into a **Main Deck (32)** — every card
+type except the resource cards, structurally what `cards.ts`/`deckGenerator.ts`
+build today — and an **Aether Deck (18)**, built from any mix of five
+categories: **Fire, Water, Earth, Air** (the four "Elemental" Aethers) and
+plain **Aether** (generic, colorless). Each turn a player draws one card from
+the Main Deck (mandatory, same cadence as today) and *may* draw one from the
+Aether Deck (optional — skip it when the hand's already full of castable
+cards, which is the main lever against resource-flood). At most one Aether
+card can be played per turn, unless a card explicitly says otherwise (mirrors
+Magic's one-land-per-turn rule).
+
+**Entering play.** Plain Aether enters ready (usable the turn it's played).
+Elemental Aether enters tapped 90° — unusable the turn it enters, functionally
+a summoning-sickness equivalent for resource cards, distinct from an Elemental
+Aether being consumed (see below).
+
+**Cost model: `N (M<Element>)`.** A card's cost has two independent parts:
+- **N — generic Aether cost.** Paid by tapping N plain-Aether cards in play.
+  Tap/untap, like a Magic land: a tapped Aether stays a permanent, untapping
+  automatically next turn rather than being destroyed or discarded — so the
+  resource pool's ceiling is simply "how many Aether you've drawn and played
+  over the game," not an auto-ramping counter.
+- **M<Element> — an elemental threshold**, independent of N and separately
+  authored per card (not derived from N). Requires M *category-count* Aether
+  of that element in play — any mix of distinct Fire Aether cards counts
+  toward a Fire threshold, not M copies of one specific card. Elemental Aether
+  is never tapped or consumed to satisfy a threshold — it's a pure presence
+  check, which is also why it's a real target for removal (see below): an
+  opponent can strip a threshold gate without touching the caster's mana.
+
+**Elemental Aether cards have their own design space**, not just gatekeeping:
+- **A paid ability**, costed in generic Aether (e.g. "Pay (2): deal 1 damage
+  to the enemy hero"). This is a direct fit for the existing `PaidAbility`
+  system (`Card.ts:158-162`, resolved in `TurnStateMachine.ts` around line
+  163/395) — an Aether card is just another `CardDefinition` with an ability
+  slot, paid from the same pool minions already pay from.
+- **A category-count-scaled, tiered static Aura** — e.g. "1 Fire Aether in
+  play: Elemental minions get +1/+0. 2: your spells deal +1 damage. 4: your
+  minions have Charge." This is close to, but not identical to, what already
+  exists: `CardDefinition.auras` + `TurnStateMachine.recalculateAuras`
+  (`TurnStateMachine.ts:1040-1098`) is a real recompute-and-diff aura engine —
+  magnitude already resolves through `resolveEffectValue` (so it can already
+  reference a live `CounterKind`), and keyword grants already interact
+  correctly with Silence via `auraKeywords`. Two things it doesn't do yet:
+  (1) its source-scanning loop only reads `sourcePlayer.board` (minions) —
+  an Aether card sitting in its own zone wouldn't be scanned as an aura
+  source without extending that loop to an Aether zone; (2) each `aura` entry
+  applies unconditionally whenever its source is in play — there's no
+  per-aura threshold gate yet, so "only active at 2+ Fire in play, not at 1"
+  needs the same kind of `condition` gate `CardEffect.condition` already has
+  for Momentum (`{ type: 'momentum'; minCount: number }`), generalized to a
+  category-count condition and a new `CounterKind` (e.g.
+  `friendlyElementAetherCount`) for it to read. Worth noting this is the same
+  gap flagged for the cut **Resonance** keyword in the roadmap above — "the
+  first aura-style (recomputed-on-the-fly) keyword" language there undersold
+  it slightly (a *static*, unconditional recompute-and-diff aura engine does
+  exist), but a *conditionally-gated* aura is new either way, so Resonance and
+  Aether's tiered auras would likely share the same underlying engine work if
+  both get built.
+
+**Tribal payoff already exists.** `Tribe` includes `'elemental'`
+(`Card.ts:15`), with a live precedent (`cards.ts:640`'s "Elemental Spray")
+using `tribeFilter` to scope a board-wide effect to Elemental minions. Any
+"your Elemental minions get +X" Aether aura or "deal damage per Elemental
+minion" effect is composing existing systems (`tribeFilter`, `tribeMetadata.ts`,
+`allTribeMinionCount`), not inventing a new one.
+
+**Destroying an Aether in play** is a viable, explicitly double-edged removal
+target (no mana-cost penalty for hitting it, unlike hitting a minion) — per-
+effect authored, not a universal rule: some effects should return the
+destroyed Aether to the top of its owner's Aether Deck (a known, telegraphed
+redraw — the owner can choose whether to prioritize redrawing it), others
+should shuffle it back in (adds real re-draw variance, can help or hurt either
+player). Land-destruction-style effects are historically high-variance/
+low-fun in TCGs when unconstrained (see "Game design theory reference" below)
+— worth staying deliberate about how many, how strong, and how recoverable
+these are once actual cards get authored.
+
+**What replaces what:** `PlayerState.mana`/`maxMana` and the whole
+`beginStartTurn` auto-ramp go away entirely — replaced by tracking each
+player's Aether Deck, Main Deck draw *and* optional Aether draw per turn, and
+per-instance tapped state for every Aether card in play (plain and Elemental
+alike). Every existing card's flat `cost: number` needs re-authoring into the
+two-part shape. `deckGenerator.ts`'s proportional random-deck builder stops
+being useful for real constructed play once decks are player-built — the plan
+for the interim (before a real deckbuilder UI ships) is to hand-author the AI
+opponent's deck directly rather than keep random generation as a stand-in.
+
+**Deferred to a further pass** (noted, not designed yet): mulligan rules for
+Aether ratio (does a bad opening Aether draw get a mulligan-style redo?),
+Aether-fetch effects (search-for-a-specific-element tools, the main lever
+against color screw once this ships), and copy-limits for the Aether Deck
+(how many copies of one named Aether card a 18-card Aether Deck may run — this
+directly gates whether a "4 of the same category in play" tier is reachable
+through normal draws, since category-count doesn't require same-card copies
+but a thin Aether Deck still needs *some* per-card cap to avoid degenerate
+mono-Aether builds).
+
 ## Card design conventions
 
 Conventions to follow when authoring or editing entries in `src/game/data/cards.ts`:

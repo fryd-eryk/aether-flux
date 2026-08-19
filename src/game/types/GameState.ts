@@ -46,14 +46,20 @@ export interface PlayerState {
     id: PlayerId;
     health: number;
     maxHealth: number;
-    mana: number;
-    maxMana: number;
     /** Reset to 0 in TurnStateMachine.startTurn; incremented once per card in executePlayCard. Drives Momentum(N) condition gating. */
     cardsPlayedThisTurn: number;
     deck: CardInstance[];
     hand: CardInstance[];
     board: CardInstance[];
     graveyard: CardInstance[];
+    /** The Aether Deck (18 cards) — see SPEC.md's "Resource system roadmap: Aether". Drawn from optionally, at most once per turn, via TurnStateMachine.drawAether. */
+    aetherDeck: CardInstance[];
+    /** Aether cards currently in play (this player's resource base) — see TurnStateMachine.playAetherCard. Not part of `board`; Aether cards never fight. */
+    aetherInPlay: CardInstance[];
+    /** Reset to false in TurnStateMachine.beginStartTurn. Gates the optional once-per-turn Aether draw. */
+    aetherDrawnThisTurn: boolean;
+    /** Reset to false in TurnStateMachine.beginStartTurn. Gates the once-per-turn Aether play (mirrors Magic's one-land-per-turn). */
+    aetherPlayedThisTurn: boolean;
 }
 
 export interface GameState {

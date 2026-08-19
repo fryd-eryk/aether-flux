@@ -5,6 +5,7 @@ import { KEYWORD_METADATA } from '../../data/keywordMetadata';
 import { TRIBE_METADATA } from '../../data/tribeMetadata';
 import type { CardInstance } from '../../types/Card';
 import {
+    AETHER_CATEGORY_COLOR,
     ATKHP_BADGE_COLOR,
     COST_BADGE_DARK,
     COST_BADGE_LIGHT,
@@ -158,16 +159,47 @@ export class HelpBoxController
 
         this.redrawBg(maxRight + margin, cursorY + margin - 4);
 
-        if (showCost)
+        if (showCost && definition.type === 'aether')
+        {
+            // No numeric cost to show — a category pill takes the badge's corner instead, same
+            // treatment as CardView.createAetherCategoryPill.
+            const category = definition.aetherCategory ?? 'generic';
+            const label = category === 'generic' ? 'Aether' : category[0].toUpperCase() + category.slice(1);
+            const pillText = this.scene.add.text(0, 0, label, TRIBE_TAG_TEXT_STYLE);
+            const pillW = pillText.width + 12;
+            const pillH = 16;
+            const pill = this.scene.add.graphics();
+            pill.fillStyle(AETHER_CATEGORY_COLOR[category], 1);
+            pill.fillRoundedRect(this.boxWidth - pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
+            pillText.setPosition(this.boxWidth, 0).setOrigin(0.5);
+            this.helpBox.add([pill, pillText]);
+            this.helpBoxLines.push(pill, pillText);
+        }
+        else if (showCost)
         {
             const badge = this.scene.add.graphics();
             badge.fillGradientStyle(COST_BADGE_LIGHT, COST_BADGE_LIGHT, COST_BADGE_DARK, COST_BADGE_DARK, 1, 1, 1, 1);
             badge.fillCircle(this.boxWidth, 0, COST_BADGE_R_FULL);
             badge.lineStyle(COST_BADGE_STROKE_WIDTH, COST_BADGE_STROKE_COLOR, 1);
             badge.strokeCircle(this.boxWidth, 0, COST_BADGE_R_FULL);
-            const badgeText = this.scene.add.text(this.boxWidth, 0, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(0.5);
+            const badgeText = this.scene.add.text(this.boxWidth, 0, `${definition.cost?.generic ?? 0}`, COST_TEXT_STYLE).setOrigin(0.5);
             this.helpBox.add([badge, badgeText]);
             this.helpBoxLines.push(badge, badgeText);
+
+            // Elemental threshold (if any) stacks below the generic badge — same vertical-stack
+            // idiom CardView.createHeaderFull uses for the on-card badge.
+            const elemental = definition.cost?.elemental;
+            if (elemental) {
+                const y = COST_BADGE_R_FULL * 2 + 4;
+                const elementalBadge = this.scene.add.graphics();
+                elementalBadge.fillStyle(AETHER_CATEGORY_COLOR[elemental.category], 1);
+                elementalBadge.fillCircle(this.boxWidth, y, COST_BADGE_R_FULL);
+                elementalBadge.lineStyle(COST_BADGE_STROKE_WIDTH, COST_BADGE_STROKE_COLOR, 1);
+                elementalBadge.strokeCircle(this.boxWidth, y, COST_BADGE_R_FULL);
+                const elementalText = this.scene.add.text(this.boxWidth, y, `${elemental.threshold}`, COST_TEXT_STYLE).setOrigin(0.5);
+                this.helpBox.add([elementalBadge, elementalText]);
+                this.helpBoxLines.push(elementalBadge, elementalText);
+            }
 
             if (definition.tribes && definition.tribes.length > 0) {
                 const tribeLabel = definition.tribes.map((t) => TRIBE_METADATA[t].label).join(' / ');

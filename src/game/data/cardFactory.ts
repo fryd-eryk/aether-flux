@@ -1,16 +1,17 @@
 import type { CardDefinition, CardInstance } from '../types/Card';
 import type { PlayerId } from '../types/common';
 
-export function createCardInstance(definition: CardDefinition, owner: PlayerId): CardInstance {
+export function createCardInstance(definition: CardDefinition, owner: PlayerId, zone: CardInstance['zone'] = 'deck'): CardInstance {
     return {
         instanceId: crypto.randomUUID(),
         definitionId: definition.id,
         owner,
-        zone: 'deck',
+        zone,
         currentAttack: definition.attack,
         currentHealth: definition.health,
         maxHealth: definition.health,
         summoningSick: false,
+        tapped: false,
         attacksThisTurn: 0,
         keywords: new Set(definition.keywords ?? []),
         frozen: false,
@@ -23,14 +24,15 @@ export function createCardInstance(definition: CardDefinition, owner: PlayerId):
 export function buildDeck(
     cardIds: string[],
     owner: PlayerId,
-    definitions: Record<string, CardDefinition>
+    definitions: Record<string, CardDefinition>,
+    zone: CardInstance['zone'] = 'deck'
 ): CardInstance[] {
     return cardIds.map((id) => {
         const definition = definitions[id];
         if (!definition) {
             throw new Error(`Unknown card definition: ${id}`);
         }
-        return createCardInstance(definition, owner);
+        return createCardInstance(definition, owner, zone);
     });
 }
 

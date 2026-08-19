@@ -12,7 +12,7 @@ export function makeBlankCard(existingIds: Set<string>): CardDefinition {
     return {
         id,
         name: 'New Card',
-        cost: 1,
+        cost: { generic: 1 },
         type: 'minion',
         text: '',
         attack: 1,

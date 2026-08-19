@@ -6,4 +6,6 @@
 export type AIAction =
     | { kind: 'playCard'; instanceId: string }
     | { kind: 'attack'; attackerInstanceId: string; targetId: string }
-    | { kind: 'activateAbility'; instanceId: string; abilityIndex: number };
+    | { kind: 'activateAbility'; instanceId: string; abilityIndex: number }
+    | { kind: 'drawAether' }
+    | { kind: 'playAetherCard'; instanceId: string };

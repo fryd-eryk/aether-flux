@@ -16,6 +16,7 @@ export function buildPreviewInstance(definition: CardDefinition): CardInstance {
         currentHealth: definition.health,
         maxHealth: definition.health,
         summoningSick: false,
+        tapped: false,
         attacksThisTurn: 0,
         keywords: new Set(definition.keywords ?? []),
         frozen: false,

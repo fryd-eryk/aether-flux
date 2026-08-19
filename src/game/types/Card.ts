@@ -5,8 +5,11 @@ import type { PlayerId } from './common';
  * because it behaves differently in play. Any `type === 'minion'` check that's about minion
  * *mechanics* (stats, combat, board placement) must also match 'token'; only checks that are
  * specifically about the printed/collectible classification (footer label, Card Creator type
- * badge) should treat it as its own case. */
-export type CardType = 'minion' | 'spell' | 'token';
+ * badge) should treat it as its own case. 'aether' is a resource card (see AetherCost/
+ * AetherCategory below, and TurnStateMachine.playAetherCard) — it never goes through playCard/
+ * executePlayCard, has no attack/health/rarity/effects, and is excluded by construction (not by
+ * an added check) from every site that guards on `type === 'minion' || type === 'token'`. */
+export type CardType = 'minion' | 'spell' | 'token' | 'aether';
 
 /** Static keyword abilities a minion can have. See CLAUDE.md's card game architecture notes for the full keyword roadmap. */
 export type Keyword = 'taunt' | 'charge' | 'divineShield' | 'windfury' | 'lifesteal' | 'veiled' | 'venom' | 'initiative';
@@ -164,11 +167,29 @@ export interface PaidAbility {
 /** A card's power-level bucket, used by deckGenerator.ts to build proportionate random decks. Ascending rarity/power order. */
 export type CardRarity = 'common' | 'rare' | 'exotic' | 'legendary' | 'mythical';
 
+/** The five Aether Deck categories — see SPEC.md's "Resource system roadmap: Aether". 'generic'
+ * is the only category that pays a card's `AetherCost.generic` amount; the four elemental
+ * categories exist purely to satisfy `AetherCost.elemental` thresholds (a presence check, never
+ * tapped/consumed for that) and enter play tapped, unlike 'generic'. */
+export type AetherCategory = 'fire' | 'water' | 'earth' | 'air' | 'generic';
+export type ElementalCategory = Exclude<AetherCategory, 'generic'>;
+
+/** A non-Aether card's two-part cost. `generic` is paid by tapping that many untapped 'generic'
+ * Aether in play (tap/untap like a land — see TurnStateMachine.payGenericAether via
+ * state/aether.ts). `elemental`, if present, is a separately-authored threshold: requires
+ * `threshold` Aether *of that category* (any mix of distinct cards) simply present in play,
+ * tapped or not — never consumed to satisfy it. See state/aether.ts's canAffordAetherCost. */
+export interface AetherCost {
+    generic: number;
+    elemental?: { category: ElementalCategory; threshold: number };
+}
+
 /** Static, authored card data — one entry per unique card, not per copy in a deck. */
 export interface CardDefinition {
     id: string;
     name: string;
-    cost: number;
+    /** Absent only for `type: 'aether'` cards, which have no cost of their own — see aetherCategory. */
+    cost?: AetherCost;
     type: CardType;
     text: string;
     attack?: number;
@@ -181,8 +202,10 @@ export interface CardDefinition {
     keywords?: Keyword[];
     /** Minion-only family tag(s). Rendered only in 'full' card mode's footer (Rarity Dot -> Tribe -> Type) — never in 'simplified' mode. */
     tribes?: Tribe[];
-    /** Absent for `type: 'token'` cards (e.g. summon-effect targets) — deckGenerator.ts excludes tokens from generated decks by `type`, not by rarity presence. Required in practice for 'minion'/'spell' cards (the Card Creator enforces this), even though the field itself stays optional. */
+    /** Absent for `type: 'token'` cards (e.g. summon-effect targets) — deckGenerator.ts excludes tokens from generated decks by `type`, not by rarity presence. Required in practice for 'minion'/'spell' cards (the Card Creator enforces this), even though the field itself stays optional. Also absent for `type: 'aether'`. */
     rarity?: CardRarity;
+    /** Required in practice only for `type: 'aether'` cards (Card Creator-enforced) — which of the five Aether Deck categories this card is. */
+    aetherCategory?: AetherCategory;
     /** 'full' mode only — nudges art to butt against the header/footer's opaque flat bar instead of centering under their tapered/transparent edges. Absent = 'bottom' (default); 'center' must be set explicitly to opt back into the old centered crop. No effect in 'simplified' mode, which has no header/footer bar to align against. */
     artVerticalAlign?: 'top' | 'bottom' | 'center';
 }
@@ -192,12 +215,21 @@ export interface CardInstance {
     instanceId: string;
     definitionId: string;
     owner: PlayerId;
-    zone: 'deck' | 'hand' | 'board' | 'graveyard';
+    zone: 'deck' | 'hand' | 'board' | 'graveyard' | 'aetherDeck' | 'aetherInPlay';
     currentAttack?: number;
     currentHealth?: number;
     /** Healing caps at this value. Starts at the definition's base health and rises with health buffs — see TurnStateMachine.buff. Distinct from PlayerState.maxHealth, which heroes can be healed past (intentional, see CLAUDE.md). */
     maxHealth?: number;
     summoningSick: boolean;
+    /** Aether-card-only: true while this instance can't pay a generic cost / doesn't yet satisfy
+     * an elemental threshold's "presence" check being read as "usable." Deliberately a separate
+     * field from `summoningSick` — that field's clearing loop and its only consumer
+     * (keywordRules.canDeclareAttack) are both combat-specific, and Aether cards never attack.
+     * Untapped on entry for a 'generic' Aether, tapped on entry for an elemental one; tapped to
+     * pay a generic cost; untaps automatically at its owner's next beginStartTurn, like a Magic
+     * land — never consumed/destroyed by normal cost payment. Meaningless (stays false) on a
+     * non-Aether instance. */
+    tapped: boolean;
     /** How many times this minion has attacked this turn — compare against getMaxAttacks() from keywordRules, not a hardcoded 1, since Windfury raises the cap. */
     attacksThisTurn: number;
     /** Mutated at runtime as consumable keywords (e.g. divineShield) are used up — distinct from the static CardDefinition.keywords it was seeded from. */

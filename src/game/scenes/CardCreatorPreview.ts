@@ -2,7 +2,7 @@ import { Scene } from 'phaser';
 
 import { EventBus } from '../EventBus';
 import { CardView } from './CardGame/CardView';
-import { loadHeaderFooterBg, type CardDisplayMode } from './CardGame/cardLayout';
+import { ART_FOLDER_BY_TYPE, loadHeaderFooterBg, type CardDisplayMode } from './CardGame/cardLayout';
 import type { CardDefinition } from '../types/Card';
 import { buildPreviewInstance } from '../../cardCreator/fakeCardInstance';
 
@@ -66,7 +66,7 @@ export class CardCreatorPreview extends Scene
             return;
         }
 
-        const folder = definition.type === 'spell' ? 'spells' : 'minions';
+        const folder = ART_FOLDER_BY_TYPE[definition.type];
         this.load.image(definition.id, `${folder}/${definition.id}.jpg`);
         // 'complete' is Phaser.Loader.Events.COMPLETE's runtime value — using the string
         // literal avoids importing another Phaser namespace by name just for one constant.

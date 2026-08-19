@@ -1,4 +1,5 @@
 import { CARD_DEFINITIONS } from '../data/cards';
+import { canAffordAetherCost, countUntappedPlain } from '../state/aether';
 import { resolveEffectValue } from '../state/counters';
 import { canDeclareAttack, hasKeyword, isTargetable, tauntRestrictedTargets } from '../state/keywordRules';
 import { minionHasTribe, restrictionTribe, restrictsToMinion } from '../state/tribes';
@@ -59,7 +60,7 @@ export function computePotentialFaceDamage(state: GameState, aiId: PlayerId): nu
 
     for (const card of ai.hand) {
         const definition = CARD_DEFINITIONS[card.definitionId];
-        if (!definition || ai.mana < definition.cost) continue;
+        if (!definition || !canAffordAetherCost(ai, definition.cost)) continue;
 
         if (definition.type === 'spell') {
             const chosenDamageActions = (definition.effects ?? [])
@@ -83,7 +84,7 @@ export function computePotentialFaceDamage(state: GameState, aiId: PlayerId): nu
         if (minion.silenced) continue; // a silenced minion's paid abilities are blocked, see TurnStateMachine.activateAbility
         const definition = CARD_DEFINITIONS[minion.definitionId];
         for (const ability of definition?.paidAbilities ?? []) {
-            if (ai.mana < ability.cost) continue;
+            if (countUntappedPlain(ai) < ability.cost) continue;
             // Same minion-restricted/tribe-restricted exclusion as the hand-spell branch above —
             // neither can ever hit face, see TurnStateMachine.computeValidTargets.
             for (const action of ability.actions) {
@@ -482,6 +483,29 @@ export function scorePaidAbility(state: GameState, aiId: PlayerId, ability: Paid
         }
     }
     return score;
+}
+
+/** Flat value for playing an available Aether card — a strict permanent upgrade with no downside
+ * this pass (no unique Aether abilities/auras exist yet — see CLAUDE.md's scope note), so a flat
+ * constant comparable to a cheap early card is enough to make the AI always prefer it over
+ * passing. First-pass heuristic, not balanced. */
+const PLAY_AETHER_VALUE = 3;
+
+export function scorePlayAetherCard(): number {
+    return PLAY_AETHER_VALUE;
+}
+
+/** Total Aether (in play + already in hand) at or above which the AI stops drawing more —
+ * implements SPEC.md's stated lever ("skip when the hand's already full of castable cards") in
+ * the simplest possible form. First-pass heuristic, not balanced. */
+const AETHER_SOFT_CEILING = 10;
+const DRAW_AETHER_VALUE = 2;
+
+export function scoreDrawAether(state: GameState, aiId: PlayerId): number {
+    const ai = state.players[aiId];
+    const aetherInHand = ai.hand.filter((c) => CARD_DEFINITIONS[c.definitionId]?.type === 'aether').length;
+    const total = ai.aetherInPlay.length + aetherInHand;
+    return total < AETHER_SOFT_CEILING ? DRAW_AETHER_VALUE : 0;
 }
 
 function scoreDamageSpell(

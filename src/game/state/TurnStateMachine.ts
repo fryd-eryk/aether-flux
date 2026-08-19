@@ -5,6 +5,7 @@ import type { CardAura, CardEffect, CardInstance, ChosenTargetRestriction, Effec
 import type { PlayerId } from '../types/common';
 import type { GameState, PendingTarget, PlayerState } from '../types/GameState';
 import { TurnPhase } from '../types/GameState';
+import { canAffordAetherCost, countUntappedPlain, payGenericAether, untapAllAether } from './aether';
 import { resolveEffectValue } from './counters';
 import { canDeclareAttack, hasKeyword, isTargetable, tauntRestrictedTargets } from './keywordRules';
 import { minionHasTribe, restrictionTribe } from './tribes';
@@ -56,7 +57,6 @@ type TargetRequest = { sourceInstanceId: string; action: Extract<EffectAction, {
  * own "isAnimating" flag off those events rather than relying on the phase value.
  */
 export class TurnStateMachine {
-    private static readonly MAX_MANA = 10;
     private static readonly MAX_BOARD_SIZE = 7;
 
     private gameState: GameState;
@@ -109,8 +109,10 @@ export class TurnStateMachine {
         }
 
         const definition = CARD_DEFINITIONS[card.definitionId];
-        if (!definition || player.mana < definition.cost) {
-            console.log('[TurnStateMachine] playCard rejected: unaffordable', { instanceId, definitionId: card.definitionId, cost: definition?.cost, mana: player.mana });
+        // Aether cards have their own play method (playAetherCard) — no cost, no targeting, goes
+        // to aetherInPlay instead of board/graveyard. Reject here rather than let it fall through.
+        if (!definition || definition.type === 'aether' || !canAffordAetherCost(player, definition.cost)) {
+            console.log('[TurnStateMachine] playCard rejected: unaffordable or wrong type', { instanceId, definitionId: card.definitionId, cost: definition?.cost, type: definition?.type });
             return;
         }
 
@@ -120,8 +122,77 @@ export class TurnStateMachine {
             return;
         }
 
-        console.log('[TurnStateMachine] playCard', { instanceId, definitionId: card.definitionId, playerId: player.id, cost: definition.cost, mana: player.mana });
+        console.log('[TurnStateMachine] playCard', { instanceId, definitionId: card.definitionId, playerId: player.id, cost: definition.cost });
         this.driveResolution(this.executePlayCard(instanceId));
+    }
+
+    /** Optional, at most once per turn — the "may draw an Aether" half of the turn's draw step
+     * (the Main Deck draw in beginStartTurn is mandatory and unconditional; this is a separate,
+     * player-initiated action). Reuses drawCard's own 'state:card-drawn' emit (same idiom
+     * debugAddCard already established: any card entering hand from *somewhere*, not just the
+     * Main Deck, plays the same fly-to-hand animation) rather than a bespoke event — the Aether
+     * card then sits in hand like any other card until playAetherCard moves it out. No
+     * 'state:phase-change' fires (this isn't a phase transition), so the caller must trigger its
+     * own re-render, same as debugAddCard's callers already do. */
+    drawAether(playerId: PlayerId): void {
+        if (this.gameState.phase !== TurnPhase.MainIdle || this.gameState.activePlayer !== playerId) {
+            console.log(`[TurnStateMachine] drawAether rejected: wrong phase/turn (${this.gameState.phase})`, { playerId });
+            return;
+        }
+
+        const player = this.gameState.players[playerId];
+        if (player.aetherDrawnThisTurn) {
+            console.log('[TurnStateMachine] drawAether rejected: already drawn this turn', { playerId });
+            return;
+        }
+
+        const card = player.aetherDeck.pop();
+        if (!card) {
+            console.log('[TurnStateMachine] drawAether rejected: Aether Deck empty', { playerId });
+            return;
+        }
+        card.zone = 'hand';
+        player.hand.push(card);
+        player.aetherDrawnThisTurn = true;
+        EventBus.emit('state:card-drawn', { playerId, instanceId: card.instanceId });
+    }
+
+    /** Plays an Aether card out of hand into aetherInPlay — at most one per turn, mirrors Magic's
+     * one-land-per-turn. Deliberately synchronous (no generator/targeting machinery): Aether
+     * cards have no cost, no effects, no onPlay trigger this pass — they just change zone and,
+     * for an elemental category, enter tapped. No 'state:phase-change' fires here either — same
+     * caller-must-re-render note as drawAether. */
+    playAetherCard(instanceId: string): void {
+        if (this.gameState.phase !== TurnPhase.MainIdle) {
+            console.log(`[TurnStateMachine] playAetherCard rejected: wrong phase (${this.gameState.phase})`, { instanceId });
+            return;
+        }
+
+        const player = this.gameState.players[this.gameState.activePlayer];
+        const card = player.hand.find((c) => c.instanceId === instanceId);
+        if (!card) {
+            console.log('[TurnStateMachine] playAetherCard rejected: card not in hand', { instanceId });
+            return;
+        }
+
+        const definition = CARD_DEFINITIONS[card.definitionId];
+        if (!definition || definition.type !== 'aether') {
+            console.log('[TurnStateMachine] playAetherCard rejected: not an Aether card', { instanceId, type: definition?.type });
+            return;
+        }
+
+        if (player.aetherPlayedThisTurn) {
+            console.log('[TurnStateMachine] playAetherCard rejected: already played this turn', { instanceId });
+            return;
+        }
+
+        player.hand = player.hand.filter((c) => c.instanceId !== instanceId);
+        card.zone = 'aetherInPlay';
+        card.tapped = definition.aetherCategory !== 'generic';
+        player.aetherInPlay.push(card);
+        player.aetherPlayedThisTurn = true;
+        console.log('[TurnStateMachine] playAetherCard', { instanceId, definitionId: card.definitionId, playerId: player.id, tapped: card.tapped });
+        EventBus.emit('state:aether-played', { instanceId, playerId: player.id });
     }
 
     declareAttack(attackerInstanceId: string): void {
@@ -141,7 +212,7 @@ export class TurnStateMachine {
         this.beginTargeting({ type: 'attack', attackerInstanceId }, player.id);
     }
 
-    /** Pays a board minion's paid-ability mana cost and resolves its action — see PaidAbility's
+    /** Pays a board minion's paid-ability generic-Aether cost and resolves its action — see PaidAbility's
      * doc comment (Card.ts) for why this is deliberately unrestricted by summoning sickness/attack
      * state, unlike declareAttack. Silenced minions can't activate (their own text is suppressed,
      * same principle as CardInstance.silenced already applies to trigger effects). */
@@ -160,8 +231,8 @@ export class TurnStateMachine {
 
         const definition = CARD_DEFINITIONS[card.definitionId];
         const ability = definition?.paidAbilities?.[abilityIndex];
-        if (!ability || player.mana < ability.cost) {
-            console.log('[TurnStateMachine] activateAbility rejected: unaffordable or missing', { instanceId, abilityIndex, cost: ability?.cost, mana: player.mana });
+        if (!ability || countUntappedPlain(player) < ability.cost) {
+            console.log('[TurnStateMachine] activateAbility rejected: unaffordable or missing', { instanceId, abilityIndex, cost: ability?.cost });
             return;
         }
 
@@ -171,7 +242,7 @@ export class TurnStateMachine {
             return;
         }
 
-        console.log('[TurnStateMachine] activateAbility', { instanceId, abilityIndex, playerId: player.id, cost: ability.cost, mana: player.mana });
+        console.log('[TurnStateMachine] activateAbility', { instanceId, abilityIndex, playerId: player.id, cost: ability.cost });
         this.driveResolution(this.executeAbility(instanceId, abilityIndex));
     }
 
@@ -326,7 +397,7 @@ export class TurnStateMachine {
         const definition = CARD_DEFINITIONS[card.definitionId];
         if (!definition) return;
 
-        player.mana -= definition.cost;
+        payGenericAether(player, definition.cost?.generic ?? 0);
         player.hand = player.hand.filter((c) => c.instanceId !== instanceId);
 
         if (definition.type === 'minion' || definition.type === 'token') {
@@ -378,7 +449,7 @@ export class TurnStateMachine {
         this.finishResolving();
     }
 
-    /** Resolves an already-affordability-checked paid ability. Mana is deducted here (not in
+    /** Resolves an already-affordability-checked paid ability. Generic Aether is tapped here (not in
      * activateAbility), matching executePlayCard's pattern so cancelTarget() stays free while a
      * target is still being chosen. Doesn't touch cardsPlayedThisTurn (not "playing a card", so it
      * shouldn't feed Momentum) and doesn't call triggerEffects (no onPlay/Channel/Muster — those
@@ -392,7 +463,7 @@ export class TurnStateMachine {
         const ability = definition?.paidAbilities?.[abilityIndex];
         if (!ability) return;
 
-        player.mana -= ability.cost;
+        payGenericAether(player, ability.cost);
 
         this.setPhase(TurnPhase.Resolving);
         const cursor: ChosenTargetCursor = cursors.get(instanceId) ?? { ids: [], index: 0 };
@@ -481,17 +552,18 @@ export class TurnStateMachine {
         this.setPhase(TurnPhase.MainIdle);
     }
 
-    /** Mana refresh/sickness-reset/draw (none of which depend on targeting) up front, then checks
+    /** Aether untap/sickness-reset/draw (none of which depend on targeting) up front, then checks
      * whether the new active player's board has a chosen-target Vigil (startOfTurn) effect to
      * prompt for before actually resolving it — see executeStartTurn. */
     private beginStartTurn(playerId: PlayerId): void {
         this.setPhase(TurnPhase.TurnStart);
         const player = this.gameState.players[playerId];
-        console.log('[TurnStateMachine] beginStartTurn', { playerId, turnNumber: this.gameState.turnNumber, maxMana: Math.min(TurnStateMachine.MAX_MANA, player.maxMana + 1) });
+        console.log('[TurnStateMachine] beginStartTurn', { playerId, turnNumber: this.gameState.turnNumber });
 
-        player.maxMana = Math.min(TurnStateMachine.MAX_MANA, player.maxMana + 1);
-        player.mana = player.maxMana;
         player.cardsPlayedThisTurn = 0;
+        player.aetherDrawnThisTurn = false;
+        player.aetherPlayedThisTurn = false;
+        untapAllAether(player);
 
         for (const card of player.board) {
             card.summoningSick = false;
@@ -510,8 +582,8 @@ export class TurnStateMachine {
     }
 
     /** Vigil (startOfTurn) resolves here, once any of its own chosen targets are already in hand —
-     * see beginStartTurn. Not cancellable (see PendingTarget.cancellable) — by this point mana has
-     * already refreshed and a card's already been drawn for the turn, so there's no clean "undo". */
+     * see beginStartTurn. Not cancellable (see PendingTarget.cancellable) — by this point Aether has
+     * already untapped and a card's already been drawn for the turn, so there's no clean "undo". */
     private *executeStartTurn(cursors: Map<string, ChosenTargetCursor>): Generator<TargetRequest, void, string> {
         const player = this.gameState.players[this.gameState.activePlayer];
         yield* this.triggerBoardWide('startOfTurn', player.id, player.board, cursors);
@@ -555,16 +627,24 @@ export class TurnStateMachine {
     }
 
     /**
-     * Playtesting-only cheat: fills a player's mana to MAX_MANA/MAX_MANA (10/10) instantly. No
-     * phase/turn gating, same as debugAddCard — callable any time from the "Full Mana" button. No
-     * event to emit here (unlike debugAddCard/drawCard) since there's no animation tied to a mana
-     * change — CardGame's button callback just calls requestRender() directly to refresh the
-     * mana readout. See SPEC.md's "Playtesting-only features" section — remove this before release.
+     * Playtesting-only cheat: conjures a handful of untapped Aether straight into aetherInPlay —
+     * five 'generic' (enough to afford most costs at once) plus one of each elemental category —
+     * bypassing both the Aether Deck and the normal enters-tapped rule for elemental Aether (a
+     * deliberate cheat convenience, not a bug: createCardInstance's tapped default is already
+     * `false`, so nothing needs overriding). No phase/turn gating, same as debugAddCard —
+     * callable any time from the "Full Aether" button. No event to emit here (unlike
+     * debugAddCard/drawCard) since there's no animation tied to an Aether change — CardGame's
+     * button callback just calls requestRender() directly to refresh the board/HUD. See SPEC.md's
+     * "Playtesting-only features" section — remove this before release.
      */
-    debugSetMaxMana(playerId: PlayerId): void {
+    debugFillAether(playerId: PlayerId): void {
         const player = this.gameState.players[playerId];
-        player.maxMana = TurnStateMachine.MAX_MANA;
-        player.mana = TurnStateMachine.MAX_MANA;
+        const ids = ['aether-generic', 'aether-generic', 'aether-generic', 'aether-generic', 'aether-generic', 'aether-fire', 'aether-water', 'aether-earth', 'aether-air'];
+        for (const id of ids) {
+            const definition = CARD_DEFINITIONS[id];
+            if (!definition) continue;
+            player.aetherInPlay.push(createCardInstance(definition, playerId, 'aetherInPlay'));
+        }
     }
 
     // --- targeting -----------------------------------------------------------

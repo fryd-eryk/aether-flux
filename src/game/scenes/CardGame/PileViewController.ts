@@ -98,20 +98,20 @@ export class PileViewController
     }
 
     /**
-     * Deck contents are sorted by cost then name so opening your own deck reads as a deck list
-     * and does not leak the shuffled draw order. The graveyard keeps its natural array order,
-     * which TurnStateMachine appends to on each death/discard — i.e. chronological.
+     * Deck and Aether Deck contents are sorted by cost then name so opening either reads as a
+     * deck list and does not leak the shuffled draw order. The graveyard keeps its natural array
+     * order, which TurnStateMachine appends to on each death/discard — i.e. chronological.
      */
     private pileViewCards (playerId: PlayerId, zone: PileZone, state: GameState): CardInstance[]
     {
         const cards = getPileCards(state.players[playerId], zone);
-        if (zone !== 'deck') return cards;
+        if (zone === 'graveyard') return cards;
 
         return [...cards].sort((a, b) =>
         {
             const defA = CARD_DEFINITIONS[a.definitionId];
             const defB = CARD_DEFINITIONS[b.definitionId];
-            return defA.cost - defB.cost || defA.name.localeCompare(defB.name);
+            return (defA.cost?.generic ?? 0) - (defB.cost?.generic ?? 0) || defA.name.localeCompare(defB.name);
         });
     }
 

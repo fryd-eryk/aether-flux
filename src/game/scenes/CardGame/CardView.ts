@@ -9,11 +9,13 @@ import type { CardDefinition, CardInstance } from "../../types/Card";
 import {
     ABILITY_BADGE_DIM_ALPHA,
     ABILITY_BADGE_GAP,
+    AETHER_CATEGORY_COLOR,
     ATKHP_BADGE_COLOR,
     ATKHP_BADGE_CENTER_X,
     ATKHP_BADGE_CENTER_Y,
     ATKHP_BADGE_R,
     ATKHP_BADGE_R_SIMPLIFIED,
+    CARD_BACK_AETHER_KEY,
     CARD_BACK_KEY,
     CARD_H,
     CARD_W,
@@ -55,6 +57,7 @@ import {
     STAT_FUSED_LIGHT_STYLE,
     STAT_FUSED_LIGHT_WOUNDED_STYLE,
     TRIBE_LABEL_STYLE,
+    TRIBE_TAG_TEXT_STYLE,
     TYPE_LABEL_STYLE,
 } from "./cardLayout";
 import { layoutRichText, type RichTextLayoutResult } from "./richText";
@@ -74,8 +77,10 @@ export class CardView {
         container.add(bg);
 
         if (mode === "faceDown") {
-            if (this.scene.textures.exists(CARD_BACK_KEY)) {
-                const back = this.scene.add.image(0, 0, CARD_BACK_KEY);
+            const isAether = (definitionOverride ?? CARD_DEFINITIONS[instance.definitionId])?.type === "aether";
+            const backKey = isAether ? CARD_BACK_AETHER_KEY : CARD_BACK_KEY;
+            if (this.scene.textures.exists(backKey)) {
+                const back = this.scene.add.image(0, 0, backKey);
                 coverFit(back, CARD_W, CARD_H);
                 container.add(back);
             }
@@ -182,6 +187,13 @@ export class CardView {
             objects.push(this.scene.add.rectangle(0, headerCenterY, CARD_W, HEADER_FOOTER_CONTENT_H, 0x000000));
         }
 
+        // Aether cards have no cost of their own (see AetherCost's doc comment, Card.ts) — a
+        // category pill takes the cost badge's corner instead of a number.
+        if (definition.type === "aether") {
+            objects.push(...this.createAetherCategoryPill(definition));
+            return objects;
+        }
+
         const badge = this.scene.add.graphics();
         badge.fillGradientStyle(COST_BADGE_LIGHT, COST_BADGE_LIGHT, COST_BADGE_DARK, COST_BADGE_DARK, 1, 1, 1, 1);
         badge.fillCircle(CARD_W / 2, -CARD_H / 2, COST_BADGE_R_FULL);
@@ -189,10 +201,50 @@ export class CardView {
         badge.strokeCircle(CARD_W / 2, -CARD_H / 2, COST_BADGE_R_FULL);
         objects.push(badge);
 
-        const costText = this.scene.add.text(CARD_W / 2, -CARD_H / 2, `${definition.cost}`, COST_TEXT_STYLE).setOrigin(0.5);
+        const costText = this.scene.add.text(CARD_W / 2, -CARD_H / 2, `${definition.cost?.generic ?? 0}`, COST_TEXT_STYLE).setOrigin(0.5);
         objects.push(costText);
 
+        // Elemental threshold (if any) stacks below the generic badge, using the same
+        // stacking offset abilityBadgeLayout uses for a second paid-ability badge — reads as "the
+        // same kind of badge, one slot down" rather than new visual language. Category-colored
+        // (flat, no gradient) instead of the generic badge's blue, so the two costs read apart.
+        const elemental = definition.cost?.elemental;
+        if (elemental) {
+            const y = -CARD_H / 2 + (COST_BADGE_R_FULL * 2 + ABILITY_BADGE_GAP);
+            const elementalBadge = this.scene.add.graphics();
+            elementalBadge.fillStyle(AETHER_CATEGORY_COLOR[elemental.category], 1);
+            elementalBadge.fillCircle(CARD_W / 2, y, COST_BADGE_R_FULL);
+            elementalBadge.lineStyle(COST_BADGE_STROKE_WIDTH, COST_BADGE_STROKE_COLOR, 1);
+            elementalBadge.strokeCircle(CARD_W / 2, y, COST_BADGE_R_FULL);
+            objects.push(elementalBadge);
+
+            const elementalText = this.scene.add.text(CARD_W / 2, y, `${elemental.threshold}`, COST_TEXT_STYLE).setOrigin(0.5);
+            objects.push(elementalText);
+        }
+
         return objects;
+    }
+
+    /** Aether cards' category tag — same corner-overflow placement the cost badge above uses,
+     * but a flat-colored rounded pill (AETHER_CATEGORY_COLOR) instead of a gradient circle, since
+     * there's no number to show. */
+    private createAetherCategoryPill(definition: CardDefinition): Phaser.GameObjects.GameObject[] {
+        const category = definition.aetherCategory ?? "generic";
+        const label = category === "generic" ? "Aether" : category[0].toUpperCase() + category.slice(1);
+        const centerX = CARD_W / 2;
+        const centerY = -CARD_H / 2;
+
+        const text = this.scene.add.text(0, 0, label, TRIBE_TAG_TEXT_STYLE);
+        const pillW = text.width + 12;
+        const pillH = 16;
+
+        const pill = this.scene.add.graphics();
+        pill.fillStyle(AETHER_CATEGORY_COLOR[category], 1);
+        pill.fillRoundedRect(centerX - pillW / 2, centerY - pillH / 2, pillW, pillH, pillH / 2);
+
+        text.setPosition(centerX, centerY).setOrigin(0.5);
+
+        return [pill, text];
     }
 
     /** Local (container-space) center of each of `definition`'s paidAbilities' badges — one entry
@@ -353,7 +405,7 @@ export class CardView {
             cursorX += dashText.width + 4;
         }
 
-        const typeLabel = definition.type === "minion" ? "Minion" : definition.type === "spell" ? "Spell" : "Token";
+        const typeLabel = definition.type === "minion" ? "Minion" : definition.type === "spell" ? "Spell" : definition.type === "aether" ? "Aether" : "Token";
         const typeText = this.scene.add.text(cursorX, footerCenterY, typeLabel, TYPE_LABEL_STYLE).setOrigin(0, 0.5);
         objects.push(typeText);
 

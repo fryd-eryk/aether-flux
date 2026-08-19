@@ -92,12 +92,12 @@ export class CardPickerController
         this.renderGrid(state);
     }
 
-    /** Every minion/spell definition, cost then name — the same sort idiom PileViewController.pileViewCards and the Card Creator's CardListSidebar already use for "cards, deck-list order." */
+    /** Every minion/spell/Aether definition, cost then name — the same sort idiom PileViewController.pileViewCards and the Card Creator's CardListSidebar already use for "cards, deck-list order." Aether definitions are deliberately included (unlike tokens) — useful for manually conjuring specific elements to test threshold gating without waiting on generateAetherDeck's randomness. */
     private eligibleDefinitions (): CardDefinition[]
     {
         return Object.values(CARD_DEFINITIONS)
             .filter((definition) => definition.type !== 'token')
-            .sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+            .sort((a, b) => (a.cost?.generic ?? 0) - (b.cost?.generic ?? 0) || a.name.localeCompare(b.name));
     }
 
     /**

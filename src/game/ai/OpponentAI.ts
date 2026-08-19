@@ -1,8 +1,9 @@
 import { CARD_DEFINITIONS } from '../data/cards';
+import { canAffordAetherCost, countUntappedPlain } from '../state/aether';
 import { canDeclareAttack, hasKeyword, tauntRestrictedTargets } from '../state/keywordRules';
 import type { PlayerId } from '../types/common';
 import type { GameState } from '../types/GameState';
-import { computePotentialFaceDamage, scoreAttack, scoreAttackTriggers, scoreChosenTarget, scorePaidAbility, scorePlayCard } from './scoring';
+import { computePotentialFaceDamage, scoreAttack, scoreAttackTriggers, scoreChosenTarget, scoreDrawAether, scorePaidAbility, scorePlayAetherCard, scorePlayCard } from './scoring';
 import type { AIAction } from './types';
 
 const PASS_THRESHOLD = 0;
@@ -34,11 +35,30 @@ export function decideOpponentAction(state: GameState): AIAction | null {
 
     for (const card of ai.hand) {
         const definition = CARD_DEFINITIONS[card.definitionId];
-        if (!definition || ai.mana < definition.cost) continue; // mirrors TurnStateMachine.playCard's own guard
+        if (!definition || definition.type === 'aether' || !canAffordAetherCost(ai, definition.cost)) continue; // mirrors TurnStateMachine.playCard's own guard
 
         const score = scorePlayCard(state, aiId, card, definition, lethalAvailable);
         if (!best || score > best.score) {
             best = { score, action: { kind: 'playCard', instanceId: card.instanceId } };
+        }
+    }
+
+    // Resource-management decisions — a new category with no lookahead of their own, competing
+    // in this same greedy best-tracking loop (see TurnStateMachine.drawAether/playAetherCard for
+    // the legality these mirror).
+    if (!ai.aetherPlayedThisTurn) {
+        const unplayedAether = ai.hand.find((c) => CARD_DEFINITIONS[c.definitionId]?.type === 'aether');
+        if (unplayedAether) {
+            const score = scorePlayAetherCard();
+            if (!best || score > best.score) {
+                best = { score, action: { kind: 'playAetherCard', instanceId: unplayedAether.instanceId } };
+            }
+        }
+    }
+    if (!ai.aetherDrawnThisTurn && ai.aetherDeck.length > 0) {
+        const score = scoreDrawAether(state, aiId);
+        if (!best || score > best.score) {
+            best = { score, action: { kind: 'drawAether' } };
         }
     }
 
@@ -81,7 +101,7 @@ export function decideOpponentAction(state: GameState): AIAction | null {
         if (minion.silenced) continue; // mirrors TurnStateMachine.activateAbility's own guard
         const definition = CARD_DEFINITIONS[minion.definitionId];
         (definition?.paidAbilities ?? []).forEach((ability, abilityIndex) => {
-            if (ai.mana < ability.cost) return; // mirrors TurnStateMachine.activateAbility's own guard
+            if (countUntappedPlain(ai) < ability.cost) return; // mirrors TurnStateMachine.activateAbility's own guard
             const score = scorePaidAbility(state, aiId, ability, lethalAvailable, minion.instanceId);
             if (!best || score > best.score) {
                 best = { score, action: { kind: 'activateAbility', instanceId: minion.instanceId, abilityIndex } };

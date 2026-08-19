@@ -1,7 +1,7 @@
 import { Scene } from 'phaser';
 
 import { CARD_DEFINITIONS } from '../data/cards';
-import { loadFrozenTexture, loadHeaderFooterBg } from './CardGame/cardLayout';
+import { ART_FOLDER_BY_TYPE, CARD_BACK_AETHER_KEY, CARD_BACK_KEY, loadFrozenTexture, loadHeaderFooterBg } from './CardGame/cardLayout';
 
 export class Preloader extends Scene
 {
@@ -39,12 +39,14 @@ export class Preloader extends Scene
         // absent, which createCardContainer's this.textures.exists() check falls back on.
         for (const definition of Object.values(CARD_DEFINITIONS))
         {
-            const folder = definition.type === 'spell' ? 'spells' : 'minions';
+            const folder = ART_FOLDER_BY_TYPE[definition.type];
             this.load.image(definition.id, `${folder}/${definition.id}.jpg`);
         }
 
         // Shared face-down texture — key must match CardGame.ts's CARD_BACK_KEY.
-        this.load.image('card-back', 'card-back/default.jpg');
+        this.load.image(CARD_BACK_KEY, 'card-back/default.jpg');
+        // Distinct face-down texture for `type: 'aether'` cards — see CardView's createCardContainer.
+        this.load.image(CARD_BACK_AETHER_KEY, 'card-back/aether.jpg');
 
         loadHeaderFooterBg(this);
         loadFrozenTexture(this);

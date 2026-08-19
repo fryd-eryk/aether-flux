@@ -2,19 +2,25 @@ import { Geom, Scene } from 'phaser';
 
 import { decideOpponentAction, decideOpponentTarget } from '../../ai/OpponentAI';
 import { CARD_DEFINITIONS } from '../../data/cards';
-import { generateDeck } from '../../data/deckGenerator';
+import { generateAetherDeck, generateDeck } from '../../data/deckGenerator';
 import { KEYWORD_METADATA } from '../../data/keywordMetadata';
 import { EventBus } from '../../EventBus';
+import { canAffordAetherCost, countUntappedPlain } from '../../state/aether';
 import { resolveCardText } from '../../state/counters';
 import { canDeclareAttack, hasKeyword } from '../../state/keywordRules';
 import { createInitialState } from '../../state/createInitialState';
 import { TurnStateMachine } from '../../state/TurnStateMachine';
-import type { EffectAction } from '../../types/Card';
+import type { AetherCategory, EffectAction } from '../../types/Card';
 import type { PlayerId } from '../../types/common';
 import type { GameState, PendingTarget, PlayerState } from '../../types/GameState';
 import { TurnPhase } from '../../types/GameState';
 import {
+    AETHER_CATEGORY_COLOR,
+    AETHER_PILE_X,
+    AETHER_ROW_SPACING,
+    AETHER_ROW_X_START,
     BOARD_ZONE_W,
+    CARD_BACK_AETHER_KEY,
     CARD_BACK_KEY,
     CARD_H,
     CARD_W,
@@ -44,6 +50,8 @@ import {
     HERO_RADIUS,
     HERO_SIZE,
     lightenColor,
+    OPPONENT_AETHER_DECK_Y,
+    OPPONENT_AETHER_ROW_Y,
     OPPONENT_BOARD_Y,
     OPPONENT_DECK_Y,
     OPPONENT_GRAVEYARD_Y,
@@ -53,9 +61,12 @@ import {
     OUTLINE_COLOR_HOVER,
     OUTLINE_COLOR_READY,
     OUTLINE_COLOR_SICK,
+    OUTLINE_COLOR_TAPPED,
     OUTLINE_COLOR_TARGETABLE,
     PILE_STYLES,
     PILE_X,
+    PLAYER_AETHER_DECK_Y,
+    PLAYER_AETHER_ROW_Y,
     PLAYER_BOARD_Y,
     PLAYER_DECK_Y,
     PLAYER_GRAVEYARD_Y,
@@ -156,8 +167,6 @@ export class CardGame extends Scene
     private cancelButton!: Phaser.GameObjects.Container;
     private drawCardButton!: Phaser.GameObjects.Container;
     private fullManaButton!: Phaser.GameObjects.Container;
-    private playerManaText!: Phaser.GameObjects.Text;
-    private opponentManaText!: Phaser.GameObjects.Text;
     // Named targeting prompt ("Choose a target for Silence") — centered under the spotlighted
     // card while one's held (see playTargetBeginAnimation), or screen-centered otherwise (attack's
     // own target step, a board-wide Channel/Muster/Vigil/Curfew reaction, a paid ability). Same
@@ -664,16 +673,37 @@ export class CardGame extends Scene
         }
 
         console.log('[CardGame] opponent action', action);
-        if (action.kind === 'playCard') this.machine.playCard(action.instanceId);
-        else if (action.kind === 'attack')
+        switch (action.kind)
         {
-            this.machine.declareAttack(action.attackerInstanceId);
-            // Attack's own first target-selection step (who to attack) was already decided during
-            // ranking (scoreAttack) — every subsequent prompt (the attacker's own onAttack chosen
-            // action, if any) is resolved generically by drainOpponentTargeting below.
-            if (this.machine.state.phase === TurnPhase.AwaitingTarget) this.machine.selectTarget(action.targetId);
+            case 'playCard':
+                this.machine.playCard(action.instanceId);
+                break;
+            case 'attack':
+                this.machine.declareAttack(action.attackerInstanceId);
+                // Attack's own first target-selection step (who to attack) was already decided
+                // during ranking (scoreAttack) — every subsequent prompt (the attacker's own
+                // onAttack chosen action, if any) is resolved generically by drainOpponentTargeting
+                // below.
+                if (this.machine.state.phase === TurnPhase.AwaitingTarget) this.machine.selectTarget(action.targetId);
+                break;
+            case 'activateAbility':
+                this.machine.activateAbility(action.instanceId, action.abilityIndex);
+                break;
+            case 'drawAether':
+            case 'playAetherCard':
+                // Neither method fires 'state:phase-change' (no phase transition happens) — unlike
+                // every other action above, nothing will otherwise schedule this turn's next
+                // 600ms tick, so requestRender() must be called explicitly here (same reasoning as
+                // debugAddCard's own caller — see its wiring comment further down this file).
+                if (action.kind === 'drawAether') this.machine.drawAether('opponent');
+                else this.machine.playAetherCard(action.instanceId);
+                this.requestRender();
+                break;
+            default:
+                // Exhaustiveness check — a new AIAction kind with no case above fails to compile
+                // here instead of silently falling through.
+                ((_: never) => { })(action);
         }
-        else this.machine.activateAbility(action.instanceId, action.abilityIndex);
 
         this.drainOpponentTargeting();
     }
@@ -743,10 +773,6 @@ export class CardGame extends Scene
 
         this.turnBannerText = this.add.text(38, 6, '', SMALL_STYLE).setDepth(200);
 
-        this.opponentManaText = this.add.text(38, 30, '', statStyle('#5c9cff', true, '32px')).setDepth(200);
-
-        this.playerManaText = this.add.text(38, 1023, '', statStyle('#5c9cff', true, '32px')).setDepth(200);
-
         const boardZoneH = CARD_H + 30;
         this.add.rectangle(CENTER_X, PLAYER_BOARD_Y, BOARD_ZONE_W, boardZoneH).setStrokeStyle(2, 0x3a4a6b, 0.6);
 
@@ -809,7 +835,7 @@ export class CardGame extends Scene
             EventBus.removeListener('state:healed', this.healedHandler);
         });
 
-        this.machine = new TurnStateMachine(createInitialState(generateDeck(), generateDeck()));
+        this.machine = new TurnStateMachine(createInitialState(generateDeck(), generateAetherDeck(), generateDeck(), generateAetherDeck()));
 
         // Paint the empty board (deck piles included) before startGame() fires its opening-hand
         // draws, so the draw animation has a visible deck pile to fly from. Everything from here
@@ -880,12 +906,29 @@ export class CardGame extends Scene
                 // returns — nothing below touches it again, so that's safe.
                 endHandle();
                 const instanceId = this.cardInstanceByContainer.get(container);
-                // A card with no Tier-1 target to pick resolves fully synchronously here and can
-                // itself cascade into an opponent-owned Tier-2 prompt (e.g. its onPlay damage kills
-                // the AI's own Deathcry minion) — drain it reactively. A no-op when playCard instead
-                // entered AwaitingTarget for its own Tier-1 target, since that prompt is always
-                // player-owned. See drainOpponentTargeting's doc comment.
-                if (instanceId) { this.machine.playCard(instanceId); this.drainOpponentTargeting(); }
+                if (instanceId)
+                {
+                    const definition = CARD_DEFINITIONS[this.machine.state.players.player.hand.find((c) => c.instanceId === instanceId)?.definitionId ?? ''];
+                    if (definition?.type === 'aether')
+                    {
+                        // No targeting/generator machinery (see TurnStateMachine.playAetherCard's
+                        // doc comment) and no 'state:phase-change' fires — this scene must trigger
+                        // its own re-render, same as debugAddCard's caller does.
+                        this.machine.playAetherCard(instanceId);
+                        this.requestRender();
+                    }
+                    else
+                    {
+                        // A card with no Tier-1 target to pick resolves fully synchronously here and
+                        // can itself cascade into an opponent-owned Tier-2 prompt (e.g. its onPlay
+                        // damage kills the AI's own Deathcry minion) — drain it reactively. A no-op
+                        // when playCard instead entered AwaitingTarget for its own Tier-1 target,
+                        // since that prompt is always player-owned. See drainOpponentTargeting's doc
+                        // comment.
+                        this.machine.playCard(instanceId);
+                        this.drainOpponentTargeting();
+                    }
+                }
                 return;
             }
 
@@ -913,7 +956,7 @@ export class CardGame extends Scene
 
     private createEndTurnButton (): void
     {
-        const container = this.add.container(1744, CENTER_Y);
+        const container = this.add.container(1820, CENTER_Y);
         const bg = this.add.rectangle(0, 0, 160, 65, 0x3a4a6b).setStrokeStyle(2, 0x8fa8d6);
         const text = this.add.text(0, 0, 'End Turn', SMALL_STYLE).setOrigin(0.5);
         container.add([bg, text]);
@@ -955,20 +998,22 @@ export class CardGame extends Scene
     }
 
     /**
-     * Playtesting-only cheat control — see SPEC.md's "Playtesting-only features" section. Bottom-
-     * right corner, clear of the player's graveyard pile hit-area (centered ~(1860, 915)) below it.
-     * Distinct purple palette (vs. End Turn's blue / Cancel's red) so it reads as a debug control,
-     * not a real gameplay button. Always interactive — mirrors debugAddCard's own "no phase/turn
-     * gating, callable any time" — just guarded() like every other button here so a click mid-
-     * animation is ignored rather than firing on stale state.
+     * Playtesting-only cheat control — see SPEC.md's "Playtesting-only features" section. Stacked
+     * in the End Turn/Cancel button's own column (x=1744), below Cancel, so all four buttons read
+     * as one control cluster — the bottom-left corner they used to occupy is now the Aether Deck
+     * pile's spot instead (see renderPile's aetherDeck calls in renderNow). Distinct purple palette
+     * (vs. End Turn's blue / Cancel's red) so it still reads as a debug control, not a real
+     * gameplay button. Always interactive — mirrors debugAddCard's own "no phase/turn gating,
+     * callable any time" — just guarded() like every other button here so a click mid-animation is
+     * ignored rather than firing on stale state.
      */
     private createDrawCardButton (): void
     {
-        const container = this.add.container(55, 990);
-        const bg = this.add.rectangle(0, 0, 110, 30, 0x4a2f5c).setStrokeStyle(2, 0xb08fd6);
+        const container = this.add.container(1820, 600);
+        const bg = this.add.rectangle(0, 0, 160, 30, 0x4a2f5c).setStrokeStyle(2, 0xb08fd6);
         const text = this.add.text(0, 0, 'Cards', SMALL_STYLE).setOrigin(0.5);
         container.add([bg, text]);
-        container.setSize(110, 30);
+        container.setSize(160, 30);
         container.setInteractive({ useHandCursor: true });
         container.on('pointerup', this.guarded(() => this.cardPicker.open(this.machine.state)));
         this.drawCardButton = container;
@@ -976,32 +1021,34 @@ export class CardGame extends Scene
 
     /**
      * Playtesting-only cheat control — see SPEC.md's "Playtesting-only features" section. Sits
-     * immediately to Draw Card's left, same row/size/purple palette, reading as a matching pair of
-     * debug tools. No animation/render-queue involvement (unlike debugAddCard) since a mana change
-     * has nothing to fly across the screen — requestRender() just refreshes the mana readout text
-     * directly (updateChrome runs synchronously since nothing is animating at the time this fires).
+     * immediately below Draw Card in the same column, same size/purple palette, reading as a
+     * matching pair of debug tools. Fills aetherInPlay directly (see
+     * TurnStateMachine.debugFillAether) rather than a mana value now that mana no longer exists.
+     * No animation/render-queue involvement (unlike debugAddCard) since there's nothing to fly
+     * across the screen — requestRender() just refreshes the board/HUD directly (updateChrome/
+     * renderNow run synchronously since nothing is animating at the time this fires).
      */
     private createFullManaButton (): void
     {
-        const container = this.add.container(180, 990);
-        const bg = this.add.rectangle(0, 0, 110, 30, 0x4a2f5c).setStrokeStyle(2, 0xb08fd6);
-        const text = this.add.text(0, 0, 'Max Mana', SMALL_STYLE).setOrigin(0.5);
+        const container = this.add.container(1820, 640);
+        const bg = this.add.rectangle(0, 0, 160, 30, 0x4a2f5c).setStrokeStyle(2, 0xb08fd6);
+        const text = this.add.text(0, 0, 'Add Aether', SMALL_STYLE).setOrigin(0.5);
         container.add([bg, text]);
-        container.setSize(110, 30);
+        container.setSize(160, 30);
         container.setInteractive({ useHandCursor: true });
-        container.on('pointerup', this.guarded(() => { this.machine.debugSetMaxMana('player'); this.requestRender(); }));
+        container.on('pointerup', this.guarded(() => { this.machine.debugFillAether('player'); this.requestRender(); }));
         this.fullManaButton = container;
     }
 
     // --- render ------------------------------------------------------------------
 
-    /** Banner text, health/mana readouts, and End Turn/Cancel/target-prompt state — cheap, and safe to refresh immediately even while the heavy board rebuild below is deferred behind an in-flight animation. */
+    /** Banner text and End Turn/Cancel/target-prompt state — cheap, and safe to refresh immediately
+     * even while the heavy board rebuild below is deferred behind an in-flight animation. Aether
+     * counts no longer get their own HUD text — they're read off the pile stacks themselves (see
+     * renderAetherInPlay). */
     private updateChrome (state: GameState): void
     {
         this.turnBannerText.setText(this.describePhase(state));
-
-        this.opponentManaText.setText(`♦ ${state.players.opponent.mana}/${state.players.opponent.maxMana}`);
-        this.playerManaText.setText(`♦ ${state.players.player.mana}/${state.players.player.maxMana}`);
 
         this.updateEndTurnButton(state);
         this.updateCancelButton(state);
@@ -1094,11 +1141,31 @@ export class CardGame extends Scene
         this.renderPile(state.players.player, 'deck', PLAYER_DECK_Y);
         this.renderPile(state.players.player, 'graveyard', PLAYER_GRAVEYARD_Y);
 
+        // Aether Deck pile — bottom-left of the board (mirrors the Main Deck/Graveyard column onto
+        // the opposite screen edge, see AETHER_PILE_X's own doc comment). Click-to-draw replaces
+        // the default inspect-open, but only when it's actually legal right now (mirrors
+        // TurnStateMachine.drawAether's own guard — this scene must independently re-check it too,
+        // per CLAUDE.md's silent-rejection rule) — otherwise it falls back to inspecting the pile,
+        // same as every other pile.
+        for (const playerState of [state.players.opponent, state.players.player])
+        {
+            const y = playerState.id === 'opponent' ? OPPONENT_AETHER_DECK_Y : PLAYER_AETHER_DECK_Y;
+            const canDraw = state.phase === TurnPhase.MainIdle && state.activePlayer === playerState.id
+                && !playerState.aetherDrawnThisTurn && playerState.aetherDeck.length > 0;
+            const onClick = canDraw
+                ? () => { this.machine.drawAether(playerState.id); this.requestRender(); }
+                : undefined;
+            this.renderPile(playerState, 'aetherDeck', y, AETHER_PILE_X, onClick, canDraw);
+        }
+
         this.renderHand(state.players.opponent, OPPONENT_HAND_Y, true);
         this.renderHand(state.players.player, PLAYER_HAND_POKE_Y, false);
 
         this.renderBoard('opponent', state.players.opponent, OPPONENT_BOARD_Y);
         this.renderBoard('player', state.players.player, PLAYER_BOARD_Y);
+
+        this.renderAetherInPlay(state.players.opponent, OPPONENT_AETHER_ROW_Y);
+        this.renderAetherInPlay(state.players.player, PLAYER_AETHER_ROW_Y);
 
         if (state.phase === TurnPhase.GameOver)
         {
@@ -1286,29 +1353,42 @@ export class CardGame extends Scene
     }
 
     /**
-     * Small stacked pile with a card-count readout centered over it, for either off-board zone.
-     * Doubles as the origin point draw animations fly from (see deckPilePosition) and as the click
-     * target that opens the pile-inspect overlay.
+     * Small stacked pile with a card-count readout centered over it, for any off-board zone.
+     * Doubles as the origin point draw animations fly from (see deckPilePosition) and, by
+     * default, as the click target that opens the pile-inspect overlay — `onClick`, when passed
+     * (the Aether Deck pile's own click-to-draw affordance, see renderNow), replaces that default
+     * entirely rather than running alongside it, since drawing and inspecting are mutually
+     * exclusive per click. `x` defaults to the Main Deck/Graveyard column (PILE_X); the Aether
+     * Deck pile passes AETHER_PILE_X instead — see its own doc comment in cardLayout.ts.
+     * `readyGlow` adds the same "can act now" shimmer renderHand uses for playable cards — the
+     * Aether Deck pile sets it when a draw is actually legal right now, mirroring that same
+     * silent-rejection-avoidance rule (CLAUDE.md) for its own click-to-draw affordance.
      */
-    private renderPile (playerState: PlayerState, zone: PileZone, y: number): void
+    private renderPile (playerState: PlayerState, zone: PileZone, y: number, x: number = PILE_X, onClick?: () => void, readyGlow = false): void
     {
         const style = PILE_STYLES[zone];
         const cards = getPileCards(playerState, zone);
-        const container = this.add.container(PILE_X, y);
+        const container = this.add.container(x, y);
 
         // An empty pile still draws one faded card outline rather than nothing, so the zone keeps
         // its slot in the column and stays clickable (an empty graveyard is the normal opening state).
-        // Only the deck pile uses the card-back texture — a deck is genuinely face-down, unlike a
-        // graveyard, which stays on the plain colored-rectangle stack it always had.
-        const showCardBack = zone === 'deck' && this.textures.exists(CARD_BACK_KEY);
+        // Deck and Aether Deck are genuinely face-down piles and use a shared card-back texture
+        // for every layer. The graveyard is face-up, so instead each layer shows the actual art
+        // of the card sitting at that position — most recently discarded on top — falling back to
+        // the plain colored-rectangle stack per layer when that card has no art loaded yet.
+        const backKey = zone === 'deck' ? CARD_BACK_KEY : zone === 'aetherDeck' ? CARD_BACK_AETHER_KEY : undefined;
         const layers = Math.min(3, Math.max(1, cards.length));
+        // Oldest-of-the-visible-layers first, most recently added last — index i below lines up
+        // with layer i, so the most-offset (topmost) layer is the most recently added card.
+        const recentCards = cards.slice(-layers);
         for (let i = 0; i < layers; i++)
         {
             const offset = i * 4;
+            const textureKey = backKey ?? (zone === 'graveyard' ? recentCards[i]?.definitionId : undefined);
             let card: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
-            if (showCardBack)
+            if (textureKey !== undefined && this.textures.exists(textureKey))
             {
-                card = this.add.image(-offset, -offset, CARD_BACK_KEY);
+                card = this.add.image(-offset, -offset, textureKey);
                 coverFit(card, DECK_PILE_W, DECK_PILE_H);
             }
             else
@@ -1319,9 +1399,12 @@ export class CardGame extends Scene
             container.add(card);
         }
 
-        // Centered on top of the stack rather than below it, now that there's no zone label above
-        // competing for the spot.
-        container.add(this.add.text(0, 0, `${cards.length}`, statStyle('#ffffff', true, '22px')).setOrigin(0.5));
+        // Centered on the *top* (last-drawn, most-offset) layer, not the container's local origin
+        // — the origin sits on layer 0's center, but each successive layer is nudged up-left by
+        // `offset`, so anchoring at (0,0) drifts the count away from the visible top card as the
+        // pile grows past 1 card.
+        const topOffset = (layers - 1) * 4;
+        container.add(this.add.text(-topOffset, -topOffset, `${cards.length}`, statStyle('#ffffff', true, '22px')).setOrigin(0.5));
 
         // Hit region is deliberately generous enough to cover the stack's offset corner. Top-left-
         // based per the Container hit-area rule (see renderHero).
@@ -1333,6 +1416,7 @@ export class CardGame extends Scene
             hitAreaCallback: Geom.Rectangle.Contains,
             useHandCursor: true,
         });
+        if (readyGlow) this.addShimmeringOutline(container, hitW, hitH, OUTLINE_COLOR_READY);
         let hoverShimmer: { destroy: () => void } | null = null;
         container.on('pointerover', () =>
         {
@@ -1343,9 +1427,19 @@ export class CardGame extends Scene
             hoverShimmer?.destroy();
             hoverShimmer = null;
         });
-        // Deliberately not guarded(): opening a read-only pile view mutates no game state, so
-        // there is no reason to swallow the click just because an animation is in flight.
-        container.on('pointerup', () => this.pileView.open(playerState.id, zone, this.machine.state));
+        if (onClick)
+        {
+            // Unlike the default inspect-open below, onClick (the Aether Deck's click-to-draw) does
+            // mutate game state — guarded() like every other state-mutating button, so a click mid-
+            // animation is ignored rather than firing on stale state.
+            container.on('pointerup', this.guarded(onClick));
+        }
+        else
+        {
+            // Deliberately not guarded(): opening a read-only pile view mutates no game state, so
+            // there is no reason to swallow the click just because an animation is in flight.
+            container.on('pointerup', () => this.pileView.open(playerState.id, zone, this.machine.state));
+        }
 
         this.renderedObjects.push(container);
     }
@@ -1465,7 +1559,11 @@ export class CardGame extends Scene
             if (!isMyTurn || state.phase !== TurnPhase.MainIdle) return;
 
             const definition = CARD_DEFINITIONS[instance.definitionId];
-            if (!definition || playerState.mana < definition.cost) return;
+            if (!definition) return;
+            // Aether cards have no cost to check — they're gated on the once-per-turn play limit
+            // instead (see TurnStateMachine.playAetherCard's own guard, mirrored here per CLAUDE.md's
+            // silent-rejection rule). Every other type keeps the affordability check.
+            if (definition.type === 'aether' ? playerState.aetherPlayedThisTurn : !canAffordAetherCost(playerState, definition.cost)) return;
 
             // Playable: outline instead of the old dim-when-unaffordable treatment — every card
             // stays at full opacity regardless, this just marks the ones actionable right now.
@@ -1507,10 +1605,11 @@ export class CardGame extends Scene
             // to see that.
             const isFrozen = instance.frozen;
             const definition = CARD_DEFINITIONS[instance.definitionId];
-            // Computed off this board's own owner's mana (not necessarily 'player') so an enemy
-            // minion's badge still shows correctly-dimmed cost — separate from canActivateAbilities
-            // below, which additionally gates whether it's actually clickable right now.
-            const abilityAffordability = definition?.paidAbilities?.map((ability) => playerState.mana >= ability.cost);
+            // Computed off this board's own owner's untapped generic Aether (not necessarily
+            // 'player') so an enemy minion's badge still shows correctly-dimmed cost — separate
+            // from canActivateAbilities below, which additionally gates whether it's actually
+            // clickable right now.
+            const abilityAffordability = definition?.paidAbilities?.map((ability) => countUntappedPlain(playerState) >= ability.cost);
 
             const container = this.cardView.createCardContainer(instance, 'simplified', undefined, isSummoningSick, isFrozen, resolveCardText(instance, state), abilityAffordability);
             container.setPosition(startX + index * spacing, y);
@@ -1573,7 +1672,7 @@ export class CardGame extends Scene
                 this.cardView.abilityBadgeLayout(definition).forEach((pos, abilityIndex) =>
                 {
                     const ability = definition.paidAbilities![abilityIndex];
-                    const affordable = playerState.mana >= ability.cost;
+                    const affordable = countUntappedPlain(playerState) >= ability.cost;
                     const zone = this.add.zone(container.x + pos.x, container.y + pos.y, COST_BADGE_R_FULL * 2, COST_BADGE_R_FULL * 2);
                     this.renderedObjects.push(zone);
 
@@ -1588,6 +1687,86 @@ export class CardGame extends Scene
                 });
             }
         });
+    }
+
+    /**
+     * A side's Aether-in-play, grouped into one small stacked pile per category present — generic
+     * first, then each elemental category in play order (fire, water, earth, air) — rather than a
+     * row of individual cards. Reuses the Deck/Graveyard/Aether Deck piles' own stack-with-count-
+     * on-top visual language (DECK_PILE_W/H, up to 3 offset layers) instead of CardView's full
+     * card render: a resource base reads at a glance and doesn't need to compete for the same
+     * visual weight as an actual battlefield minion (see renderBoard). Each layer shows that
+     * card's own art (falling back to the flat category color when its art isn't loaded yet),
+     * same as renderPile's graveyard stack — most recently played on top. Walks rightward from
+     * AETHER_ROW_X_START at AETHER_ROW_SPACING per category pile; a category with zero cards in
+     * play is skipped entirely (not drawn empty), so the row never shows a gap for a category this
+     * side hasn't drawn into yet.
+     */
+    private renderAetherInPlay (playerState: PlayerState, y: number): void
+    {
+        const categories: AetherCategory[] = ['generic', 'fire', 'water', 'earth', 'air'];
+        const state = this.machine.state;
+        let column = 0;
+
+        for (const category of categories)
+        {
+            const cards = playerState.aetherInPlay.filter((c) => CARD_DEFINITIONS[c.definitionId]?.aetherCategory === category);
+            if (cards.length === 0) continue;
+
+            const x = AETHER_ROW_X_START + column * AETHER_ROW_SPACING;
+            column++;
+
+            const fill = AETHER_CATEGORY_COLOR[category];
+            const stroke = lightenColor(fill, 0.4);
+            const container = this.add.container(x, y);
+
+            const layers = Math.min(3, cards.length);
+            // Oldest-of-the-visible-layers first, most recently played last — matches renderPile's
+            // graveyard stack so the topmost (most-offset) layer is the most recently played card.
+            const recentCards = cards.slice(-layers);
+            for (let i = 0; i < layers; i++)
+            {
+                const offset = i * 4;
+                const textureKey = recentCards[i]?.definitionId;
+                let layerCard: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
+                if (textureKey !== undefined && this.textures.exists(textureKey))
+                {
+                    layerCard = this.add.image(-offset, -offset, textureKey);
+                    coverFit(layerCard, DECK_PILE_W, DECK_PILE_H);
+                }
+                else
+                {
+                    layerCard = this.add.rectangle(-offset, -offset, DECK_PILE_W, DECK_PILE_H, fill).setStrokeStyle(2, stroke);
+                }
+                container.add(layerCard);
+            }
+            // Centered on the top (last-drawn, most-offset) layer — see renderPile's own comment
+            // on topOffset for why (0, 0) drifts off the visible top card as the pile grows.
+            const topOffset = (layers - 1) * 4;
+            container.add(this.add.text(-topOffset, -topOffset, `${cards.length}`, statStyle('#ffffff', true, '22px')).setOrigin(0.5));
+
+            const hitW = DECK_PILE_W + 16, hitH = DECK_PILE_H + 16;
+            container.setSize(hitW, hitH);
+            container.setInteractive({
+                hitArea: new Geom.Rectangle(0, 0, hitW, hitH),
+                hitAreaCallback: Geom.Rectangle.Contains,
+                useHandCursor: true,
+            });
+
+            // Representative instance for the hover tooltip — the most recently played card of
+            // this category — good enough since same-category Aether cards share the same
+            // threshold-facing identity even when their printed names differ.
+            const representative = cards[cards.length - 1];
+            this.helpBoxController.attachKeywordHover(container, representative, true, resolveCardText(representative, state));
+
+            // Tapped outline only when every card in the pile is tapped right now — a pile mixing
+            // tapped/untapped cards (mid-spend) still reads as available, matching how
+            // countUntappedPlain treats it (see aether.ts), rather than showing a misleading
+            // partial-tapped state on the stack.
+            if (cards.every((c) => c.tapped)) this.addStaticOutline(container, DECK_PILE_W, DECK_PILE_H, OUTLINE_COLOR_TAPPED);
+
+            this.renderedObjects.push(container);
+        }
     }
 
     private updateEndTurnButton (state: GameState): void
