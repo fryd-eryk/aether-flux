@@ -921,6 +921,24 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 5,
         health: 5,
         tribes: ["underworld","demon"],
+        paidAbilities: [
+            {
+                cost: 3,
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: -1,
+                        health: -1,
+                        target: "allFriendlyMinions",
+                    },
+                    {
+                        kind: "damage",
+                        amount: 2,
+                        target: "friendlyHero",
+                    },
+                ],
+            },
+        ],
         rarity: "rare",
     },
     "windroc-sky-marshal": {
@@ -1432,8 +1450,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 trigger: "onPlay",
                 actions: [
                     {
-                        kind: "damage",
-                        amount: 2,
+                        kind: "destroy",
                         target: "chosen",
                         chosenRestriction: "minion",
                     },
@@ -1497,8 +1514,8 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "legendary",
     },
-    "new-card": {
-        id: "new-card",
+    "absheron-deepcrypt-keeper": {
+        id: "absheron-deepcrypt-keeper",
         name: "Absheron, Deepcrypt Keeper",
         cost: { generic: 7 },
         type: "minion",
