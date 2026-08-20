@@ -698,7 +698,7 @@ export class TurnStateMachine {
         const prompt = this.pendingPrompts[this.pendingChosenTargets.length];
         return {
             sourceInstanceId: prompt.sourceInstanceId,
-            validTargetIds: this.computeValidTargetsForRestriction(prompt.action.chosenRestriction, ownerId),
+            validTargetIds: this.computeValidTargetsForRestriction(prompt.action.chosenRestriction, ownerId, chosenSideOf(prompt.action.target)),
             action: prompt.action,
             step: this.pendingChosenTargets.length + 1,
             totalSteps: this.pendingPrompts.length,

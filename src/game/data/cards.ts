@@ -1052,7 +1052,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Blood Moon Ritual",
         cost: { generic: 2 },
         type: "spell",
-        text: "Deal 6 damage to a minion and draw 3 cards.",
+        text: "Deal 6 damage to a friendly minion and draw 3 cards.",
         effects: [
             {
                 trigger: "onPlay",

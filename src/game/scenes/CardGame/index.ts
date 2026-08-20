@@ -968,11 +968,11 @@ export class CardGame extends Scene
 
     private createCancelButton (): void
     {
-        const container = this.add.container(1744, 633);
-        const bg = this.add.rectangle(0, 0, 160, 54, 0x6b3a3a).setStrokeStyle(2, 0xd68f8f);
+        const container = this.add.container(1820, CENTER_Y);
+        const bg = this.add.rectangle(0, 0, 160, 65, 0x6b3a3a).setStrokeStyle(2, 0xd68f8f);
         const text = this.add.text(0, 0, 'Cancel', SMALL_STYLE).setOrigin(0.5);
         container.add([bg, text]);
-        container.setSize(160, 54);
+        container.setSize(160, 65);
         container.setInteractive({ useHandCursor: true });
         container.on('pointerup', this.guarded(() => this.machine.cancelTarget()));
         container.setVisible(false);
@@ -1009,7 +1009,7 @@ export class CardGame extends Scene
      */
     private createDrawCardButton (): void
     {
-        const container = this.add.container(1820, 600);
+        const container = this.add.container(1820, CENTER_Y - 100);
         const bg = this.add.rectangle(0, 0, 160, 30, 0x4a2f5c).setStrokeStyle(2, 0xb08fd6);
         const text = this.add.text(0, 0, 'Cards', SMALL_STYLE).setOrigin(0.5);
         container.add([bg, text]);
@@ -1030,7 +1030,7 @@ export class CardGame extends Scene
      */
     private createFullManaButton (): void
     {
-        const container = this.add.container(1820, 640);
+        const container = this.add.container(1820, CENTER_Y - 60);
         const bg = this.add.rectangle(0, 0, 160, 30, 0x4a2f5c).setStrokeStyle(2, 0xb08fd6);
         const text = this.add.text(0, 0, 'Add Aether', SMALL_STYLE).setOrigin(0.5);
         container.add([bg, text]);
