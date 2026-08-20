@@ -1,4 +1,4 @@
-import type { CardDefinition, ChosenTargetRestriction, Tribe } from '../types/Card';
+import type { CardDefinition, ChosenTargetRestriction, TargetSelector, Tribe } from '../types/Card';
 import { TRIBE_METADATA } from '../data/tribeMetadata';
 
 export function isTribe(value: string): value is Tribe {
@@ -17,4 +17,18 @@ export function restrictsToMinion(restriction: ChosenTargetRestriction | undefin
 /** The tribe a chosen-target restriction narrows to, if any (undefined for 'minion'/'hero'/unset). */
 export function restrictionTribe(restriction: ChosenTargetRestriction | undefined): Tribe | undefined {
     return restriction !== undefined && isTribe(restriction) ? restriction : undefined;
+}
+
+/** True for 'chosen' and its side-restricted siblings 'friendlyChosen'/'enemyChosen' — all three need
+ * an interactive player/AI pick narrowed by chosenRestriction, unlike every other TargetSelector which
+ * resolves to a fixed target with no prompt. */
+export function isChosenTarget(target: TargetSelector): boolean {
+    return target === 'chosen' || target === 'friendlyChosen' || target === 'enemyChosen';
+}
+
+/** Which side 'friendlyChosen'/'enemyChosen' restricts the pick to, relative to the acting player — undefined for plain 'chosen' (either side) and every non-chosen selector. */
+export function chosenSideOf(target: TargetSelector): 'friendly' | 'enemy' | undefined {
+    if (target === 'friendlyChosen') return 'friendly';
+    if (target === 'enemyChosen') return 'enemy';
+    return undefined;
 }

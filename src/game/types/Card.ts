@@ -33,10 +33,13 @@ export type TargetSelector =
     | 'enemyHero'
     | 'friendlyHero'
     | 'chosen'
+    | 'friendlyChosen'
+    | 'enemyChosen'
     | 'allEnemyMinions'
     | 'allFriendlyMinions'
     | 'allMinions'
     | 'allOtherMinions'
+    | 'allOtherFriendlyMinions'
     | 'allHeroes';
 
 /**
@@ -95,11 +98,12 @@ export type EffectAction =
 
 /** Continuous board-wide selectors an Aura can target — a subset of TargetSelector: no
  * 'chosen'/'self'/hero selectors, since an aura isn't resolved once at cast time, it's
- * re-evaluated live for as long as the source is alive/on board/unsilenced. 'allOtherMinions' is
- * the one deliberate exception to auraApplies' "a source matching its own aura's criteria buffs
- * itself too, no self-exclusion special-casing" rule — every other target here still includes the
+ * re-evaluated live for as long as the source is alive/on board/unsilenced. 'allOtherMinions' and
+ * 'allOtherFriendlyMinions' are the two deliberate exceptions to auraApplies' "a source matching
+ * its own aura's criteria buffs itself too, no self-exclusion special-casing" rule (the latter is
+ * just the single-board version of the former) — every other target here still includes the
  * source in its own aura's effect. */
-export type AuraTarget = 'allFriendlyMinions' | 'allEnemyMinions' | 'allMinions' | 'allOtherMinions';
+export type AuraTarget = 'allFriendlyMinions' | 'allEnemyMinions' | 'allMinions' | 'allOtherMinions' | 'allOtherFriendlyMinions';
 
 /**
  * A passive, continuously-active stat buff granted by a minion to matching minions on the
@@ -117,11 +121,12 @@ export interface CardAura {
     keywords?: Keyword[];
 }
 
-/** `reuseTarget: true` (only meaningful when `target === 'chosen'`) means this action targets
- * whatever the nearest earlier `target: 'chosen'` action in the same actions[] list resolved to,
- * instead of prompting for a fresh target — e.g. "Target minion gets +1/+2 and Divine Shield"
- * is one prompt, not two. Must not be set on the first chosen-target action in a list (nothing to
- * reuse yet) — see validateCardDefinition.ts and TurnStateMachine.collectPendingPrompts. */
+/** `reuseTarget: true` (only meaningful when `target` is a chosen-style selector — 'chosen',
+ * 'friendlyChosen', or 'enemyChosen') means this action targets whatever the nearest earlier
+ * chosen-style action in the same actions[] list resolved to, instead of prompting for a fresh
+ * target — e.g. "Target minion gets +1/+2 and Divine Shield" is one prompt, not two. Must not be
+ * set on the first chosen-target action in a list (nothing to reuse yet) — see
+ * validateCardDefinition.ts and TurnStateMachine.collectPendingPrompts. */
 
 /**
  * A time-limited keyword grant or stat buff riding on a CardInstance, decremented once per
@@ -151,7 +156,7 @@ export interface CardEffect {
 /**
  * A minion/token's activated ability: pay `cost` mana any time during the controller's turn to
  * resolve `actions` in order (prompting for a target first, once per chosen-target action, if
- * any `actions[].target === 'chosen'`). Unlike
+ * any `actions[].target` is a chosen-style selector). Unlike
  * CardEffect, this isn't trigger-driven — it's a player-initiated, repeatable action gated purely
  * by available mana (no 'once per turn' limiter, and not blocked by summoning sickness, since
  * activating one isn't a combat action — see TurnStateMachine.activateAbility). Card text

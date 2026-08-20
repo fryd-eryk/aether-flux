@@ -13,7 +13,10 @@ export type FieldErrors = Record<string, string>;
 const INVALID_ID_CHARS = /["\n\r]/;
 
 /** Targets a `tribeFilter` can narrow — see EffectAction.tribeFilter in Card.ts. */
-const TRIBE_FILTERABLE_TARGETS = ['allMinions', 'allEnemyMinions', 'allFriendlyMinions', 'allOtherMinions'];
+const TRIBE_FILTERABLE_TARGETS = ['allMinions', 'allEnemyMinions', 'allFriendlyMinions', 'allOtherMinions', 'allOtherFriendlyMinions'];
+
+/** Target values that prompt for a player-picked target narrowed by chosenRestriction — 'chosen' plus its side-restricted siblings. */
+const CHOSEN_TARGETS = ['chosen', 'friendlyChosen', 'enemyChosen'];
 
 /** Validates one actions[] list in traversal order, tracking whether an earlier action in the
  * same list already resolved a real (non-reuseTarget) chosen target — reuseTarget on the very
@@ -22,7 +25,7 @@ function validateActions(actions: EffectAction[], prefix: string, errors: FieldE
     let hasEarlierChosenTarget = false;
     actions.forEach((action, index) => {
         validateAction(action, `${prefix}.actions.${index}`, errors, hasEarlierChosenTarget);
-        if ('target' in action && action.target === 'chosen' && !('reuseTarget' in action && action.reuseTarget)) {
+        if ('target' in action && CHOSEN_TARGETS.includes(action.target) && !('reuseTarget' in action && action.reuseTarget)) {
             hasEarlierChosenTarget = true;
         }
     });
@@ -81,7 +84,7 @@ function validateEffectValue(value: EffectValue, prefix: string, field: string, 
  * resolved a real (non-reuseTarget) chosen target — see validateActions. */
 function validateAction(action: EffectAction, prefix: string, errors: FieldErrors, hasEarlierChosenTarget: boolean): void {
     if ('reuseTarget' in action && action.reuseTarget) {
-        if (action.target !== 'chosen') {
+        if (!CHOSEN_TARGETS.includes(action.target)) {
             errors[`${prefix}.reuseTarget`] = 'Only meaningful when target is "chosen".';
         } else if (!hasEarlierChosenTarget) {
             errors[`${prefix}.reuseTarget`] = 'No earlier chosen target in this block to reuse.';
@@ -95,7 +98,7 @@ function validateAction(action: EffectAction, prefix: string, errors: FieldError
             // chosenRestriction is optional even when target is 'chosen' — omitting it is the
             // documented default ("any minion or hero", e.g. Firebolt/Radiant Light/Minor Heal),
             // not an error. Only flag it as dead data when target isn't 'chosen' at all.
-            if (action.target !== 'chosen' && action.chosenRestriction) {
+            if (!CHOSEN_TARGETS.includes(action.target) && action.chosenRestriction) {
                 errors[`${prefix}.chosenRestriction`] = 'Only meaningful when target is "chosen".';
             }
             if (action.tribeFilter && !TRIBE_FILTERABLE_TARGETS.includes(action.target)) {
@@ -112,7 +115,7 @@ function validateAction(action: EffectAction, prefix: string, errors: FieldError
             // No min — a negative buff (debuff) is an intentional, already-shipped case.
             if (action.attack !== undefined) validateEffectValue(action.attack, prefix, 'attack', errors);
             if (action.health !== undefined) validateEffectValue(action.health, prefix, 'health', errors);
-            if (action.target !== 'chosen' && action.chosenRestriction) {
+            if (!CHOSEN_TARGETS.includes(action.target) && action.chosenRestriction) {
                 errors[`${prefix}.chosenRestriction`] = 'Only meaningful when target is "chosen".';
             }
             if (action.tribeFilter && !TRIBE_FILTERABLE_TARGETS.includes(action.target)) {
@@ -129,7 +132,7 @@ function validateAction(action: EffectAction, prefix: string, errors: FieldError
         case 'freeze':
         case 'silence':
         case 'destroy':
-            if (action.target !== 'chosen' && action.chosenRestriction) {
+            if (!CHOSEN_TARGETS.includes(action.target) && action.chosenRestriction) {
                 errors[`${prefix}.chosenRestriction`] = 'Only meaningful when target is "chosen".';
             }
             if (action.tribeFilter && !TRIBE_FILTERABLE_TARGETS.includes(action.target)) {
@@ -137,7 +140,7 @@ function validateAction(action: EffectAction, prefix: string, errors: FieldError
             }
             break;
         case 'grantKeyword':
-            if (action.target !== 'chosen' && action.chosenRestriction) {
+            if (!CHOSEN_TARGETS.includes(action.target) && action.chosenRestriction) {
                 errors[`${prefix}.chosenRestriction`] = 'Only meaningful when target is "chosen".';
             }
             if (action.tribeFilter && !TRIBE_FILTERABLE_TARGETS.includes(action.target)) {

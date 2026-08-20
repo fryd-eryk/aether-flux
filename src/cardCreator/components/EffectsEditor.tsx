@@ -2,7 +2,7 @@ import type { CardDefinition, CardEffect, EffectAction, EffectTrigger } from '@/
 import { TRIGGER_METADATA } from '@/game/data/triggerMetadata';
 import type { FieldErrors } from '../validateCardDefinition';
 import styles from '@/styles/CardCreator.module.css';
-import { ACTION_KINDS, ActionFieldsEditor, defaultActionFor } from './ActionFieldsEditor';
+import { ACTION_KINDS, ActionFieldsEditor, CHOSEN_TARGETS, defaultActionFor } from './ActionFieldsEditor';
 
 const TRIGGERS = Object.keys(TRIGGER_METADATA) as EffectTrigger[];
 
@@ -13,7 +13,7 @@ function canReuseTargetByIndex(actions: EffectAction[]): boolean[] {
     let seenChosen = false;
     return actions.map((action) => {
         const canReuse = seenChosen;
-        if ('target' in action && action.target === 'chosen' && !action.reuseTarget) seenChosen = true;
+        if ('target' in action && CHOSEN_TARGETS.includes(action.target) && !action.reuseTarget) seenChosen = true;
         return canReuse;
     });
 }

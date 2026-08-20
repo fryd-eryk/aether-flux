@@ -16,12 +16,27 @@ import styles from '@/styles/CardCreator.module.css';
 
 export const ACTION_KINDS: EffectAction['kind'][] = ['damage', 'heal', 'draw', 'buff', 'summon', 'freeze', 'silence', 'destroy', 'grantKeyword'];
 const KEYWORDS = Object.keys(KEYWORD_METADATA) as Keyword[];
-export const TARGETS: TargetSelector[] = ['self', 'enemyHero', 'friendlyHero', 'chosen', 'allEnemyMinions', 'allFriendlyMinions', 'allMinions', 'allOtherMinions', 'allHeroes'];
+export const TARGETS: TargetSelector[] = [
+    'self',
+    'enemyHero',
+    'friendlyHero',
+    'chosen',
+    'friendlyChosen',
+    'enemyChosen',
+    'allEnemyMinions',
+    'allFriendlyMinions',
+    'allMinions',
+    'allOtherMinions',
+    'allOtherFriendlyMinions',
+    'allHeroes',
+];
 export const RESTRICTIONS: ChosenTargetRestriction[] = ['minion', 'hero', ...(Object.keys(TRIBE_METADATA) as Tribe[])];
 const TRIBES = Object.keys(TRIBE_METADATA) as Tribe[];
 const COUNTERS = Object.keys(COUNTER_METADATA) as CounterKind[];
 /** AOE minion targets a tribeFilter can narrow — hero/self/chosen targets are unaffected (a chosen target's tribe restriction is chosenRestriction instead). */
-export const TRIBE_FILTERABLE_TARGETS: TargetSelector[] = ['allMinions', 'allEnemyMinions', 'allFriendlyMinions', 'allOtherMinions'];
+export const TRIBE_FILTERABLE_TARGETS: TargetSelector[] = ['allMinions', 'allEnemyMinions', 'allFriendlyMinions', 'allOtherMinions', 'allOtherFriendlyMinions'];
+/** Target values that prompt for a player/AI-picked target narrowed by chosenRestriction — 'chosen' plus its side-restricted siblings. */
+export const CHOSEN_TARGETS: TargetSelector[] = ['chosen', 'friendlyChosen', 'enemyChosen'];
 
 export function restrictionLabel(restriction: ChosenTargetRestriction): string {
     if (restriction === 'minion' || restriction === 'hero') return restriction;
@@ -229,7 +244,7 @@ function ReuseTargetField({ checked, onChange }: ReuseTargetFieldProps) {
  */
 export function ActionFieldsEditor({ action, onChange, errors, prefix, allCards, canReuseTarget }: ActionFieldsEditorProps) {
     const summonOptions = Object.values(allCards).sort((a, b) => a.name.localeCompare(b.name));
-    const isChosen = 'target' in action && action.target === 'chosen';
+    const isChosen = 'target' in action && CHOSEN_TARGETS.includes(action.target);
     const isTribeFilterable = 'target' in action && TRIBE_FILTERABLE_TARGETS.includes(action.target);
 
     return (
@@ -250,11 +265,12 @@ export function ActionFieldsEditor({ action, onChange, errors, prefix, allCards,
                             value={action.target}
                             onChange={(e) => {
                                 const target = e.target.value as TargetSelector;
-                                // Leaving chosenRestriction unset when target is 'chosen' is a legitimate
-                                // choice (e.g. Firebolt/Radiant Light target "any minion or hero") — only
-                                // force-clear it when target moves away from 'chosen' entirely, don't
-                                // invent a restriction that wasn't there.
-                                const chosenRestriction = target === 'chosen' ? action.chosenRestriction : undefined;
+                                // Leaving chosenRestriction unset when target is a chosen-style selector is
+                                // a legitimate choice (e.g. Firebolt/Radiant Light target "any minion or
+                                // hero") — only force-clear it when target moves away from chosen-style
+                                // entirely, don't invent a restriction that wasn't there. Preserved across
+                                // 'chosen' <-> 'friendlyChosen'/'enemyChosen' switches for the same reason.
+                                const chosenRestriction = CHOSEN_TARGETS.includes(target) ? action.chosenRestriction : undefined;
                                 const tribeFilter = TRIBE_FILTERABLE_TARGETS.includes(target) ? action.tribeFilter : undefined;
                                 onChange({ ...action, target, chosenRestriction, tribeFilter });
                             }}
@@ -352,11 +368,12 @@ export function ActionFieldsEditor({ action, onChange, errors, prefix, allCards,
                             value={action.target}
                             onChange={(e) => {
                                 const target = e.target.value as TargetSelector;
-                                // Leaving chosenRestriction unset when target is 'chosen' is a legitimate
-                                // choice (e.g. Firebolt/Radiant Light target "any minion or hero") — only
-                                // force-clear it when target moves away from 'chosen' entirely, don't
-                                // invent a restriction that wasn't there.
-                                const chosenRestriction = target === 'chosen' ? action.chosenRestriction : undefined;
+                                // Leaving chosenRestriction unset when target is a chosen-style selector is
+                                // a legitimate choice (e.g. Firebolt/Radiant Light target "any minion or
+                                // hero") — only force-clear it when target moves away from chosen-style
+                                // entirely, don't invent a restriction that wasn't there. Preserved across
+                                // 'chosen' <-> 'friendlyChosen'/'enemyChosen' switches for the same reason.
+                                const chosenRestriction = CHOSEN_TARGETS.includes(target) ? action.chosenRestriction : undefined;
                                 const tribeFilter = TRIBE_FILTERABLE_TARGETS.includes(target) ? action.tribeFilter : undefined;
                                 onChange({ ...action, target, chosenRestriction, tribeFilter });
                             }}
@@ -479,7 +496,7 @@ export function ActionFieldsEditor({ action, onChange, errors, prefix, allCards,
                             value={action.target}
                             onChange={(e) => {
                                 const target = e.target.value as TargetSelector;
-                                const chosenRestriction = target === 'chosen' ? action.chosenRestriction : undefined;
+                                const chosenRestriction = CHOSEN_TARGETS.includes(target) ? action.chosenRestriction : undefined;
                                 const tribeFilter = TRIBE_FILTERABLE_TARGETS.includes(target) ? action.tribeFilter : undefined;
                                 onChange({ ...action, target, chosenRestriction, tribeFilter });
                             }}

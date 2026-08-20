@@ -265,7 +265,10 @@ mono-Aether builds).
 
 Conventions to follow when authoring or editing entries in `src/game/data/cards.ts`:
 
-- **Trigger flavor text maps 1:1 to `EffectTrigger`**: card `text` uses a fixed flavor word per trigger so players can read a card's timing at a glance — `Anthem:` = `onPlay`, `Deathcry:` = `onDeath`, `Vigil:` = `startOfTurn`, `Curfew:` = `endOfTurn`, `Strike:` = `onAttack`, `Wound:` = `onDamaged`, `Channel:` = `onSpellCast`, `Mourn:` = `onFriendlyMinionDeath`, `Muster:` = `onFriendlyMinionCast`. Keep new cards' text consistent with this vocabulary rather than inventing new flavor words per trigger.
+- **Only `Anthem:` and `Deathcry:` are written as bold flavor-word prefixes in rule text** (`onPlay`/`onDeath`). Every other trigger is spelled out in plain prose instead of using its flavor word — `Vigil`/`Curfew`/`Strike`/`Wound`/`Channel`/`Mourn`/`Muster` (`triggerMetadata.ts`'s `TRIGGER_METADATA`) remain the *display* labels for the on-card status pill in 'simplified' mode, but must never appear as a bold prefix in a card's `text` itself. This superseded an earlier convention where all nine triggers got a bold flavor-word prefix — some older `cards.ts` entries still use the old style and should be updated to the current one when touched. Phrasing per trigger: `startOfTurn` → "At the start of turn, ...", `endOfTurn` → "At the end of turn, ...", `onAttack` → "When `<CardName>` attacks, ...", `onDamaged` → "When `<CardName>` is wounded, ...", `onSpellCast` → "When you cast a spell, ...", `onFriendlyMinionCast` → "When you cast a minion, ...", `onFriendlyMinionDeath` → "When one of your minions dies, ...".
+- **Rule-text vocabulary**: "Aether", never "mana". "Health", never "life". "opponent" for the enemy player, never "enemy player"; "player" for the human player when third person is needed, never "hero" — "hero" doesn't appear anywhere in rule text. "the number of friendly minions" (or "enemy minions"), never "the number of minions you control". "Restore" for healing ("Restore N Health to ..."), never "heals for"/"heal for". "gain"/"gains" for a positive stat buff or a keyword grant ("gains +1/+1", "gain *Charge*"), never "get"/"gets" — a debuff ("-1/-1") reading awkwardly as "gains -1/-1" is a judgment call, not a hard rule. A counter-based effect reads `[action] X [target], where X is ...` — action and magnitude first, the explanation clause after (e.g. "Restore X Health to you, where X is the number of friendly minions," not "You heal for X, where X is..."). A keyword mentioned in prose is `*Italic*` (single asterisk), capitalized to match `KEYWORD_METADATA[...].label` — never `**bold**`, never unformatted, and never with a stray space inside the markers.
+- **A temporary effect's (`duration` on `buff`/`grantKeyword`) rule text phrases the duration in turns-experienced, not the raw number.** `duration: 1` (expires at the end of the current turn) reads "until end of turn"; `duration: 2` (survives through the opponent's turn and expires at the end of the caster's next turn) reads "until the end of next turn" — not "for 2 turns". For anything above 1 and 2, write down the number.
+- **`keywords`/`tribes` arrays are ordered to match the Card Creator's picker** — `Object.keys(KEYWORD_METADATA)` / `Object.keys(TRIBE_METADATA)` (`keywordMetadata.ts`/`tribeMetadata.ts`), which mirrors declaration order in the `Keyword`/`Tribe` unions (`Card.ts`). Every multi-value array in `cards.ts` follows this today — treat a new one that doesn't as a mistake to fix, not a style choice.
 - **`{X}` in rule text resolves to the card's first effect's headline value at render time** — see "Dynamic values (counters)" above. Substitutes whatever that value resolves to, flat or counter-based, so it's only really worth writing when that value *is* counter-based (a flat one would just print a redundant fixed number). Writing `{X}` on a card with no effects at all leaves the literal `{X}` in the text and is flagged by the Card Creator's validator.
 - **Paid Ability rule text uses a `(<cost>):` prefix**, distinct from the trigger flavor words above — a paid ability isn't triggered by any `EffectTrigger` at all; it's a player-initiated action the controller can pay `PlayerState.mana` to activate any number of times during their turn, gated purely by affordability (no "once per turn" limiter, and not blocked by summoning sickness — activating one isn't a combat action, see `TurnStateMachine.activateAbility`). `CardDefinition.paidAbilities?: PaidAbility[]` (`{ cost: number; action: EffectAction }`, `Card.ts`) is deliberately a separate field from `effects[]` for this reason, not a new `EffectTrigger` value — minion/token-only, same as `attack`/`health`/`tribes`. The renderer replaces the `(<cost>):` prefix with an inline gradient-circle cost pip (see `richText.ts`'s `layoutRichText`/`splitPipSegments`) in both the full-card rule text box and the hover tooltip, purely as a display convenience — it does not parse the number back out and cross-check it against the structured `paidAbilities[].cost`. Like `chosenRestriction` below, the two are independently hand-authored and must be kept in sync by hand.
 - **`chosenRestriction` must match the card's own text.** Any effect using `target: 'chosen'` defaults to "any minion or hero" in `TurnStateMachine.computeValidTargets` — a card whose text says "a minion" (e.g. "Deal 3 damage to a minion") must set `chosenRestriction: 'minion'`, or it will silently accept the enemy hero as a legal target despite what it says. This was a real bug (Pocket Sand, Frostbite Bolt, Firelance, Boneshard Finger, Emberheart Shaman all lacked it originally) — when adding a new "to a minion"/"to a hero" effect, set the matching restriction and mirror it in `ai/scoring.ts` (`scoreDamageSpell`, `computePotentialFaceDamage`) so the AI respects the same limitation instead of soft-locking in `AwaitingTarget`.
@@ -279,6 +282,61 @@ Conventions to follow when authoring or editing entries in `src/game/data/cards.
 - **Every new rule must be checked against the opponent AI, not just the player-facing path — no exceptions, including cards authored via the Card Creator.** `ai/scoring.ts`/`OpponentAI.ts` are hand-authored heuristics with no automatic awareness of `TurnStateMachine`/`keywordRules.ts` changes — a new keyword, effect kind, or targeting rule can render and enforce perfectly for the player while the AI either ignores it, misplays it, or soft-locks on it, and nothing will error to surface that. This is a standing rule, not a one-off reminder: after adding or editing any card rule, actually watch the AI play a card that exercises it (or trace the new case through `scoring.ts` by hand) before calling the change done. The Card Creator (see below) only ever writes to `cards.ts` — it has no path to `ai/scoring.ts`, so anything authored through it is exactly as exposed to this gap as a hand-edited card.
 - **Rarity is a power-level bucket, not flavor.** `CardRarity` (`common | rare | exotic | legendary | mythical`, ascending) drives `deckGenerator.ts`'s proportional random deck-building (14 common / 12 rare / 2 exotic / 1 legendary / 1 mythical per 30-card deck currently, guaranteeing every rarity at least one slot) — a card's rarity should reflect its intended power level and how often it should show up, not just feel. Moving a card between rarity tiers (as opposed to only tuning its stats) is a legitimate, deliberate balance lever.
 - Tokens (e.g. `ember-fledgling`, summoned rather than drawn) use `type: "token"` instead of `"minion"`/`"spell"` and omit `rarity` entirely — `deckGenerator.ts`'s `idsForRarity` excludes any `type: "token"` definition from generated decks. `type: "token"` is mechanically identical to `"minion"` everywhere else (attack/health, board placement, combat, Muster/Mourn triggers) — see `CardType`'s doc comment in `Card.ts` for the full list of call sites that treat it as minion-equivalent. Don't add a `rarity` to a token (the Card Creator's validator flags it).
+
+### Tribal identity
+
+Each `Tribe` (`Card.ts`) has an intended mana-curve shape and a pro/con
+identity, defined using the archetype and card-advantage/tempo/board-state
+vocabulary from "Game design theory reference" below. This is **forward
+design intent, not a description of the current pool** — today's cards are
+mostly multi-tribe/mixed (e.g. `humanoid`+`animal`, `elemental`+`nature`) and
+were largely tagged before this identity existed; several tribes below
+(Nature, Elemental, Cosmic) deliberately diverge from what's actually printed
+today rather than codify it. Existing cards are not being retroactively
+changed to fit — this is guidance for new cards (including ones authored via
+the Card Creator) and future balance calls.
+
+- **Animal — Aggro.** Bottom-heavy curve (1–3 majority, thin past 5–6).
+  Highest stats-for-cost of any tribe plus the deepest Charge/Windfury/
+  Initiative concentration. Con: almost no healing or draw in-tribe — must
+  close the game fast or run out of gas.
+- **Demon — Aggressive midrange (risk/reward).** Currently an even 1–6
+  spread; a top-end bomb is planned to round the curve out. Highest Deathcry
+  concentration in the game plus Lifesteal-heavy. Con: self-damage riders
+  mean it can race itself if the payoff isn't converted into a win.
+- **Humanoid — Generalist midrange / "glue" tribe.** Broadest, most evenly
+  filled curve (1–7, rare 10-drop). Anthem/aura value, widest keyword spread
+  (draw, heal, Taunt). Con: no single strong identity — competent everywhere,
+  dominant nowhere; wants a second tribe splashed in for a real plan.
+- **Elemental — Go-wide (token swarm).** Curve carries token/summon
+  generators throughout, not just at the top. Pro: floods the board for
+  cheap, and payoffs (other minions/spells that care about token count or
+  "whenever you summon") turn that width into value. Con: weak to board
+  wipes — the whole plan is a wide board of individually weak bodies.
+- **Nature — Tall / protect.** Curve invests in a small number of
+  above-rate threats plus buff/protection tools to keep them alive, rather
+  than filling the board. Win condition is sticking one big minion and
+  defending it (health/shield/keyword buffs, healing it back up) until it
+  closes the game alone. Con: single point of failure — removal or silence
+  on the protected minion blanks the whole turn's investment, and the tribe
+  has little board presence to fall back on if that minion doesn't stick.
+- **Cosmic — Control (late-game payoffs).** Thin early, biggest top-end
+  payoffs of any tribe (Veiled, repeatable paid abilities, card draw) — wins
+  a game that goes long. Con: little ability to defend itself early; a pure
+  Cosmic deck needs another tribe splashed in for early-game survival before
+  its payoffs come online.
+- **Holy — Control (survivability).** Evenly spread 3–9, keyword-stacked
+  finisher at top. Best healing/Divine Shield concentration — hardest tribe
+  to kill outright. Con: light on draw/removal — stabilizes but doesn't
+  proactively close games.
+- **Underworld — Midrange/control, graveyard risk-reward.** Light early, one
+  true late-game bomb, Veiled-heavy. Deathcry/graveyard-count payoffs scale
+  as more has died. Con: below-vanilla stats and needs an early graveyard to
+  fuel its payoffs — starves if rushed before minions start dying.
+
+Don't conflate this with the Elemental **Aether** resource categories
+(fire/water/earth/air, used for cost-gating on some cards, see "Resource
+system roadmap: Aether" above) — a separate mechanic from the `Tribe` system.
 
 ## Card Creator
 

@@ -8,7 +8,7 @@ import { TurnPhase } from '../types/GameState';
 import { canAffordAetherCost, countUntappedPlain, payGenericAether, untapAllAether } from './aether';
 import { resolveEffectValue } from './counters';
 import { canDeclareAttack, hasKeyword, isTargetable, tauntRestrictedTargets } from './keywordRules';
-import { minionHasTribe, restrictionTribe } from './tribes';
+import { chosenSideOf, isChosenTarget, minionHasTribe, restrictionTribe } from './tribes';
 
 type PendingAction =
     | { type: 'playCard'; instanceId: string }
@@ -686,7 +686,7 @@ export class TurnStateMachine {
             const prompt = this.pendingPrompts[this.pendingChosenTargets.length];
             return {
                 sourceInstanceId: prompt.sourceInstanceId,
-                validTargetIds: this.computeValidTargetsForRestriction(prompt.action.chosenRestriction, ownerId),
+                validTargetIds: this.computeValidTargetsForRestriction(prompt.action.chosenRestriction, ownerId, chosenSideOf(prompt.action.target)),
                 action: prompt.action,
                 step: 1 + this.pendingChosenTargets.length + 1,
                 totalSteps,
@@ -718,17 +718,22 @@ export class TurnStateMachine {
         return tauntUp ? attackableMinionIds : [opponentId, ...attackableMinionIds];
     }
 
-    private computeValidTargetsForRestriction(restriction: ChosenTargetRestriction | undefined, ownerId: PlayerId): string[] {
+    private computeValidTargetsForRestriction(
+        restriction: ChosenTargetRestriction | undefined,
+        ownerId: PlayerId,
+        side?: 'friendly' | 'enemy'
+    ): string[] {
         const opponentId = this.opponentOf(ownerId);
         const friendlyMinions = this.gameState.players[ownerId].board.filter(isTargetable);
         const enemyMinions = this.gameState.players[opponentId].board.filter(isTargetable);
-        const allMinions = [...friendlyMinions, ...enemyMinions];
+        const minions = side === 'friendly' ? friendlyMinions : side === 'enemy' ? enemyMinions : [...friendlyMinions, ...enemyMinions];
+        const heroes = side === 'friendly' ? [ownerId] : side === 'enemy' ? [opponentId] : [ownerId, opponentId];
 
         const tribe = restrictionTribe(restriction);
-        if (tribe) return allMinions.filter((c) => minionHasTribe(CARD_DEFINITIONS[c.definitionId], tribe)).map((c) => c.instanceId);
-        if (restriction === 'minion') return allMinions.map((c) => c.instanceId);
-        if (restriction === 'hero') return [ownerId, opponentId];
-        return [ownerId, opponentId, ...allMinions.map((c) => c.instanceId)];
+        if (tribe) return minions.filter((c) => minionHasTribe(CARD_DEFINITIONS[c.definitionId], tribe)).map((c) => c.instanceId);
+        if (restriction === 'minion') return minions.map((c) => c.instanceId);
+        if (restriction === 'hero') return heroes;
+        return [...heroes, ...minions.map((c) => c.instanceId)];
     }
 
     /** Every prompt still needed for `action`, in the exact order triggerEffects/triggerBoardWide/
@@ -749,7 +754,7 @@ export class TurnStateMachine {
      * own guard) so nothing prompts for a target that would go unused. */
     private collectPendingPrompts(action: PendingAction, ownerId: PlayerId): PendingPrompt[] {
         const needsPrompt = (a: EffectAction): a is Extract<EffectAction, { target: TargetSelector }> =>
-            'target' in a && a.target === 'chosen' && !('reuseTarget' in a && a.reuseTarget);
+            'target' in a && isChosenTarget(a.target) && !('reuseTarget' in a && a.reuseTarget);
         const promptsFor = (sourceInstanceId: string, effects: CardEffect[] | undefined): PendingPrompt[] =>
             (effects ?? []).flatMap((e) => e.actions).filter(needsPrompt).map((a) => ({ sourceInstanceId, action: a }));
         const boardWidePrompts = (trigger: EffectTrigger, board: CardInstance[]): PendingPrompt[] =>
@@ -844,7 +849,7 @@ export class TurnStateMachine {
      * none exist. Either path writes through the same cursor object, so `reuseTarget: true` actions
      * read `cursor.last` correctly regardless of which path produced it. */
     private *resolveChosenTargetId(sourceInstanceId: string, action: EffectAction, ownerId: PlayerId, cursor: ChosenTargetCursor): Generator<TargetRequest, string | undefined, string> {
-        if (!('target' in action) || action.target !== 'chosen') return undefined;
+        if (!('target' in action) || !isChosenTarget(action.target)) return undefined;
         if ('reuseTarget' in action && action.reuseTarget) return cursor.last;
 
         if (cursor.index < cursor.ids.length) {
@@ -853,7 +858,7 @@ export class TurnStateMachine {
             return chosenTargetId;
         }
 
-        const validTargetIds = this.computeValidTargetsForRestriction(action.chosenRestriction, ownerId);
+        const validTargetIds = this.computeValidTargetsForRestriction(action.chosenRestriction, ownerId, chosenSideOf(action.target));
         if (validTargetIds.length === 0) return undefined;
         const chosenTargetId: string = yield { sourceInstanceId, action, validTargetIds, ownerId };
         cursor.ids.push(chosenTargetId);
@@ -947,6 +952,8 @@ export class TurnStateMachine {
             case 'enemyHero':
                 return [opponentId];
             case 'chosen':
+            case 'friendlyChosen':
+            case 'enemyChosen':
                 return chosenTargetId ? [chosenTargetId] : [];
             case 'allFriendlyMinions':
                 return this.gameState.players[ownerId].board.filter(matchesTribe).map((c) => c.instanceId);
@@ -958,6 +965,11 @@ export class TurnStateMachine {
                     .map((c) => c.instanceId);
             case 'allOtherMinions':
                 return [...this.gameState.players[ownerId].board, ...this.gameState.players[opponentId].board]
+                    .filter(matchesTribe)
+                    .filter((c) => c.instanceId !== sourceId)
+                    .map((c) => c.instanceId);
+            case 'allOtherFriendlyMinions':
+                return this.gameState.players[ownerId].board
                     .filter(matchesTribe)
                     .filter((c) => c.instanceId !== sourceId)
                     .map((c) => c.instanceId);
@@ -1101,8 +1113,9 @@ export class TurnStateMachine {
     /** Whether `aura` (granted by `source`) reaches `recipient` — target selector resolved relative
      * to `source`'s own owner (auras are source-relative, not viewer-relative), plus tribeFilter. A
      * source matching its own aura's criteria buffs itself too, no self-exclusion special-casing —
-     * the literal reading of "All Demon you control" — except 'allOtherMinions', the one target
-     * that's deliberately self-excluding by design. */
+     * the literal reading of "All Demon you control" — except 'allOtherMinions'/'allOtherFriendlyMinions',
+     * the two targets that are deliberately self-excluding by design (the latter is just the
+     * single-board version of the former). */
     private auraApplies(aura: CardAura, source: CardInstance, recipient: CardInstance): boolean {
         if (aura.tribeFilter && !minionHasTribe(CARD_DEFINITIONS[recipient.definitionId], aura.tribeFilter)) return false;
         switch (aura.target) {
@@ -1114,6 +1127,8 @@ export class TurnStateMachine {
                 return true;
             case 'allOtherMinions':
                 return recipient.instanceId !== source.instanceId;
+            case 'allOtherFriendlyMinions':
+                return recipient.owner === source.owner && recipient.instanceId !== source.instanceId;
         }
     }
 

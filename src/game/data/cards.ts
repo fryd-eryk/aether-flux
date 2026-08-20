@@ -78,7 +78,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Hellsmoke Lurker",
         cost: { generic: 1 },
         type: "minion",
-        text: "(3): Gain *Veiled*.",
+        text: "(3): Gain *Veiled* until the end of next turn.",
         attack: 1,
         health: 1,
         tribes: ["underworld"],
@@ -282,7 +282,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Burst of Initiative",
         cost: { generic: 3 },
         type: "spell",
-        text: "Target minion gets +2/-1 and **Initiative** until end of turn.",
+        text: "Target minion gains +2/-1 and *Initiative* until end of turn.",
         effects: [
             {
                 trigger: "onPlay",
@@ -325,7 +325,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Survivor's Anthem",
         cost: { generic: 3 },
         type: "spell",
-        text: "Target minion gets +1/+2 and **Divine Shield**.",
+        text: "Target minion gains +1/+2 and *Divine Shield*.",
         effects: [
             {
                 trigger: "onPlay",
@@ -367,7 +367,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Shirvaan Assassin",
         cost: { generic: 3 },
         type: "minion",
-        text: "**Strike:** Deal 1 damage to the enemy player.",
+        text: "When Shirvaan Assassin attacks, deal 1 damage to the opponent.",
         attack: 3,
         health: 1,
         tribes: ["humanoid","underworld"],
@@ -384,7 +384,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "common",
-        artVerticalAlign: "center",
     },
     "mind-lost-cultist": {
         id: "mind-lost-cultist",
@@ -440,7 +439,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Vampiric Doomcaller",
         cost: { generic: 4 },
         type: "minion",
-        text: "**Anthem:** Deal 3 damage to the enemy player.\n**Deathcry:** Deal 3 damage to you.",
+        text: "**Anthem:** Deal 3 damage to the opponent.\n**Deathcry:** Deal 3 damage to you.",
         attack: 2,
         health: 3,
         keywords: ["lifesteal"],
@@ -518,7 +517,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Whelp of Eloki Woods",
         cost: { generic: 1 },
         type: "minion",
-        text: "**Vigil:** Whelp of Eloki Woods heals for X, where X is the number of minions you control.",
+        text: "At the start of turn, restore {X} Health to Whelp of Eloki Woods, where X is the number of friendly minions.",
         attack: 1,
         health: 2,
         tribes: ["elemental","nature"],
@@ -542,7 +541,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Celestial Chaser",
         cost: { generic: 1 },
         type: "minion",
-        text: "When Celestial Chaser attacks, draw X cards where X is the number of minions the opponent controls.",
+        text: "When Celestial Chaser attacks, draw {X} cards, where X is the number of enemy minions.",
         attack: 1,
         health: 1,
         tribes: ["cosmic"],
@@ -565,7 +564,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Infectious Imp",
         cost: { generic: 2 },
         type: "minion",
-        text: "**Deathcry:** Deal 1 damage to the enemy player.",
+        text: "**Deathcry:** Deal 1 damage to the opponent.",
         attack: 1,
         health: 1,
         keywords: ["venom"],
@@ -589,7 +588,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Primal Stampede",
         cost: { generic: 2 },
         type: "spell",
-        text: "All your minions gain *Initiative *until end of turn.",
+        text: "All your minions gain *Initiative* until end of turn.",
         effects: [
             {
                 trigger: "onPlay",
@@ -599,36 +598,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                         keyword: "initiative",
                         target: "allFriendlyMinions",
                         duration: 1,
-                    },
-                ],
-            },
-        ],
-        rarity: "rare",
-        artVerticalAlign: "bottom",
-    },
-    "bog-witch": {
-        id: "bog-witch",
-        name: "Sad Bog Witch",
-        cost: { generic: 3 },
-        type: "minion",
-        text: "When one of your minions dies, Sad Bog Witch deals 1 damage to you and gains +1/+0.",
-        attack: 0,
-        health: 3,
-        tribes: ["nature","demon"],
-        effects: [
-            {
-                trigger: "onFriendlyMinionDeath",
-                actions: [
-                    {
-                        kind: "buff",
-                        attack: 1,
-                        health: 0,
-                        target: "self",
-                    },
-                    {
-                        kind: "damage",
-                        amount: 1,
-                        target: "friendlyHero",
                     },
                 ],
             },
@@ -664,7 +633,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Elemental Spray",
         cost: { generic: 3 },
         type: "spell",
-        text: "Deal X damage to a minion, where X is the number of *Elemental* minions.",
+        text: "Deal {X} damage to a minion, where X is the number of *Elemental* minions.",
         effects: [
             {
                 trigger: "onPlay",
@@ -680,12 +649,42 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "rare",
     },
+    "sad-bog-witch": {
+        id: "sad-bog-witch",
+        name: "Sad Bog Witch",
+        cost: { generic: 3 },
+        type: "minion",
+        text: "When a friendly minion dies, Sad Bog Witch deals 1 damage to you and gains +1/+0.",
+        attack: 0,
+        health: 3,
+        tribes: ["nature","demon"],
+        effects: [
+            {
+                trigger: "onFriendlyMinionDeath",
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: 1,
+                        health: 0,
+                        target: "self",
+                    },
+                    {
+                        kind: "damage",
+                        amount: 1,
+                        target: "friendlyHero",
+                    },
+                ],
+            },
+        ],
+        rarity: "rare",
+        artVerticalAlign: "bottom",
+    },
     "sapping-leech": {
         id: "sapping-leech",
         name: "Sapping Leech",
         cost: { generic: 4 },
         type: "minion",
-        text: "**Vigil:** Restore 1 Health to you and deal 1 damage to the enemy player.",
+        text: "At the start of turn, restore 1 Health to you and deal 1 damage to the opponent.",
         attack: 1,
         health: 4,
         tribes: ["nature"],
@@ -714,7 +713,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Grave Warden",
         cost: { generic: 4 },
         type: "minion",
-        text: "Deathcry: Draw a card.",
+        text: "**Deathcry:** Draw a card.",
         attack: 2,
         health: 2,
         keywords: ["taunt"],
@@ -820,7 +819,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Squall Falconer",
         cost: { generic: 5 },
         type: "minion",
-        text: "**Anthem:** Give your minions +1/+0.",
+        text: "**Anthem:** Friendly minions gain +1/+0.",
         attack: 3,
         health: 3,
         keywords: ["windfury"],
@@ -845,7 +844,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         cost: { generic: 5 },
         type: "minion",
         text: "**Anthem:** summon a 1/2 Ember Fledgling.",
-        attack: 3,
+        attack: 4,
         health: 4,
         tribes: ["humanoid","elemental"],
         effects: [
@@ -889,7 +888,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Warlord's Rally",
         cost: { generic: 5 },
         type: "spell",
-        text: "All your minions get +2/+2. *Humanoid* minions get  +3/+4 instead.",
+        text: "All your minions gain +2/+2. *Humanoid* minions gain +3/+4 instead.",
         effects: [
             {
                 trigger: "onPlay",
@@ -917,7 +916,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Duskbound Reaver",
         cost: { generic: 6 },
         type: "minion",
-        text: "(3): Target minion gets -1/-1. Deal 2 damage to you. ",
+        text: "(3): Target minion gets -1/-1 until end of turn. Deal 2 damage to you.",
         attack: 5,
         health: 5,
         tribes: ["underworld","demon"],
@@ -929,7 +928,9 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                         kind: "buff",
                         attack: -1,
                         health: -1,
-                        target: "allFriendlyMinions",
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                        duration: 1,
                     },
                     {
                         kind: "damage",
@@ -946,7 +947,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Windroc Sky-Marshal",
         cost: { generic: 6 },
         type: "minion",
-        text: "**Muster:** Windroc Sky-Marshal gains +1/+1 until end of turn.",
+        text: "When you cast a minion, Windroc Sky-Marshal gains +1/+1 until end of turn.",
         attack: 3,
         health: 5,
         keywords: ["windfury"],
@@ -972,7 +973,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Mass Restoration",
         cost: { generic: 6 },
         type: "spell",
-        text: "Restore 6 Health to you. Restore 4 Health to all minions you control.",
+        text: "Restore 6 Health to you. Restore 4 Health to all friendly minions.",
         effects: [
             {
                 trigger: "onPlay",
@@ -1023,7 +1024,24 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "City-wide Riots",
         cost: { generic: 6 },
         type: "spell",
-        text: "TODO",
+        text: "Deal 4 damage to all minions and all heroes.",
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 4,
+                        target: "allMinions",
+                    },
+                    {
+                        kind: "damage",
+                        amount: 4,
+                        target: "allHeroes",
+                    },
+                ],
+            },
+        ],
         rarity: "rare",
         artVerticalAlign: "top",
     },
@@ -1034,15 +1052,16 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Blood Moon Ritual",
         cost: { generic: 2 },
         type: "spell",
-        text: "Deal 2 damage to all friendly minions and draw 3 cards.",
+        text: "Deal 6 damage to a minion and draw 3 cards.",
         effects: [
             {
                 trigger: "onPlay",
                 actions: [
                     {
                         kind: "damage",
-                        amount: 2,
-                        target: "allFriendlyMinions",
+                        amount: 6,
+                        target: "friendlyChosen",
+                        chosenRestriction: "minion",
                     },
                     {
                         kind: "draw",
@@ -1059,7 +1078,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Crast Witness",
         cost: { generic: 2 },
         type: "minion",
-        text: "**Anthem:** draw X cards, where X is half the number of cards in the opponent's hand.",
+        text: "**Anthem:** draw {X} cards, where X is half the number of cards in the opponent's hand.",
         attack: 2,
         health: 2,
         tribes: ["humanoid","animal"],
@@ -1082,7 +1101,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Spiral Spider",
         cost: { generic: 2 },
         type: "minion",
-        text: "All enemy *Animal* get -X/-0 where X is the number of *Animal* in play.",
+        text: "All enemy *Animal* get -X/-0, where X is the number of *Animal* in play.",
         attack: 2,
         health: 1,
         tribes: ["nature","animal"],
@@ -1090,7 +1109,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             {
                 target: "allEnemyMinions",
                 tribeFilter: "animal",
-                attack: { counter: "allTribeMinionCount", tribe: "animal" },
+                attack: { counter: "allTribeMinionCount", multiplier: -1, tribe: "animal" },
             },
         ],
         rarity: "exotic",
@@ -1100,7 +1119,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Forced Coronation",
         cost: { generic: 3 },
         type: "spell",
-        text: "Target minion gets +3/+3 and is silenced.",
+        text: "Target minion gains +3/+3 and is silenced.",
         effects: [
             {
                 trigger: "onPlay",
@@ -1129,7 +1148,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Soulgorger Hound",
         cost: { generic: 3 },
         type: "minion",
-        text: "**Deathcry:** Deal X damage to target minion or player, where X is the number of cards in your grave.",
+        text: "**Deathcry:** Deal {X} damage to target minion or player, where X is the number of cards in your grave.",
         attack: 2,
         health: 3,
         keywords: ["veiled"],
@@ -1182,7 +1201,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         type: "minion",
         text: "",
         attack: 3,
-        health: 5,
+        health: 4,
         keywords: ["taunt","initiative"],
         tribes: ["humanoid"],
         rarity: "exotic",
@@ -1192,7 +1211,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Fortune’s Weaver",
         cost: { generic: 5 },
         type: "minion",
-        text: "When you cast a spell or play a minion, draw a card.",
+        text: "When you cast a spell or a minion, draw a card.",
         attack: 1,
         health: 4,
         tribes: ["cosmic"],
@@ -1228,6 +1247,22 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         attack: 3,
         health: 3,
         tribes: ["demon"],
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 2,
+                        target: "friendlyHero",
+                    },
+                    {
+                        kind: "draw",
+                        count: 2,
+                    },
+                ],
+            },
+        ],
         rarity: "exotic",
         artVerticalAlign: "bottom",
     },
@@ -1236,7 +1271,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Teacher of Fenh's Way",
         cost: { generic: 5 },
         type: "minion",
-        text: "When Teacher of Fenh's Ways attacks, it deals X damage to the opponent, where X is the number of cards in their hand.",
+        text: "When Teacher of Fenh's Way attacks, it deals {X} damage to the opponent, where X is the number of cards in their hand.",
         attack: 3,
         health: 4,
         tribes: ["holy"],
@@ -1289,8 +1324,8 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "exotic",
         artVerticalAlign: "bottom",
     },
-    "world-ending-rift": {
-        id: "world-ending-rift",
+    "hundred-days-storm": {
+        id: "hundred-days-storm",
         name: "Hundred Days Storm",
         cost: { generic: 6 },
         type: "spell",
@@ -1319,16 +1354,16 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     "genesis-wellspring": {
         id: "genesis-wellspring",
         name: "Genesis Wellspring",
-        cost: { generic: 7 },
+        cost: { generic: 7, elemental: { category: "water", threshold: 3 } },
         type: "spell",
-        text: "Restore 11 Health to you. Draw 2 cards.",
+        text: "Restore 12 Health to you. Draw 2 cards.",
         effects: [
             {
                 trigger: "onPlay",
                 actions: [
                     {
                         kind: "heal",
-                        amount: 11,
+                        amount: 12,
                         target: "friendlyHero",
                     },
                     {
@@ -1369,7 +1404,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Eternal Phoenix Sovereign",
         cost: { generic: 9 },
         type: "minion",
-        text: "**Anthem:** your minions get +1/+2.\nWhen you cast a minion, all your minions gain 3 Health.",
+        text: "**Anthem:** friendly minions gain +1/+2.\nWhen you cast a minion, restore 3 Health to friendly minions.",
         attack: 4,
         health: 5,
         tribes: ["elemental","animal"],
@@ -1400,13 +1435,13 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "bottom",
     },
 
-    // --- Legendary rarity (7) ---
+    // --- Legendary rarity (6) ---
     "stargazer-bladd": {
         id: "stargazer-bladd",
         name: "Stargazer Bladd",
         cost: { generic: 2 },
         type: "minion",
-        text: "**Mourn:** draw a card. You lose 1 Health.\n**Curfew:** Summon a 0/1 Fractal Fragment token.",
+        text: "When one of your minions dies, draw a card. You lose 1 Health.\nAt the end of turn, summon a 0/1 Fractal Fragment token.",
         attack: 2,
         health: 2,
         tribes: ["humanoid","cosmic"],
@@ -1467,7 +1502,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     "disallowed-prince-halaard": {
         id: "disallowed-prince-halaard",
         name: "Disallowed Prince Halaard",
-        cost: { generic: 7 },
+        cost: { generic: 6 },
         type: "minion",
         text: "When Halaard is wounded, it deals 1 damage to you.",
         attack: 5,
@@ -1494,7 +1529,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Protector of the Mana Forest",
         cost: { generic: 7 },
         type: "minion",
-        text: "At the end of your turn, your minions get +0/+1.",
+        text: "At the end of turn, friendly minions gain +0/+1.",
         attack: 4,
         health: 5,
         keywords: ["taunt"],
@@ -1519,25 +1554,32 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Absheron, Deepcrypt Keeper",
         cost: { generic: 7 },
         type: "minion",
-        text: "TODO",
-        attack: 6,
-        health: 6,
+        text: "All other friendly minions gain +X/+X, where X is half the number of cards in your grave.",
+        attack: 4,
+        health: 4,
         tribes: ["holy","underworld"],
+        auras: [
+            {
+                target: "allOtherFriendlyMinions",
+                attack: { counter: "friendlyGraveyardCount", multiplier: 0.5 },
+                health: { counter: "friendlyGraveyardCount", multiplier: 0.5 },
+            },
+        ],
         rarity: "legendary",
     },
     "fiend-warlord": {
         id: "fiend-warlord",
         name: "Fiend Warlord",
-        cost: { generic: 8 },
+        cost: { generic: 8, elemental: { category: "fire", threshold: 3 } },
         type: "minion",
-        text: "All your *Demon* get +2/+0.",
-        attack: 4,
+        text: "All other friendly *Demon* gain +2/+0.",
+        attack: 5,
         health: 6,
         keywords: ["lifesteal"],
         tribes: ["demon"],
         auras: [
             {
-                target: "allFriendlyMinions",
+                target: "allOtherFriendlyMinions",
                 tribeFilter: "demon",
                 attack: 2,
                 health: 0,
@@ -1546,34 +1588,8 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "legendary",
         artVerticalAlign: "top",
     },
-    "doomscar-fissure": {
-        id: "doomscar-fissure",
-        name: "Doomscar Fissure",
-        cost: { generic: 9 },
-        type: "spell",
-        text: "Deal 5 damage to all minions. Summon a **Vampiric Doomcaller**.",
-        effects: [
-            {
-                trigger: "onPlay",
-                actions: [
-                    {
-                        kind: "damage",
-                        amount: 5,
-                        target: "allMinions",
-                    },
-                    {
-                        kind: "summon",
-                        definitionId: "vampiric-doomcaller",
-                        count: 1,
-                    },
-                ],
-            },
-        ],
-        rarity: "legendary",
-        artVerticalAlign: "bottom",
-    },
 
-    // --- Mythical rarity (4) ---
+    // --- Mythical rarity (5) ---
     "eldonnyr-fractal-sovereign": {
         id: "eldonnyr-fractal-sovereign",
         name: "Eldonnyr, Fractal Sovereign",
@@ -1641,7 +1657,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Theredas, Faroria's Last Hope",
         cost: { generic: 10 },
         type: "minion",
-        text: "**Curfew:** Restore 3 Health to you.\n**Deathcry:** Summon Theredas, the Plaguewoven.",
+        text: "At the end of turn, restore 3 Health to you.\n**Deathcry:** Summon Theredas, the Plaguewoven.",
         attack: 4,
         health: 5,
         keywords: ["taunt","divineShield"],
@@ -1670,6 +1686,36 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "mythical",
         artVerticalAlign: "bottom",
+    },
+    "fractal-rift": {
+        id: "fractal-rift",
+        name: "Fractal Rift",
+        cost: { generic: 10, elemental: { category: "air", threshold: 3 } },
+        type: "spell",
+        text: "Deal 6 damage to all minions. Summon a Fractal Spawn and a Fractal Fragment.",
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 6,
+                        target: "allMinions",
+                    },
+                    {
+                        kind: "summon",
+                        definitionId: "fractal-spawn",
+                        count: 1,
+                    },
+                    {
+                        kind: "summon",
+                        definitionId: "fractal-fragment",
+                        count: 1,
+                    },
+                ],
+            },
+        ],
+        rarity: "mythical",
     },
 
     // --- Aether (resource cards — no rarity, no cost of their own) ---
@@ -1759,7 +1805,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Fractal Fragment",
         cost: { generic: 1 },
         type: "token",
-        text: "When you cast a spell, gains +1/+0.",
+        text: "When you cast a spell, it gains +1/+0 until end of turn.",
         attack: 0,
         health: 1,
         tribes: ["cosmic"],
@@ -1776,5 +1822,16 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                 ],
             },
         ],
+    },
+    "fractal-spawn": {
+        id: "fractal-spawn",
+        name: "Fractal Spawn",
+        cost: { generic: 1 },
+        type: "token",
+        text: "",
+        attack: 4,
+        health: 4,
+        tribes: ["cosmic"],
+        artVerticalAlign: "center",
     },
 };
