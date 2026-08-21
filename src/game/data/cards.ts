@@ -142,26 +142,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "bottom",
     },
-    "silencing-rune": {
-        id: "silencing-rune",
-        name: "Silencing Rune",
-        cost: { generic: 2 },
-        type: "spell",
-        text: "Silence a minion.",
-        effects: [
-            {
-                trigger: "onPlay",
-                actions: [
-                    {
-                        kind: "silence",
-                        target: "chosen",
-                        chosenRestriction: "minion",
-                    },
-                ],
-            },
-        ],
-        rarity: "common",
-    },
     "clockwork-tinkerer": {
         id: "clockwork-tinkerer",
         name: "Clockwork Tinkerer",
@@ -178,26 +158,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                     {
                         kind: "draw",
                         count: 1,
-                    },
-                ],
-            },
-        ],
-        rarity: "common",
-    },
-    "radiant-orb": {
-        id: "radiant-orb",
-        name: "Radiant Orb",
-        cost: { generic: 2 },
-        type: "spell",
-        text: "Restore 5 Health.",
-        effects: [
-            {
-                trigger: "onPlay",
-                actions: [
-                    {
-                        kind: "heal",
-                        amount: 5,
-                        target: "chosen",
                     },
                 ],
             },
@@ -264,6 +224,47 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         health: 5,
         keywords: ["veiled"],
         tribes: ["cosmic"],
+        rarity: "common",
+        artVerticalAlign: "top",
+    },
+    "silencing-rune": {
+        id: "silencing-rune",
+        name: "Silencing Rune",
+        cost: { generic: 3 },
+        type: "spell",
+        text: "Silence a minion.",
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "silence",
+                        target: "chosen",
+                        chosenRestriction: "minion",
+                    },
+                ],
+            },
+        ],
+        rarity: "common",
+    },
+    "radiant-orb": {
+        id: "radiant-orb",
+        name: "Radiant Orb",
+        cost: { generic: 3 },
+        type: "spell",
+        text: "Restore 5 Health.",
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "heal",
+                        amount: 5,
+                        target: "chosen",
+                    },
+                ],
+            },
+        ],
         rarity: "common",
     },
     "starbound-seer": {
@@ -1195,8 +1196,8 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         type: "minion",
         text: "**Anthem:** draw {X} cards, where X is half the number of cards in the opponent's hand.",
         attack: 2,
-        health: 2,
-        tribes: ["humanoid","animal"],
+        health: 1,
+        tribes: ["humanoid"],
         effects: [
             {
                 trigger: "onPlay",
@@ -1253,8 +1254,8 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
     },
-    "new-card": {
-        id: "new-card",
+    "sublime-castle-remnant": {
+        id: "sublime-castle-remnant",
         name: "Sublime Castle Remnant",
         cost: { generic: 2 },
         type: "minion",
@@ -1678,7 +1679,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Stargazer Bladd",
         cost: { generic: 2 },
         type: "minion",
-        text: "When one of your minions dies, draw a card. You lose 1 Health.\nAt the end of turn, summon a 0/1 Fractal Fragment token.",
+        text: "When one of your minions dies, draw a card. You lose 1 Health.\nAt the end of turn, summon a 0/1 Fractal Fragment.",
         attack: 2,
         health: 2,
         tribes: ["humanoid","cosmic"],
