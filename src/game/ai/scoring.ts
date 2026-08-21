@@ -3,7 +3,7 @@ import { canAffordAetherCost, countUntappedPlain } from '../state/aether';
 import { resolveEffectValue } from '../state/counters';
 import { canDeclareAttack, hasKeyword, isTargetable, tauntRestrictedTargets } from '../state/keywordRules';
 import { chosenSideOf, isChosenTarget, minionHasTribe, restrictionTribe, restrictsToMinion } from '../state/tribes';
-import type { CardDefinition, CardInstance, ChosenTargetRestriction, EffectAction, Keyword, PaidAbility, Tribe } from '../types/Card';
+import type { CardDefinition, CardInstance, ChosenTargetRestriction, EffectAction, EffectCondition, Keyword, PaidAbility, Tribe } from '../types/Card';
 import type { PlayerId } from '../types/common';
 import type { GameState } from '../types/GameState';
 
@@ -42,9 +42,17 @@ function effectActionsValue(actions: EffectAction[], state: GameState, ownerId: 
     return actions.reduce((sum, action) => sum + estimateEffectValue(action, state, ownerId, sourceId), 0);
 }
 
-/** True if `effect`'s Momentum(N) condition (if any) is satisfied given `owner`'s cards played so far this turn. */
-function momentumSatisfied(effect: { condition?: { type: 'momentum'; minCount: number } }, owner: { cardsPlayedThisTurn: number }): boolean {
-    return !effect.condition || owner.cardsPlayedThisTurn >= effect.condition.minCount;
+/** True if `effect`'s Momentum(N) condition (if any) is satisfied given `owner`'s cards played so far this turn. Not gated on by a 'triggerTribe' condition — see triggerTribeSatisfied below for that. */
+function momentumSatisfied(effect: { condition?: EffectCondition }, owner: { cardsPlayedThisTurn: number }): boolean {
+    return effect.condition?.type !== 'momentum' || owner.cardsPlayedThisTurn >= effect.condition.minCount;
+}
+
+/** True if `effect`'s 'triggerTribe' condition (if any) is satisfied given `eventMinionDefinition` —
+ * the minion that died (Mourn) or was cast (Muster), mirroring TurnStateMachine.triggerEffects'
+ * identical check. Only mournBoardValue/musterBoardValue call this — every other trigger can't
+ * carry this condition (validateCardDefinition.ts rejects it), so its other callers don't need it. */
+function triggerTribeSatisfied(effect: { condition?: EffectCondition }, eventMinionDefinition: CardDefinition | undefined): boolean {
+    return effect.condition?.type !== 'triggerTribe' || minionHasTribe(eventMinionDefinition, effect.condition.tribe);
 }
 
 /**
@@ -363,9 +371,11 @@ function channelBoardValue(state: GameState, aiId: PlayerId, lethalAvailable: bo
  * a minion right now — mirrors channelBoardValue's shape for Channel (onSpellCast). No exclude
  * param needed unlike mournBoardValue: the minion being scored is still in hand, not yet on
  * ai.board, at scoring time (TurnStateMachine itself excludes the played instance for the same
- * reason it's naturally absent here — see executePlayCard).
+ * reason it's naturally absent here — see executePlayCard). `castDefinition` is the minion being
+ * played, for a 'triggerTribe'-gated Muster effect to check against (mirrors TurnStateMachine's
+ * eventMinionDefinitionId).
  */
-function musterBoardValue(state: GameState, aiId: PlayerId, lethalAvailable: boolean): number {
+function musterBoardValue(state: GameState, aiId: PlayerId, lethalAvailable: boolean, castDefinition: CardDefinition): number {
     const ai = state.players[aiId];
     return ai.board.reduce((sum, minion) => {
         if (minion.silenced) return sum;
@@ -373,7 +383,13 @@ function musterBoardValue(state: GameState, aiId: PlayerId, lethalAvailable: boo
         const musterEffects = definition?.effects?.filter((e) => e.trigger === 'onFriendlyMinionCast') ?? [];
         return (
             sum +
-            musterEffects.reduce((s, e) => (momentumSatisfied(e, ai) ? s + chosenAwareActionsValue(e.actions, state, aiId, lethalAvailable, minion.instanceId) : s), 0)
+            musterEffects.reduce(
+                (s, e) =>
+                    momentumSatisfied(e, ai) && triggerTribeSatisfied(e, castDefinition)
+                        ? s + chosenAwareActionsValue(e.actions, state, aiId, lethalAvailable, minion.instanceId)
+                        : s,
+                0
+            )
         );
     }, 0);
 }
@@ -385,13 +401,20 @@ function musterBoardValue(state: GameState, aiId: PlayerId, lethalAvailable: boo
  */
 function mournBoardValue(state: GameState, aiId: PlayerId, excludeInstanceId: string): number {
     const ai = state.players[aiId];
+    const dyingDefinition = CARD_DEFINITIONS[ai.board.find((m) => m.instanceId === excludeInstanceId)?.definitionId ?? ''];
     return ai.board.reduce((sum, minion) => {
         if (minion.instanceId === excludeInstanceId || minion.silenced) return sum;
         const definition = CARD_DEFINITIONS[minion.definitionId];
         const mournEffects = definition?.effects?.filter((e) => e.trigger === 'onFriendlyMinionDeath') ?? [];
         return (
             sum +
-            mournEffects.reduce((s, e) => (momentumSatisfied(e, ai) ? s + effectActionsValue(e.actions, state, aiId, minion.instanceId) : s), 0)
+            mournEffects.reduce(
+                (s, e) =>
+                    momentumSatisfied(e, ai) && triggerTribeSatisfied(e, dyingDefinition)
+                        ? s + effectActionsValue(e.actions, state, aiId, minion.instanceId)
+                        : s,
+                0
+            )
         );
     }, 0);
 }
@@ -464,7 +487,7 @@ export function scorePlayCard(
         const overextendPenalty = ai.board.length >= MAX_BOARD_SIZE - 1 ? 5 : 0;
         const keywordBonus = (definition.keywords ?? []).reduce((sum, keyword) => sum + KEYWORD_VALUE[keyword], 0);
         // Casting this minion also fires Muster on every other board minion with a matching effect.
-        const musterValue = musterBoardValue(state, aiId, lethalAvailable);
+        const musterValue = musterBoardValue(state, aiId, lethalAvailable, definition);
         return stats * 2 + flatEffectValue + chosenScore + keywordBonus - overextendPenalty + musterValue;
     }
 

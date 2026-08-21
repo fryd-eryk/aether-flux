@@ -36,8 +36,11 @@ function validateEffect(effect: CardEffect, prefix: string, errors: FieldErrors)
         errors[`${prefix}.actions`] = 'Add at least one effect line.';
     }
     validateActions(effect.actions, prefix, errors);
-    if (effect.condition && (!Number.isInteger(effect.condition.minCount) || effect.condition.minCount < 1)) {
+    if (effect.condition?.type === 'momentum' && (!Number.isInteger(effect.condition.minCount) || effect.condition.minCount < 1)) {
         errors[`${prefix}.condition`] = 'Momentum count must be a positive integer.';
+    }
+    if (effect.condition?.type === 'triggerTribe' && effect.trigger !== 'onFriendlyMinionDeath' && effect.trigger !== 'onFriendlyMinionCast') {
+        errors[`${prefix}.condition`] = 'A tribe restriction only applies to Mourn or Muster.';
     }
 }
 

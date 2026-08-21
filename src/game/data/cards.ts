@@ -1,7 +1,7 @@
 import type { CardDefinition } from "../types/Card";
 
 export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
-    // --- Common rarity (25) ---
+    // --- Common rarity (28) ---
     "pocket-sand": {
         id: "pocket-sand",
         name: "Pocket Sand",
@@ -254,6 +254,18 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "top",
     },
+    "voidglass-sentinel": {
+        id: "voidglass-sentinel",
+        name: "Voidglass Sentinel",
+        cost: { generic: 2 },
+        type: "minion",
+        text: "",
+        attack: 1,
+        health: 5,
+        keywords: ["veiled"],
+        tribes: ["cosmic"],
+        rarity: "common",
+    },
     "starbound-seer": {
         id: "starbound-seer",
         name: "Starbound Seer",
@@ -409,6 +421,29 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "bottom",
     },
+    "xerthas-adept": {
+        id: "xerthas-adept",
+        name: "Xerthas Adept",
+        cost: { generic: 3 },
+        type: "minion",
+        text: "**Momentum(2):** Draw a card.",
+        attack: 2,
+        health: 2,
+        tribes: ["cosmic"],
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "draw",
+                        count: 1,
+                    },
+                ],
+                condition: { type: "momentum", minCount: 2 },
+            },
+        ],
+        rarity: "common",
+    },
     "wandering-cleric": {
         id: "wandering-cleric",
         name: "Wandering Cleric",
@@ -510,8 +545,19 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "common",
         artVerticalAlign: "top",
     },
+    "ancient-grovewarden": {
+        id: "ancient-grovewarden",
+        name: "Ancient Grovewarden",
+        cost: { generic: 6 },
+        type: "minion",
+        text: "",
+        attack: 6,
+        health: 8,
+        tribes: ["nature"],
+        rarity: "common",
+    },
 
-    // --- Rare rarity (22) ---
+    // --- Rare rarity (24) ---
     "whelp-of-eloki-woods": {
         id: "whelp-of-eloki-woods",
         name: "Whelp of Eloki Woods",
@@ -679,6 +725,41 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "rare",
         artVerticalAlign: "bottom",
     },
+    "living-energy-strand": {
+        id: "living-energy-strand",
+        name: "Living Energy Strand",
+        cost: { generic: 3, elemental: { category: "fire", threshold: 1 } },
+        type: "minion",
+        text: "When you cast an *Elemental* or *Demon* minion, summon a 0/1 Spark Wisp.",
+        attack: 2,
+        health: 2,
+        tribes: ["elemental"],
+        effects: [
+            {
+                trigger: "onFriendlyMinionCast",
+                actions: [
+                    {
+                        kind: "summon",
+                        definitionId: "spark-wisp",
+                        count: 1,
+                    },
+                ],
+                condition: { type: "triggerTribe", tribe: "elemental" },
+            },
+            {
+                trigger: "onFriendlyMinionCast",
+                actions: [
+                    {
+                        kind: "summon",
+                        definitionId: "spark-wisp",
+                        count: 1,
+                    },
+                ],
+                condition: { type: "triggerTribe", tribe: "demon" },
+            },
+        ],
+        rarity: "rare",
+    },
     "sapping-leech": {
         id: "sapping-leech",
         name: "Sapping Leech",
@@ -715,7 +796,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         type: "minion",
         text: "**Deathcry:** Draw a card.",
         attack: 2,
-        health: 2,
+        health: 3,
         keywords: ["taunt"],
         tribes: ["underworld"],
         effects: [
@@ -814,6 +895,64 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         tribes: ["nature"],
         rarity: "rare",
     },
+    "emberheart-shaman": {
+        id: "emberheart-shaman",
+        name: "Emberheart Shaman",
+        cost: { generic: 4 },
+        type: "minion",
+        text: "**Anthem:** summon a 1/2 Ember Fledgling.\n**Momentum(2):** summon another 1/2 Ember Fledgling.",
+        attack: 3,
+        health: 3,
+        tribes: ["humanoid","elemental"],
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "summon",
+                        definitionId: "ember-fledgling",
+                        count: 1,
+                    },
+                ],
+            },
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "summon",
+                        definitionId: "ember-fledgling",
+                        count: 1,
+                    },
+                ],
+                condition: { type: "momentum", minCount: 2 },
+            },
+        ],
+        rarity: "rare",
+        artVerticalAlign: "bottom",
+    },
+    "scarnight-reveler": {
+        id: "scarnight-reveler",
+        name: "Scarnight Reveler",
+        cost: { generic: 4 },
+        type: "minion",
+        text: "When Scarnight Reveler is wounded, deal 1 damage to the opponent.",
+        attack: 3,
+        health: 3,
+        tribes: ["demon"],
+        effects: [
+            {
+                trigger: "onDamaged",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 1,
+                        target: "enemyHero",
+                    },
+                ],
+            },
+        ],
+        rarity: "rare",
+    },
     "squall-falconer": {
         id: "squall-falconer",
         name: "Squall Falconer",
@@ -837,30 +976,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "rare",
-    },
-    "emberheart-shaman": {
-        id: "emberheart-shaman",
-        name: "Emberheart Shaman",
-        cost: { generic: 5 },
-        type: "minion",
-        text: "**Anthem:** summon a 1/2 Ember Fledgling.",
-        attack: 4,
-        health: 4,
-        tribes: ["humanoid","elemental"],
-        effects: [
-            {
-                trigger: "onPlay",
-                actions: [
-                    {
-                        kind: "summon",
-                        definitionId: "ember-fledgling",
-                        count: 1,
-                    },
-                ],
-            },
-        ],
-        rarity: "rare",
-        artVerticalAlign: "bottom",
     },
     firebead: {
         id: "firebead",
@@ -1046,7 +1161,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         artVerticalAlign: "top",
     },
 
-    // --- Exotic rarity (15) ---
+    // --- Exotic rarity (20) ---
     "blood-moon-ritual": {
         id: "blood-moon-ritual",
         name: "Blood Moon Ritual",
@@ -1114,6 +1229,59 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "exotic",
     },
+    "arkhama-s-envoy": {
+        id: "arkhama-s-envoy",
+        name: "Arkhama's Envoy",
+        cost: { generic: 2 },
+        type: "minion",
+        text: "At the start of turn, restore 2 Health to you.",
+        attack: 1,
+        health: 2,
+        keywords: ["divineShield"],
+        tribes: ["holy"],
+        effects: [
+            {
+                trigger: "startOfTurn",
+                actions: [
+                    {
+                        kind: "heal",
+                        amount: 2,
+                        target: "friendlyHero",
+                    },
+                ],
+            },
+        ],
+        rarity: "exotic",
+    },
+    "new-card": {
+        id: "new-card",
+        name: "Sublime Castle Remnant",
+        cost: { generic: 2 },
+        type: "minion",
+        text: "**Momentum(2):** Deal 2 damage to you and 4 damage to the opponent.",
+        attack: 2,
+        health: 2,
+        tribes: ["demon"],
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: 2,
+                        target: "friendlyHero",
+                    },
+                    {
+                        kind: "damage",
+                        amount: 4,
+                        target: "enemyHero",
+                    },
+                ],
+                condition: { type: "momentum", minCount: 2 },
+            },
+        ],
+        rarity: "exotic",
+    },
     "forced-coronation": {
         id: "forced-coronation",
         name: "Forced Coronation",
@@ -1168,9 +1336,53 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "exotic",
         artVerticalAlign: "bottom",
     },
-    "quickfire-adept": {
-        id: "quickfire-adept",
-        name: "Quickfire Adept",
+    "thornshield-conjurer": {
+        id: "thornshield-conjurer",
+        name: "Thornshield Conjurer",
+        cost: { generic: 3 },
+        type: "minion",
+        text: "(3): Target friendly minion gains Divine Shield.",
+        attack: 2,
+        health: 4,
+        tribes: ["nature"],
+        paidAbilities: [
+            {
+                cost: 3,
+                actions: [
+                    {
+                        kind: "grantKeyword",
+                        keyword: "divineShield",
+                        target: "friendlyChosen",
+                        chosenRestriction: "minion",
+                    },
+                ],
+            },
+        ],
+        rarity: "exotic",
+    },
+    "cascading-ignition": {
+        id: "cascading-ignition",
+        name: "Cascading Ignition",
+        cost: { generic: 4, elemental: { category: "fire", threshold: 2 } },
+        type: "spell",
+        text: "Deal {X} damage to all enemy minions, where X is the number of friendly minions.",
+        effects: [
+            {
+                trigger: "onPlay",
+                actions: [
+                    {
+                        kind: "damage",
+                        amount: { counter: "friendlyMinionCount" },
+                        target: "allEnemyMinions",
+                    },
+                ],
+            },
+        ],
+        rarity: "exotic",
+    },
+    "quickfire-sorcerer": {
+        id: "quickfire-sorcerer",
+        name: "Quickfire Sorcerer",
         cost: { generic: 4 },
         type: "minion",
         text: "(4): Target minion gains *Charge* until end of turn.",
@@ -1283,6 +1495,31 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
                         kind: "damage",
                         amount: { counter: "enemyHandCount" },
                         target: "enemyHero",
+                    },
+                ],
+            },
+        ],
+        rarity: "exotic",
+    },
+    "druid-of-the-shattered-scar": {
+        id: "druid-of-the-shattered-scar",
+        name: "Druid of the Shattered Scar",
+        cost: { generic: 5 },
+        type: "minion",
+        text: "At the start of turn, target friendly minion gains +1/+1.",
+        attack: 3,
+        health: 5,
+        tribes: ["nature"],
+        effects: [
+            {
+                trigger: "startOfTurn",
+                actions: [
+                    {
+                        kind: "buff",
+                        attack: 1,
+                        health: 1,
+                        target: "friendlyChosen",
+                        chosenRestriction: "minion",
                     },
                 ],
             },
@@ -1614,9 +1851,22 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "mythical",
         artVerticalAlign: "center",
     },
-    "nythis-god-of-sorrow-and-panic": {
-        id: "nythis-god-of-sorrow-and-panic",
-        name: "Nythis, God of Sorrow and Panic",
+    "solem-new-dawn-foretold": {
+        id: "solem-new-dawn-foretold",
+        name: "Solem, New Dawn Foretold",
+        cost: { generic: 9 },
+        type: "minion",
+        text: "",
+        attack: 7,
+        health: 7,
+        keywords: ["charge","divineShield","lifesteal","initiative"],
+        tribes: ["holy"],
+        rarity: "mythical",
+        artVerticalAlign: "bottom",
+    },
+    "nythis-goddess-of-sorrow": {
+        id: "nythis-goddess-of-sorrow",
+        name: "Nythis, Goddess of Sorrow",
         cost: { generic: 9 },
         type: "minion",
         text: "When Nythis attacks, destroy target minion.",
@@ -1638,19 +1888,6 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         ],
         rarity: "mythical",
         artVerticalAlign: "top",
-    },
-    "solem-new-dawn-foretold": {
-        id: "solem-new-dawn-foretold",
-        name: "Solem, New Dawn Foretold",
-        cost: { generic: 9 },
-        type: "minion",
-        text: "",
-        attack: 7,
-        health: 7,
-        keywords: ["charge","divineShield","lifesteal","initiative"],
-        tribes: ["holy"],
-        rarity: "mythical",
-        artVerticalAlign: "bottom",
     },
     "theredas-farorias-last-hope": {
         id: "theredas-farorias-last-hope",
@@ -1833,5 +2070,15 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         health: 4,
         tribes: ["cosmic"],
         artVerticalAlign: "center",
+    },
+    "spark-wisp": {
+        id: "spark-wisp",
+        name: "Spark Wisp",
+        cost: { generic: 1 },
+        type: "token",
+        text: "",
+        attack: 0,
+        health: 1,
+        tribes: ["elemental"],
     },
 };

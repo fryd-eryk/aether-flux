@@ -127,8 +127,10 @@ function serializeEffect(effect: CardEffect, level: number): string {
         `${indent(level + 1)}trigger: ${JSON.stringify(effect.trigger)},`,
         `${indent(level + 1)}actions: ${serializeEffectActions(effect.actions, level + 1)},`,
     ];
-    if (effect.condition) {
+    if (effect.condition?.type === 'momentum') {
         lines.push(`${indent(level + 1)}condition: { type: "momentum", minCount: ${effect.condition.minCount} },`);
+    } else if (effect.condition?.type === 'triggerTribe') {
+        lines.push(`${indent(level + 1)}condition: { type: "triggerTribe", tribe: ${JSON.stringify(effect.condition.tribe)} },`);
     }
     lines.push(`${indent(level)}}`);
     return lines.join('\n');

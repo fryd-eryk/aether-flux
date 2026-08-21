@@ -201,7 +201,10 @@ export function withStroke(style: Phaser.Types.GameObjects.Text.TextStyle, thick
     return { ...style, stroke: '#000000', strokeThickness: thickness, resolution: CARD_TEXT_RESOLUTION };
 }
 
-export const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: 'Arial', fontSize: '12px', color: '#ffffff', align: 'left' });
+// Cinzel Bold — self-hosted (public/assets/fonts/cinzel/), loaded via fonts.ts's
+// ensureCardFontsLoaded before any card Text is created. 'Arial' fallback covers the case
+// where that load ever fails (e.g. request blocked) rather than rendering blank glyphs.
+export const NAME_STYLE: Phaser.Types.GameObjects.Text.TextStyle = withStroke({ fontFamily: '"Cinzel", Arial, sans-serif', fontSize: '12px', color: '#ffffff', align: 'left' });
 // Extra pixels Phaser adds between wrapped lines of the 'full' mode description box's rule text
 // (definition.text) — edit this to tighten/loosen its line-height. Independent of DESC_BOX_LINE_GAP
 // (the gap between the keyword line and the start of the rule text, a different measurement).

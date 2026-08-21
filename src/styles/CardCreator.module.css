@@ -463,6 +463,16 @@
     color: #9aa7bd;
 }
 
+.fieldInputRow {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.fieldInputRow .textInput {
+    flex: 1 1 auto;
+}
+
 .textInput,
 .numberInput,
 .selectInput,

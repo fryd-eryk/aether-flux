@@ -1,10 +1,16 @@
-import type { CardDefinition, CardEffect, EffectAction, EffectTrigger } from '@/game/types/Card';
+import type { CardDefinition, CardEffect, EffectAction, EffectTrigger, Tribe } from '@/game/types/Card';
 import { TRIGGER_METADATA } from '@/game/data/triggerMetadata';
+import { TRIBE_METADATA } from '@/game/data/tribeMetadata';
 import type { FieldErrors } from '../validateCardDefinition';
 import styles from '@/styles/CardCreator.module.css';
 import { ACTION_KINDS, ActionFieldsEditor, CHOSEN_TARGETS, defaultActionFor } from './ActionFieldsEditor';
 
 const TRIGGERS = Object.keys(TRIGGER_METADATA) as EffectTrigger[];
+const TRIBES = Object.keys(TRIBE_METADATA) as Tribe[];
+/** Triggers a 'triggerTribe' condition can gate — Mourn/Muster are the only two reactive-to-
+ * another-minion triggers, so they're the only ones with a "the dying/cast minion" to check a
+ * tribe against. See EffectCondition's doc comment (Card.ts). */
+const TRIGGER_TRIBE_ELIGIBLE_TRIGGERS: EffectTrigger[] = ['onFriendlyMinionDeath', 'onFriendlyMinionCast'];
 
 /** Per-index "is there an earlier real (non-reuseTarget) chosen action before this one" flag,
  * for gating the "Same target as previous effect" checkbox — mirrors
@@ -83,7 +89,16 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                 className={styles.selectInput}
                                 style={{ width: 'auto' }}
                                 value={effect.trigger}
-                                onChange={(e) => updateEffect(index, { ...effect, trigger: e.target.value as EffectTrigger })}
+                                onChange={(e) => {
+                                    const trigger = e.target.value as EffectTrigger;
+                                    // A 'triggerTribe' condition only makes sense on Mourn/Muster — drop it if the
+                                    // trigger just changed away from either, mirroring validateCardDefinition.ts.
+                                    const condition =
+                                        effect.condition?.type === 'triggerTribe' && !TRIGGER_TRIBE_ELIGIBLE_TRIGGERS.includes(trigger)
+                                            ? undefined
+                                            : effect.condition;
+                                    updateEffect(index, { ...effect, trigger, condition });
+                                }}
                             >
                                 {TRIGGERS.map((trigger) => (
                                     <option key={trigger} value={trigger}>
@@ -91,19 +106,25 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                     </option>
                                 ))}
                             </select>
-                            <label className={styles.fieldLabel} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={effect.condition?.type === 'momentum'}
-                                    onChange={(e) =>
-                                        updateEffect(index, {
-                                            ...effect,
-                                            condition: e.target.checked ? { type: 'momentum', minCount: 1 } : undefined,
-                                        })
-                                    }
-                                />
-                                Momentum
-                            </label>
+                            <select
+                                className={styles.selectInput}
+                                style={{ width: 'auto' }}
+                                value={effect.condition?.type ?? 'none'}
+                                onChange={(e) => {
+                                    const type = e.target.value;
+                                    const condition: CardEffect['condition'] =
+                                        type === 'momentum'
+                                            ? { type: 'momentum', minCount: 1 }
+                                            : type === 'triggerTribe'
+                                              ? { type: 'triggerTribe', tribe: TRIBES[0] }
+                                              : undefined;
+                                    updateEffect(index, { ...effect, condition });
+                                }}
+                            >
+                                <option value="none">No condition</option>
+                                <option value="momentum">Momentum</option>
+                                {TRIGGER_TRIBE_ELIGIBLE_TRIGGERS.includes(effect.trigger) && <option value="triggerTribe">Tribe restriction</option>}
+                            </select>
                             {effect.condition?.type === 'momentum' && (
                                 <input
                                     type="number"
@@ -119,6 +140,20 @@ export function EffectsEditor({ effects, onChange, errors, allCards }: EffectsEd
                                         })
                                     }
                                 />
+                            )}
+                            {effect.condition?.type === 'triggerTribe' && (
+                                <select
+                                    className={styles.selectInput}
+                                    style={{ width: 'auto' }}
+                                    value={effect.condition.tribe}
+                                    onChange={(e) => updateEffect(index, { ...effect, condition: { type: 'triggerTribe', tribe: e.target.value as Tribe } })}
+                                >
+                                    {TRIBES.map((tribe) => (
+                                        <option key={tribe} value={tribe}>
+                                            {TRIBE_METADATA[tribe].label}
+                                        </option>
+                                    ))}
+                                </select>
                             )}
                             {errors[`${prefix}.condition`] && <span className={styles.fieldError}>{errors[`${prefix}.condition`]}</span>}
                             <div className={styles.effectRowButtons}>

@@ -5,6 +5,7 @@ import { CardView } from './CardGame/CardView';
 import { ART_FOLDER_BY_TYPE, loadHeaderFooterBg, type CardDisplayMode } from './CardGame/cardLayout';
 import type { CardDefinition } from '../types/Card';
 import { buildPreviewInstance } from '../../cardCreator/fakeCardInstance';
+import { ensureCardFontsLoaded } from '../fonts';
 
 export interface CardCreatorPreviewUpdate {
     definition: CardDefinition;
@@ -48,13 +49,14 @@ export class CardCreatorPreview extends Scene
         loadHeaderFooterBg(this);
     }
 
-    create ()
+    async create ()
     {
         this.cardView = new CardView(this);
 
         EventBus.on('card-creator:preview-update', this.handleUpdate);
         this.events.once('shutdown', () => EventBus.removeListener('card-creator:preview-update', this.handleUpdate));
 
+        await ensureCardFontsLoaded();
         EventBus.emit('card-creator:preview-ready', this);
     }
 

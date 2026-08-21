@@ -122,6 +122,15 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
         }
     }
 
+    function generateIdFromName() {
+        const id = draft.name
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+        set('id', id);
+    }
+
     function toggleTribe(tribe: Tribe, enabled: boolean) {
         const current = new Set(draft.tribes ?? []);
         if (enabled) current.add(tribe);
@@ -142,7 +151,18 @@ export function CardForm({ draft, onChange, errors, allCards }: CardFormProps) {
                 <div className={styles.fieldRow}>
                     <div className={styles.field}>
                         <label className={styles.fieldLabel}>Id</label>
-                        <input className={styles.textInput} value={draft.id} onChange={(e) => set('id', e.target.value)} />
+                        <div className={styles.fieldInputRow}>
+                            <input className={styles.textInput} value={draft.id} onChange={(e) => set('id', e.target.value)} />
+                            <button
+                                type="button"
+                                className={styles.smallButton}
+                                title="Generate from name"
+                                disabled={!draft.name.trim()}
+                                onClick={generateIdFromName}
+                            >
+                                From name
+                            </button>
+                        </div>
                         {errors.id && <span className={styles.fieldError}>{errors.id}</span>}
                     </div>
                     <div className={styles.field}>

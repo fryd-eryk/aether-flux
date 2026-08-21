@@ -439,7 +439,7 @@ export class TurnStateMachine {
             // instead of a spell. The played minion is already sitting in player.board by this
             // point (pushed above), so it's filtered out here — otherwise it would react to its
             // own cast, which is exactly what the single-instance onPlay trigger already covers.
-            yield* this.triggerBoardWide('onFriendlyMinionCast', player.id, player.board.filter((c) => c.instanceId !== card.instanceId), cursors);
+            yield* this.triggerBoardWide('onFriendlyMinionCast', player.id, player.board.filter((c) => c.instanceId !== card.instanceId), cursors, card.definitionId);
             yield* this.sweepDeaths();
         }
         // Catch-all: keeps any dynamic-counter aura (e.g. "+1/+1 per Demon you control") correct
@@ -811,19 +811,28 @@ export class TurnStateMachine {
      * (always true for onDeath/onDamaged/onFriendlyMinionDeath — see resolveChosenTargetId) can
      * suspend mid-block for a real one. Defaults `cursor` to a fresh, empty one for exactly that
      * case — every Tier-1 call site already passes its own pre-populated cursor. */
-    private *triggerEffects(instance: CardInstance, trigger: EffectTrigger, ownerId: PlayerId, cursor?: ChosenTargetCursor): Generator<TargetRequest, void, string> {
+    private *triggerEffects(instance: CardInstance, trigger: EffectTrigger, ownerId: PlayerId, cursor?: ChosenTargetCursor, eventMinionDefinitionId?: string): Generator<TargetRequest, void, string> {
         // Silence permanently suppresses all of this instance's own effects, Deathcry included —
         // one guard here covers every trigger dispatch site, current and future.
         if (instance.silenced) return;
         const definition = CARD_DEFINITIONS[instance.definitionId];
         const effects = definition?.effects?.filter((e) => e.trigger === trigger) ?? [];
         const cardsPlayedThisTurn = this.gameState.players[ownerId].cardsPlayedThisTurn;
+        // Only Mourn/Muster callers (triggerBoardWide, via sweepDeaths/executePlayCard) pass this —
+        // the minion that died/was cast, for a 'triggerTribe' condition to check against. Every
+        // other trigger passes nothing, so a 'triggerTribe' condition authored on those (already
+        // rejected by validateCardDefinition.ts) would simply never fire, same safe fallback as an
+        // out-of-range Momentum count.
+        const eventMinionDefinition = eventMinionDefinitionId ? CARD_DEFINITIONS[eventMinionDefinitionId] : undefined;
         const activeCursor: ChosenTargetCursor = cursor ?? { ids: [], index: 0 };
         for (const effect of effects) {
             // Momentum(N): skip this effect's actions unless at least N cards were already played
             // by its owner earlier this turn — a single choke point, same pattern as the silenced
-            // guard above.
-            const satisfied = effect.condition?.type !== 'momentum' || cardsPlayedThisTurn >= effect.condition.minCount;
+            // guard above. triggerTribe: skip unless the dying/cast minion (not this effect's own
+            // source) is of the required tribe.
+            const satisfied =
+                (effect.condition?.type !== 'momentum' || cardsPlayedThisTurn >= effect.condition.minCount) &&
+                (effect.condition?.type !== 'triggerTribe' || minionHasTribe(eventMinionDefinition, effect.condition.tribe));
             for (const action of effect.actions) {
                 // The chosen-target queue (collectPendingPrompts) is built ignoring Momentum, so
                 // the cursor must still advance (for a real, non-reuseTarget chosen action) here even
@@ -877,12 +886,15 @@ export class TurnStateMachine {
      * (Tier-1's documented "invalidated pre-walked source" edge case) is correctly skipped rather
      * than firing against stale data. Omitting `cursors` (as sweepDeaths' onDeath/
      * onFriendlyMinionDeath calls do) routes every chosen action through resolveChosenTargetId's
-     * live-prompt path instead of silently no-op-ing, per this trigger's Tier-2 wiring. */
-    private *triggerBoardWide(trigger: EffectTrigger, ownerId: PlayerId, board: CardInstance[], cursors?: Map<string, ChosenTargetCursor>): Generator<TargetRequest, void, string> {
+     * live-prompt path instead of silently no-op-ing, per this trigger's Tier-2 wiring.
+     * `eventMinionDefinitionId`, passed by the Mourn/Muster call sites only, is the dying/cast
+     * minion — the thing `triggerEffects`' 'triggerTribe' condition check needs, distinct from
+     * each reacting instance's own definition. */
+    private *triggerBoardWide(trigger: EffectTrigger, ownerId: PlayerId, board: CardInstance[], cursors?: Map<string, ChosenTargetCursor>, eventMinionDefinitionId?: string): Generator<TargetRequest, void, string> {
         for (const instanceId of board.map((c) => c.instanceId)) {
             const instance = this.findMinion(instanceId)?.instance;
             if (!instance) continue;
-            yield* this.triggerEffects(instance, trigger, ownerId, cursors?.get(instance.instanceId));
+            yield* this.triggerEffects(instance, trigger, ownerId, cursors?.get(instance.instanceId), eventMinionDefinitionId);
         }
     }
 
@@ -1245,7 +1257,7 @@ export class TurnStateMachine {
                     this.moveToGraveyard(card, player);
                     EventBus.emit('state:card-died', { instanceId: card.instanceId, playerId: player.id });
                     yield* this.triggerEffects(card, 'onDeath', player.id);
-                    yield* this.triggerBoardWide('onFriendlyMinionDeath', player.id, player.board);
+                    yield* this.triggerBoardWide('onFriendlyMinionDeath', player.id, player.board, undefined, card.definitionId);
                 }
             }
         }

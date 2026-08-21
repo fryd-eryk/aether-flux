@@ -141,10 +141,14 @@ export type TemporaryEffect =
 /**
  * Gates whether a CardEffect fires beyond its trigger alone. 'momentum' is "Momentum(N):" —
  * fires only if at least N other cards were already played by this effect's owner earlier this
- * turn (see PlayerState.cardsPlayedThisTurn). A discriminated union since Phase 3's roadmap
- * (SPEC.md) already earmarks a tribe-count condition landing here later.
+ * turn (see PlayerState.cardsPlayedThisTurn). 'triggerTribe' only makes sense on the two
+ * reactive-to-another-minion triggers, `onFriendlyMinionDeath` (Mourn) and `onFriendlyMinionCast`
+ * (Muster) — it gates on the tribe of *the minion that died/was cast* (not this effect's own
+ * source minion), e.g. "Mourn: ...", but only when the dying minion is a Demon. Distinct from the
+ * still-unbuilt tribe-*count* condition SPEC.md's roadmap earmarks ("for each `<tribe>` you
+ * control") — this checks one specific minion's tribes, not a board count.
  */
-export type EffectCondition = { type: 'momentum'; minCount: number };
+export type EffectCondition = { type: 'momentum'; minCount: number } | { type: 'triggerTribe'; tribe: Tribe };
 
 export interface CardEffect {
     trigger: EffectTrigger;

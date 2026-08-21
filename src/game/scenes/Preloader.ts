@@ -2,6 +2,7 @@ import { Scene } from 'phaser';
 
 import { CARD_DEFINITIONS } from '../data/cards';
 import { ART_FOLDER_BY_TYPE, CARD_BACK_AETHER_KEY, CARD_BACK_KEY, loadFrozenTexture, loadHeaderFooterBg } from './CardGame/cardLayout';
+import { ensureCardFontsLoaded } from '../fonts';
 
 export class Preloader extends Scene
 {
@@ -52,11 +53,12 @@ export class Preloader extends Scene
         loadFrozenTexture(this);
     }
 
-    create ()
+    async create ()
     {
         //  When all the assets have loaded, it's often worth creating global objects here that the rest of the game can use.
         //  For example, you can define global animations here, so we can use them in other scenes.
 
+        await ensureCardFontsLoaded();
         this.scene.start('CardGame');
     }
 }
