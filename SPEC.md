@@ -153,17 +153,16 @@ Card Creator has no live board/HP to compute against, so it never attempts
 to resolve `{X}` — the preview shows it literally, by design, not as a gap;
 see "Card Creator" below.
 
-## Resource system roadmap: Aether (not yet implemented)
+## Resource system roadmap: Aether
 
-A full replacement for the current mana system, designed in a brainstorm/
-research session, not yet built. Nothing below exists in code today — `mana`/
-`maxMana`, the `TurnStateMachine.MAX_MANA = 10` auto-ramp, and the flat
-`CardDefinition.cost: number` (`Card.ts:171`) are all still what's live; this
-section is the target design for when that gets replaced outright, not an
-addition alongside it. It also assumes a proper custom deckbuilding UI exists
-(currently: `deckGenerator.ts` builds one random 30-card deck per player at
-game start, no player-facing deckbuilder) — that's a co-requisite, not
-optional, since the whole system is deckbuilding-driven.
+**This system is live, not a future replacement** — the old flat mana system
+(`PlayerState.mana`/`maxMana`, the `TurnStateMachine.MAX_MANA = 10` auto-ramp)
+is gone from the codebase entirely, and every card's cost is already the
+two-part `AetherCost` shape described below (`Card.ts`'s `AetherCost`/
+`CardDefinition.cost`). The custom deckbuilder this section originally called
+a co-requisite also now exists — see "Deck Builder" below. What follows is
+still the accurate description of the design's rules; only its status has
+changed.
 
 **Two decks.** A player's deck splits into a **Main Deck (32)** — every card
 type except the resource cards, structurally what `cards.ts`/`deckGenerator.ts`
@@ -243,25 +242,22 @@ low-fun in TCGs when unconstrained (see "Game design theory reference" below)
 — worth staying deliberate about how many, how strong, and how recoverable
 these are once actual cards get authored.
 
-**What replaces what:** `PlayerState.mana`/`maxMana` and the whole
-`beginStartTurn` auto-ramp go away entirely — replaced by tracking each
-player's Aether Deck, Main Deck draw *and* optional Aether draw per turn, and
-per-instance tapped state for every Aether card in play (plain and Elemental
-alike). Every existing card's flat `cost: number` needs re-authoring into the
-two-part shape. `deckGenerator.ts`'s proportional random-deck builder stops
-being useful for real constructed play once decks are player-built — the plan
-for the interim (before a real deckbuilder UI ships) is to hand-author the AI
-opponent's deck directly rather than keep random generation as a stand-in.
+**Player and AI decks come from the Deck Builder, not random generation.**
+`deckGenerator.ts`'s proportional `generateDeck()`/`generateAetherDeck()`
+still exist (kept as a defensive fallback in `CardGame.ts` for an
+unreachable-in-normal-play edge case), but the live match-start path no
+longer calls them: the player picks one of their own saved decks before a
+match (`DeckSelectScreen`, gating `App.tsx`'s mount of `PhaserGame`), and the
+AI opponent gets a random pick from that same saved-deck pool
+(`deckStorage.ts`'s `pickRandomLegalDeck`). See "Deck Builder" below.
 
 **Deferred to a further pass** (noted, not designed yet): mulligan rules for
-Aether ratio (does a bad opening Aether draw get a mulligan-style redo?),
+Aether ratio (does a bad opening Aether draw get a mulligan-style redo?), and
 Aether-fetch effects (search-for-a-specific-element tools, the main lever
-against color screw once this ships), and copy-limits for the Aether Deck
-(how many copies of one named Aether card a 18-card Aether Deck may run — this
-directly gates whether a "4 of the same category in play" tier is reachable
-through normal draws, since category-count doesn't require same-card copies
-but a thin Aether Deck still needs *some* per-card cap to avoid degenerate
-mono-Aether builds).
+against color screw once this ships). Copy-limits for the Aether Deck were
+also deferred here but have since been decided: **there is no cap** — an
+Aether Deck may run any split up to 18, including all-one-category, enforced
+(or rather, not enforced) in `deckStorage.ts`'s `isDeckLegal`.
 
 ## Card design conventions
 
@@ -432,6 +428,75 @@ is picked — see the next bullet for why it can't show a computed number.
 - **Does not touch the AI.** The tool only ever writes `cards.ts` — see the AI-sync
   rule directly above; a new keyword/effect authored here needs the same manual
   `ai/scoring.ts`/`OpponentAI.ts` check as one added by hand.
+
+## Deck Builder
+
+`/deckbuilder` (`src/pages/deckbuilder.tsx` → `src/deckBuilder/DeckBuilderPage.tsx`,
+dynamically imported `ssr: false`, same pattern as `/card-creator`) — where a
+player builds, names, and persists the Main Deck / Aether Deck pairs described
+in "Resource system roadmap: Aether" above. Bidirectional text links exist
+between this page and `/card-creator` (neither page nor `/` has a shared nav
+component today, so these are plain links, not a layout).
+
+- **Persistence: browser `localStorage`, not a file/API route.** This app is a
+  static export in production (`output: 'export'`) — `pages/api` routes are
+  stripped from the real shipped build (see the Card Creator section above),
+  so a Card-Creator-style disk-write would silently lose every deck outside
+  `npm run dev`. `src/game/state/deckStorage.ts` is the single source of
+  truth: one `localStorage` key holding `{ version: 1, decks: SavedDeck[] }`
+  (`src/game/types/Deck.ts`). `loadDecks()` never throws — corrupt JSON, a
+  non-array payload, or an individual malformed entry is dropped rather than
+  discarding the whole store.
+- **Two decks, different UI shapes.** Main Deck (32 cards, `minion`/`spell`
+  only, `MAX_COPIES = 2` per id — same cap `deckGenerator.ts` uses, exported
+  from there for reuse) gets a full browsable/filterable pool
+  (`DeckCardPoolSidebar.tsx`, modeled on Card Creator's `CardListSidebar.tsx`:
+  search/sort/rarity/tribe/keyword filters, reuses `FilterListbox.tsx`
+  as-is) with a separate "current contents" list (`DeckContentsPanel.tsx`,
+  grouped qty×name rows). The Aether Deck (18 cards, `type: 'aether'` only, no
+  copy cap — see above) is exactly 5 possible cards today, so
+  `AetherPoolPanel.tsx` is a fixed 5-row panel with inline +/− steppers that
+  doubles as its own contents view — deliberately **not** a parametrized reuse
+  of `DeckCardPoolSidebar`, since carrying that component's filter/search
+  machinery for a 5-row list would be the wrong kind of reuse.
+- **Legality vs. draft saves.** A deck can be saved at any point, even
+  incomplete — `saveDeck()` never validates. `isDeckLegal()` (exact 32/18
+  counts, the Main Deck copy cap, every id resolving through
+  `CARD_DEFINITIONS` to the right `CardType`) is only checked when a deck is
+  offered as selectable: in `DeckSelectScreen` (player, before a match) and
+  by `pickRandomLegalDeck` (AI opponent). A dangling id — a card removed or
+  renamed from `cards.ts` after a deck was saved — makes that deck illegal
+  rather than crashing anything; `DeckContentsPanel` renders it as "Unknown
+  card (removed)".
+- **Match-start wiring.** There's no `scene.start()` data channel through
+  `Boot → Preloader → CardGame` today, so deck selection happens in React
+  *before* `PhaserGame` ever mounts: `App.tsx` gates rendering `<PhaserGame/>`
+  behind `DeckSelectScreen`, which lists the player's legal saved decks and,
+  on pick, calls `src/game/state/matchSetup.ts`'s `setPlayerDeckForMatch`
+  (a plain module-singleton, same pattern as `EventBus`) before flipping
+  state. `CardGame.create()` then reads `getPlayerDeckForMatch()` for the
+  player and `pickRandomLegalDeck(loadDecks().filter(isDeckLegal))` for the
+  opponent — that pool is provably non-empty at this point, since the
+  player's own just-selected deck is always in it. `generateDeck()`/
+  `generateAetherDeck()` remain only as a defensive fallback for an
+  otherwise-unreachable case, not the live path.
+- **Reused as-is from Card Creator, unmodified**: `FilterListbox.tsx`,
+  `fakeCardInstance.ts`'s `buildPreviewInstance`, and `PreviewPane.tsx`
+  (including its headless single-card `Phaser.Game` preview) — the deckbuilder
+  drives the same preview off whichever card was last hovered in either pool,
+  rather than a single "selected for editing" card.
+- **Does not touch the AI.** Confirmed by reading `ai/OpponentAI.ts` and
+  `ai/scoring.ts` in full: neither references `CardRarity`/rarity proportions
+  or makes any assumption about deck composition — both evaluate whatever's
+  actually in hand/board/`aetherDeck` at decision time, so a player-built deck
+  is opaque to them the same way a generated one was. One pre-existing,
+  non-blocking gap worth knowing about now that mono-category Aether Decks are
+  legal: `scorePlayAetherCard`/`scoreDrawAether` (`scoring.ts`, already
+  self-flagged in its own comments as a first-pass heuristic) score every
+  Aether category identically, with no sense of which one the AI actually
+  needs. Rare to matter while `generateAetherDeck()`'s fixed category mix was
+  the only deck in play; reachable now through normal saved decks. Not a new
+  mechanic, so it doesn't block this feature, but worth revisiting.
 
 ## Playtesting-only features
 

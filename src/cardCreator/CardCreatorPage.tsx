@@ -111,6 +111,7 @@ export default function CardCreatorPage() {
                     <button type="button" className={styles.deleteButton} onClick={handleDelete} disabled={!selectedId}>
                         Delete card
                     </button>
+                    <a className={styles.navLink} href="/deckbuilder">Deck Builder →</a>
                 </div>
             </PreviewPane>
 

@@ -1,0 +1,67 @@
+.page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100vh;
+    background-color: #0f1319;
+    color: #e8ecf5;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 360px;
+    max-height: 80vh;
+    padding: 24px;
+    background: #141924;
+    border: 1px solid #262e3d;
+    border-radius: 8px;
+}
+
+.title {
+    margin: 0;
+    font-size: 18px;
+}
+
+.emptyMessage {
+    margin: 0;
+    font-size: 13px;
+    color: #9aa7bd;
+    line-height: 1.5;
+}
+
+.deckList {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-y: auto;
+}
+
+.deckButton {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    background: #1c2330;
+    border: 1px solid #333d52;
+    border-radius: 4px;
+    color: #e8ecf5;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.deckButton:hover {
+    background: #24304a;
+    border-color: #3f5075;
+}
+
+.link {
+    color: #7aa2f7;
+    font-size: 13px;
+}

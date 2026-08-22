@@ -417,6 +417,12 @@
     background: #963636;
 }
 
+.navLink {
+    font-size: 12px;
+    color: #7aa2f7;
+    text-decoration: none;
+}
+
 /* --- Form panel --- */
 
 .formPanel {

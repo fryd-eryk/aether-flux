@@ -9,6 +9,8 @@ import { canAffordAetherCost, countUntappedPlain } from '../../state/aether';
 import { resolveCardText } from '../../state/counters';
 import { canDeclareAttack, hasKeyword } from '../../state/keywordRules';
 import { createInitialState } from '../../state/createInitialState';
+import { isDeckLegal, loadDecks, pickRandomLegalDeck } from '../../state/deckStorage';
+import { getPlayerDeckForMatch } from '../../state/matchSetup';
 import { TurnStateMachine } from '../../state/TurnStateMachine';
 import type { AetherCategory, EffectAction } from '../../types/Card';
 import type { PlayerId } from '../../types/common';
@@ -835,7 +837,21 @@ export class CardGame extends Scene
             EventBus.removeListener('state:healed', this.healedHandler);
         });
 
-        this.machine = new TurnStateMachine(createInitialState(generateDeck(), generateAetherDeck(), generateDeck(), generateAetherDeck()));
+        // Player's deck comes from DeckSelectScreen (via matchSetup.ts's singleton) and the
+        // opponent's is a random pick from the same legal saved-deck pool — see deckStorage.ts.
+        // generateDeck()/generateAetherDeck() only remain as a defensive fallback for an
+        // unreachable-in-normal-play case (a future direct-scene launch bypassing the React
+        // gate, or an empty/corrupt deck store), not the live match-start path.
+        const playerDeck = getPlayerDeckForMatch();
+        const legalDecks = loadDecks().filter(isDeckLegal);
+        const opponentDeck = legalDecks.length > 0 ? pickRandomLegalDeck(legalDecks) : undefined;
+
+        this.machine = new TurnStateMachine(createInitialState(
+            playerDeck?.mainDeckIds ?? generateDeck(),
+            playerDeck?.aetherDeckIds ?? generateAetherDeck(),
+            opponentDeck?.mainDeckIds ?? generateDeck(),
+            opponentDeck?.aetherDeckIds ?? generateAetherDeck(),
+        ));
 
         // Paint the empty board (deck piles included) before startGame() fires its opening-hand
         // draws, so the draw animation has a visible deck pile to fly from. Everything from here

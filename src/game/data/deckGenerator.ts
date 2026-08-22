@@ -10,8 +10,10 @@ const RARITY_COUNTS: Partial<Record<CardRarity, number>> = {
     mythical: 1,
 };
 
-/** Max copies of a single card id allowed in a generated deck — same convention the old flat STARTER_DECK used. */
-const MAX_COPIES = 2;
+/** Max copies of a single card id allowed in a generated deck — same convention the old flat
+ * STARTER_DECK used. Exported so deckStorage.ts's isDeckLegal enforces the same cap on
+ * player-built Main Decks. */
+export const MAX_COPIES = 2;
 
 function idsForRarity(rarity: CardRarity): string[] {
     return Object.values(CARD_DEFINITIONS)

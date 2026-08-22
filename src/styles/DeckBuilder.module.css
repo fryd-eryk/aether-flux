@@ -1,0 +1,339 @@
+/* Reuses Card Creator's dark-theme shell/list/sidebar/preview/action-button classes wholesale
+ * via `composes` — the deckbuilder's left pool sidebar and center preview are visually the same
+ * shape as Card Creator's, just with different interaction semantics wired in from React. */
+
+.page {
+    composes: page from './CardCreator.module.css';
+}
+
+/* --- Card pool sidebars (left: Main Deck, right: Aether) --- */
+
+.sidebar {
+    composes: sidebar from './CardCreator.module.css';
+}
+
+.sidebarHeader {
+    composes: sidebarHeader from './CardCreator.module.css';
+}
+
+.searchInput {
+    composes: searchInput from './CardCreator.module.css';
+}
+
+.cardCountLabel {
+    composes: cardCountLabel from './CardCreator.module.css';
+}
+
+.sortRow {
+    composes: sortRow from './CardCreator.module.css';
+}
+
+.sortSelect {
+    composes: sortSelect from './CardCreator.module.css';
+}
+
+.sortDirButton {
+    composes: sortDirButton from './CardCreator.module.css';
+}
+
+.filterBlock {
+    composes: filterBlock from './CardCreator.module.css';
+}
+
+.filterHeaderRow {
+    composes: filterHeaderRow from './CardCreator.module.css';
+}
+
+.filterHeaderLabel {
+    composes: filterHeaderLabel from './CardCreator.module.css';
+}
+
+.filterClearButton {
+    composes: filterClearButton from './CardCreator.module.css';
+}
+
+.filterListboxRow {
+    composes: filterListboxRow from './CardCreator.module.css';
+}
+
+.filterRangeRow {
+    composes: filterRangeRow from './CardCreator.module.css';
+}
+
+.filterRangeLabel {
+    composes: filterRangeLabel from './CardCreator.module.css';
+}
+
+.numberInput {
+    composes: numberInput from './CardCreator.module.css';
+}
+
+.cardList {
+    composes: cardList from './CardCreator.module.css';
+}
+
+.cardListItem {
+    composes: cardListItem from './CardCreator.module.css';
+}
+
+.cardListItemRight {
+    composes: cardListItemRight from './CardCreator.module.css';
+}
+
+.cardListItemCost {
+    composes: cardListItemCost from './CardCreator.module.css';
+}
+
+/** Copies-in-deck badge, standing in for Card Creator's dirty-dot in the same slot. */
+.cardListItemQty {
+    color: #7aa2f7;
+    font-weight: bold;
+    margin-left: 4px;
+}
+
+/** A pool row whose card is at its copy cap or the deck is already full — not clickable. */
+.cardListItemDisabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* --- Aether pool (right sidebar) — 5 fixed rows with quantity steppers, no filters/search --- */
+
+.aetherList {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.aetherRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px;
+    background: #141924;
+    border: 1px solid #262e3d;
+    border-radius: 6px;
+}
+
+.aetherRowName {
+    font-size: 13px;
+    color: #c7cdd6;
+}
+
+.stepperGroup {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+.stepperButton {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: #24304a;
+    border: 1px solid #3f5075;
+    border-radius: 3px;
+    color: #e8ecf5;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+}
+
+.stepperButton:hover:not(:disabled) {
+    background: #2c3c5c;
+}
+
+.stepperButton:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.stepperCount {
+    min-width: 18px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+/* --- Center column --- */
+
+.centerColumn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.deckSelectorBlock {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border-bottom: 1px solid #262e3d;
+    background-color: #141924;
+}
+
+.deckSelectorList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 90px;
+    overflow-y: auto;
+}
+
+.deckSelectorItem {
+    padding: 5px 10px;
+    background: #1c2330;
+    border: 1px solid #333d52;
+    border-radius: 4px;
+    color: #c7cdd6;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.deckSelectorItem:hover {
+    background: #24304a;
+}
+
+.deckSelectorItemActive {
+    background: #22314f;
+    border-color: #3f7fe6;
+    color: #ffffff;
+}
+
+.newDeckButton {
+    composes: newButton from './CardCreator.module.css';
+    width: auto;
+    padding: 5px 12px;
+}
+
+.nameInput {
+    composes: textInput from './CardCreator.module.css';
+}
+
+.previewPane {
+    composes: previewPane from './CardCreator.module.css';
+    width: auto;
+    flex: 1;
+    border-right: none;
+}
+
+/* --- Deck contents (Main Deck list, in the center column) --- */
+
+.contentsPanel {
+    display: flex;
+    flex-direction: column;
+    width: 260px;
+    flex: 0 0 260px;
+    border-left: 1px solid #262e3d;
+    background-color: #0b0e14;
+    overflow: hidden;
+}
+
+.contentsHeader {
+    padding: 10px;
+    border-bottom: 1px solid #262e3d;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.contentsCount {
+    color: #9aa7bd;
+}
+
+.contentsCountComplete {
+    color: #38b863;
+}
+
+.contentsList {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.contentsRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    color: #c7cdd6;
+}
+
+.contentsRow:hover {
+    background: #1c2330;
+}
+
+.contentsRowName {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.contentsRowQty {
+    flex: 0 0 auto;
+    color: #7aa2f7;
+    font-weight: bold;
+}
+
+.contentsRemoveButton {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    background: none;
+    border: 1px solid #3f5075;
+    border-radius: 3px;
+    color: #9aa7bd;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+}
+
+.contentsRemoveButton:hover {
+    background: #7a2c2c;
+    border-color: #a53c3c;
+    color: #ffffff;
+}
+
+.contentsEmpty {
+    padding: 10px;
+    font-size: 12px;
+    color: #7d8aa3;
+}
+
+/* --- Action bar --- */
+
+.actionBar {
+    composes: fileBar from './CardCreator.module.css';
+    flex-direction: row;
+}
+
+.actionButton {
+    composes: actionButton from './CardCreator.module.css';
+}
+
+.saveButton {
+    composes: saveButton from './CardCreator.module.css';
+}
+
+.deleteButton {
+    composes: deleteButton from './CardCreator.module.css';
+}
+
+.navLink {
+    padding: 7px 8px;
+    font-size: 12px;
+    color: #7aa2f7;
+    text-decoration: none;
+    align-self: center;
+}
