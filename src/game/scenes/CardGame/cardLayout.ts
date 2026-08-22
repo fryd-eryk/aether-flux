@@ -133,21 +133,6 @@ export const AETHER_PILE_X = PILE_X - DECK_PILE_W * 1.5;
 export const OPPONENT_AETHER_DECK_Y = OPPONENT_DECK_Y;
 export const PLAYER_AETHER_DECK_Y = PLAYER_DECK_Y;
 
-// Aether-in-play — each side's own resource base, rendered as one small stacked pile per category
-// present (generic, then each elemental drawn) rather than as individual cards, reusing the same
-// DECK_PILE_W/H stack-with-count-on-top visual language as the Deck/Graveyard/Aether Deck piles
-// above instead of a card row — a resource base reads at a glance, it doesn't need to look like a
-// battlefield object. Sits along the bottom-left corner (mirrored to the top-left for the
-// opponent), top-aligned with that side's own Aether Deck/Main Deck piles — same Y as those,
-// walking rightward from the screen's left edge. AETHER_ROW_X_START is the first (generic) pile's
-// center; AETHER_ROW_SPACING is the gap to each subsequent category pile — categories with zero
-// cards in play are skipped rather than drawn empty, so the row never shows a gap for a category
-// this player hasn't drawn into yet. Placement tuned by eye against the reference layout.
-export const OPPONENT_AETHER_ROW_Y = OPPONENT_DECK_Y;
-export const PLAYER_AETHER_ROW_Y = PLAYER_DECK_Y;
-export const AETHER_ROW_X_START = 100;
-export const AETHER_ROW_SPACING = 140;
-
 // Matches CARD_W:CARD_H's 2:3 ratio exactly (see that constant's comment) so coverFit's cover-fit
 // of the deck pile's card-back image never needs to crop — an earlier 80x100 (4:5) box cropped the
 // top/bottom off the card-back art since its real aspect ratio didn't match the box it was fit into.
@@ -160,6 +145,34 @@ export const DECK_PILE_H = DECK_PILE_W * (CARD_H / CARD_W);
 export const PILE_ROW_GAP = 165;
 export const OPPONENT_GRAVEYARD_Y = OPPONENT_DECK_Y - PILE_ROW_GAP;
 export const PLAYER_GRAVEYARD_Y = PLAYER_DECK_Y + PILE_ROW_GAP;
+
+// Aether-in-play — each side's own resource base. Generic Aether gets its own round pool marker
+// (renderAetherMarker) rather than a pile; the 4 elemental categories each get one small pile
+// (renderAetherInPlay), reusing the Deck/Graveyard/Aether Deck piles' own DECK_PILE_W/H footprint
+// instead of a card row — a resource base reads at a glance, it doesn't need to look like a
+// battlefield object. Fixed at AETHER_ROW_X_START (near the board's left edge, clear of hand cards
+// at any real hand size — see HAND_MIN_SPACING). Row 0 (the first elemental pile in play order —
+// fire, water, earth, air) is anchored flush against that side's own screen edge — the player's at
+// the bottom, the opponent's at the top, AETHER_ROW_EDGE_CLEARANCE short of the true edge, same
+// idiom as PLAYER_HAND_PEEK_Y's own edge clearance — and each subsequent row grows AETHER_ROW_
+// SPACING further toward screen center. A category with zero cards in play is skipped rather than
+// drawn empty, so the column never shows a gap for a category this player hasn't drawn into yet.
+// The generic marker isn't part of this column at all — see AETHER_MARKER_OFFSET_X below — so it
+// doesn't shift the elemental rows. Both spacing values are placeholder-tuned — a side with
+// several elemental categories in play simultaneously (rare) may crowd toward screen center and is
+// worth an eye check in the browser.
+export const AETHER_ROW_X_START = 100;
+export const AETHER_ROW_EDGE_CLEARANCE = 10;
+export const OPPONENT_AETHER_ROW_START_Y = DECK_PILE_H / 2 + AETHER_ROW_EDGE_CLEARANCE;
+export const PLAYER_AETHER_ROW_START_Y = GAME_HEIGHT - DECK_PILE_H / 2 - AETHER_ROW_EDGE_CLEARANCE;
+export const AETHER_ROW_SPACING = 140;
+
+// The generic-Aether round marker (renderAetherMarker) sits beside the elemental column's row 0 —
+// same side-edge-aligned Y, offset this far to the right — rather than inside the column itself,
+// since it's a different shape (a small circle vs a DECK_PILE_W/H tile) and always present
+// (unlike an elemental pile, it's never skipped at 0 cards). One tile-width past
+// AETHER_ROW_X_START reads as "right next to" the column without overlapping it.
+export const AETHER_MARKER_OFFSET_X = DECK_PILE_W;
 
 // Click-a-pile-to-inspect overlay. Depth sits above every in-game depth — including the 3000 an
 // in-flight draw animation uses — so the overlay stays readable if a pile is opened mid-animation.
@@ -269,6 +282,18 @@ export const AETHER_CATEGORY_COLOR: Record<AetherCategory, number> = {
     earth: 0x8a6d3a,
     air: 0xcfe8f0,
     generic: 0xb8c4d9,
+};
+
+// Same light/dark gradient-stop shape as COST_BADGE_LIGHT/DARK and RARITY_METADATA, one pair per
+// category, hued off AETHER_CATEGORY_COLOR above — used by the elemental cost badge (CardView's
+// createHeaderFull, HelpBoxController's tooltip badge) so it reads as "the same kind of badge" as
+// the generic cost badge instead of the flatter category-pill treatment.
+export const AETHER_CATEGORY_GRADIENT: Record<AetherCategory, { light: number; dark: number }> = {
+    fire: { light: 0xff8a6b, dark: 0xb8331a },
+    water: { light: 0x7fc8ff, dark: 0x1a6bb8 },
+    earth: { light: 0xc2a06b, dark: 0x5c4620 },
+    air: { light: 0xeaf7fb, dark: 0x9fc8d6 },
+    generic: { light: 0xd8e0ee, dark: 0x8894a8 },
 };
 
 // Brief colored overlay flashed on a minion's card or hero's avatar the instant it takes damage or
@@ -396,10 +421,15 @@ export const DESC_BOX_BOTTOM_Y = CARD_H / 2 - 18;
 // approximation the footer's rarity dot below uses) since the header PNG no longer bakes in its own
 // mana-cost decoration.
 export const COST_BADGE_R_FULL = 12;
-export const COST_BADGE_LIGHT = 0x6fb3f5;
-export const COST_BADGE_DARK = 0x1a4fa0;
+export const COST_BADGE_LIGHT = 0xb08cf0;
+export const COST_BADGE_DARK = 0x5a1fa0;
 export const COST_BADGE_STROKE_COLOR = 0x000000;
 export const COST_BADGE_STROKE_WIDTH = 1.5;
+
+// The generic-Aether pool marker (renderAetherMarker) — same COST_BADGE_LIGHT/DARK gradient
+// circle + stroke recipe as the on-card cost badge above, just bigger, since it's the sole
+// stand-in for a whole pile rather than a small corner decoration.
+export const AETHER_MARKER_R = 20;
 
 // 'simplified' mode's paid-ability badge(s) (CardView.abilityBadgeLayout/createAbilityBadges) —
 // 'simplified' mode renders no mana-cost badge at all, so the top-right corner COST_BADGE_R_FULL

@@ -18,6 +18,8 @@ import type { GameState, PendingTarget, PlayerState } from '../../types/GameStat
 import { TurnPhase } from '../../types/GameState';
 import {
     AETHER_CATEGORY_COLOR,
+    AETHER_MARKER_OFFSET_X,
+    AETHER_MARKER_R,
     AETHER_PILE_X,
     AETHER_ROW_SPACING,
     AETHER_ROW_X_START,
@@ -29,7 +31,11 @@ import {
     CENTER_X,
     CENTER_Y,
     coverFit,
+    COST_BADGE_DARK,
+    COST_BADGE_LIGHT,
     COST_BADGE_R_FULL,
+    COST_BADGE_STROKE_COLOR,
+    COST_BADGE_STROKE_WIDTH,
     DAMAGE_FLASH_COLOR,
     DECK_PILE_H,
     DECK_PILE_W,
@@ -53,7 +59,7 @@ import {
     HERO_SIZE,
     lightenColor,
     OPPONENT_AETHER_DECK_Y,
-    OPPONENT_AETHER_ROW_Y,
+    OPPONENT_AETHER_ROW_START_Y,
     OPPONENT_BOARD_Y,
     OPPONENT_DECK_Y,
     OPPONENT_GRAVEYARD_Y,
@@ -68,7 +74,7 @@ import {
     PILE_STYLES,
     PILE_X,
     PLAYER_AETHER_DECK_Y,
-    PLAYER_AETHER_ROW_Y,
+    PLAYER_AETHER_ROW_START_Y,
     PLAYER_BOARD_Y,
     PLAYER_DECK_Y,
     PLAYER_GRAVEYARD_Y,
@@ -336,6 +342,11 @@ export class CardGame extends Scene
         return { x: PILE_X, y: playerId === 'opponent' ? OPPONENT_DECK_Y : PLAYER_DECK_Y };
     }
 
+    private aetherDeckPilePosition (playerId: PlayerId): { x: number; y: number }
+    {
+        return { x: AETHER_PILE_X, y: playerId === 'opponent' ? OPPONENT_AETHER_DECK_Y : PLAYER_AETHER_DECK_Y };
+    }
+
     private graveyardPilePosition (playerId: PlayerId): { x: number; y: number }
     {
         return { x: PILE_X, y: playerId === 'opponent' ? OPPONENT_GRAVEYARD_Y : PLAYER_GRAVEYARD_Y };
@@ -536,6 +547,72 @@ export class CardGame extends Scene
         return { x: startX + index * spacing, y };
     }
 
+    /** The just-played Aether card's resting slot, using the same layout math as
+     * renderAetherInPlay/renderAetherMarker — or undefined if it's no longer in aetherInPlay
+     * (shouldn't happen; playAetherCard always moves the card there synchronously before this
+     * runs). A generic card lands on the round pool marker (aetherMarkerSlot); every other
+     * category uses its own row in the elemental stack. */
+    private computeAetherPileDestination (instanceId: string, playerId: PlayerId): { x: number; y: number } | undefined
+    {
+        const playerState = this.machine.state.players[playerId];
+        const card = playerState.aetherInPlay.find((c) => c.instanceId === instanceId);
+        const category = card ? CARD_DEFINITIONS[card.definitionId]?.aetherCategory : undefined;
+        if (!category) return undefined;
+
+        if (category === 'generic') return this.aetherMarkerSlot(playerId);
+
+        return this.aetherPileSlot(playerId, this.aetherPileRow(playerState, category));
+    }
+
+    /**
+     * Spotlights a just-played Aether card the same way playCardPlayedAnimation does for a normal
+     * card, then flies it into its resting category pile — shrinking and fading out along the way
+     * since, unlike a minion's board slot, the pile destination is a small stacked-count icon, not
+     * another full-size card. Mirrors playCardPlayedAnimation's hand-container-swap step so the
+     * opponent's face-down Aether card is revealed face-up before it flies.
+     */
+    private async playAetherCardPlayedAnimation (instanceId: string, playerId: PlayerId): Promise<void>
+    {
+        let container = this.instanceContainers.get(instanceId);
+        if (!container) return;
+
+        {
+            const player = this.machine.state.players[playerId];
+            const instance = player.aetherInPlay.find((c) => c.instanceId === instanceId);
+            if (instance)
+            {
+                const revealed = this.cardView.createCardContainer(instance, 'full', undefined, false, false, resolveCardText(instance, this.machine.state));
+                revealed.setPosition(container.x, container.y);
+
+                const index = this.renderedObjects.indexOf(container);
+                if (index !== -1) this.renderedObjects[index] = revealed;
+                else this.renderedObjects.push(revealed);
+
+                container.destroy();
+                this.instanceContainers.set(instanceId, revealed);
+                container = revealed;
+            }
+        }
+
+        container.setDepth(2500);
+
+        const spotlightOrigin = { x: container.x, y: container.y };
+        const handle = beginFlightTilt(this, container, { scaleDriven: true });
+        await this.tweenPromise({
+            targets: container, x: SPOTLIGHT_X, y: CENTER_Y, scale: 1.25, duration: 350, ease: 'Cubic.easeOut',
+            onUpdate: (tween) => updateFlightTilt(handle, SPOTLIGHT_X - spotlightOrigin.x, CENTER_Y - spotlightOrigin.y, Math.sin(tween.progress * Math.PI)),
+        });
+        await this.delay(550);
+
+        const destination = this.computeAetherPileDestination(instanceId, playerId) ?? { x: container.x, y: container.y };
+        const boardOrigin = { x: container.x, y: container.y };
+        await this.tweenPromise({
+            targets: container, x: destination.x, y: destination.y, scale: 0.3, alpha: 0, duration: 350, ease: 'Cubic.easeIn',
+            onUpdate: (tween) => updateFlightTilt(handle, destination.x - boardOrigin.x, destination.y - boardOrigin.y, Math.sin(tween.progress * Math.PI)),
+        });
+        endFlightTilt(handle);
+    }
+
     /**
      * Flies a temporary card preview from the drawing player's deck pile to the drawn card's
      * computed arced hand slot, then promotes it into instanceContainers/renderedObjects as that
@@ -570,7 +647,8 @@ export class CardGame extends Scene
         });
 
         const destSlot = this.handCardSlot(index, player.hand.length, layout, edgeY, liftSign);
-        const origin = this.deckPilePosition(playerId);
+        const isAether = CARD_DEFINITIONS[player.hand[index].definitionId]?.type === 'aether';
+        const origin = isAether ? this.aetherDeckPilePosition(playerId) : this.deckPilePosition(playerId);
         const flying = this.cardView.createCardContainer(player.hand[index], faceDown ? 'faceDown' : 'full', undefined, false, false, resolveCardText(player.hand[index], this.machine.state));
         flying.setPosition(origin.x, origin.y);
         flying.setDepth(3000);
@@ -697,8 +775,19 @@ export class CardGame extends Scene
                 // every other action above, nothing will otherwise schedule this turn's next
                 // 600ms tick, so requestRender() must be called explicitly here (same reasoning as
                 // debugAddCard's own caller — see its wiring comment further down this file).
-                if (action.kind === 'drawAether') this.machine.drawAether('opponent');
-                else this.machine.playAetherCard(action.instanceId);
+                // drawAether's own draw animation is already handled by cardDrawnHandler/
+                // pendingDrawIds (requestRender flushes those); playAetherCard has no such event, so
+                // its flight animation is enqueued directly here — see the player's own drop-handler
+                // call site for why the requestRender() right after still needs to run.
+                if (action.kind === 'drawAether')
+                {
+                    this.machine.drawAether('opponent');
+                }
+                else
+                {
+                    this.machine.playAetherCard(action.instanceId);
+                    this.enqueueAnimation(() => this.playAetherCardPlayedAnimation(action.instanceId, 'opponent'));
+                }
                 this.requestRender();
                 break;
             default:
@@ -773,7 +862,10 @@ export class CardGame extends Scene
 
         this.add.rectangle(CENTER_X, CENTER_Y, GAME_WIDTH, GAME_HEIGHT, 0x161b26);
 
-        this.turnBannerText = this.add.text(38, 6, '', SMALL_STYLE).setDepth(200);
+        // Sits in the gap between the opponent's and player's Aether columns (both anchored at
+        // AETHER_ROW_X_START), vertically centered on the screen — placeholder-tuned by eye like
+        // the rest of that column's own layout constants.
+        this.turnBannerText = this.add.text(AETHER_ROW_X_START, CENTER_Y, '', SMALL_STYLE).setOrigin(0, 0.5).setDepth(200);
 
         const boardZoneH = CARD_H + 30;
         this.add.rectangle(CENTER_X, PLAYER_BOARD_Y, BOARD_ZONE_W, boardZoneH).setStrokeStyle(2, 0x3a4a6b, 0.6);
@@ -929,8 +1021,12 @@ export class CardGame extends Scene
                     {
                         // No targeting/generator machinery (see TurnStateMachine.playAetherCard's
                         // doc comment) and no 'state:phase-change' fires — this scene must trigger
-                        // its own re-render, same as debugAddCard's caller does.
+                        // its own animation+re-render, same as cardPlayedHandler does off
+                        // 'state:card-played' for a normal card. enqueueAnimation flips isAnimating
+                        // on synchronously, so the requestRender() right after it defers instead of
+                        // snapping straight to the final render.
                         this.machine.playAetherCard(instanceId);
+                        this.enqueueAnimation(() => this.playAetherCardPlayedAnimation(instanceId, 'player'));
                         this.requestRender();
                     }
                     else
@@ -1180,8 +1276,10 @@ export class CardGame extends Scene
         this.renderBoard('opponent', state.players.opponent, OPPONENT_BOARD_Y);
         this.renderBoard('player', state.players.player, PLAYER_BOARD_Y);
 
-        this.renderAetherInPlay(state.players.opponent, OPPONENT_AETHER_ROW_Y);
-        this.renderAetherInPlay(state.players.player, PLAYER_AETHER_ROW_Y);
+        this.renderAetherInPlay(state.players.opponent);
+        this.renderAetherInPlay(state.players.player);
+        this.renderAetherMarker(state.players.opponent);
+        this.renderAetherMarker(state.players.player);
 
         if (state.phase === TurnPhase.GameOver)
         {
@@ -1705,61 +1803,93 @@ export class CardGame extends Scene
         });
     }
 
-    /**
-     * A side's Aether-in-play, grouped into one small stacked pile per category present — generic
-     * first, then each elemental category in play order (fire, water, earth, air) — rather than a
-     * row of individual cards. Reuses the Deck/Graveyard/Aether Deck piles' own stack-with-count-
-     * on-top visual language (DECK_PILE_W/H, up to 3 offset layers) instead of CardView's full
-     * card render: a resource base reads at a glance and doesn't need to compete for the same
-     * visual weight as an actual battlefield minion (see renderBoard). Each layer shows that
-     * card's own art (falling back to the flat category color when its art isn't loaded yet),
-     * same as renderPile's graveyard stack — most recently played on top. Walks rightward from
-     * AETHER_ROW_X_START at AETHER_ROW_SPACING per category pile; a category with zero cards in
-     * play is skipped entirely (not drawn empty), so the row never shows a gap for a category this
-     * side hasn't drawn into yet.
-     */
-    private renderAetherInPlay (playerState: PlayerState, y: number): void
-    {
-        const categories: AetherCategory[] = ['generic', 'fire', 'water', 'earth', 'air'];
-        const state = this.machine.state;
-        let column = 0;
+    // The 4 elemental categories, in play order — generic Aether isn't part of this stack at all
+    // (see renderAetherMarker), it gets its own round pool marker instead. Shared by
+    // renderAetherInPlay, aetherPileRow, and computeAetherPileDestination so all three agree on
+    // pile order.
+    private static readonly AETHER_PILE_CATEGORIES: AetherCategory[] = ['fire', 'water', 'earth', 'air'];
 
-        for (const category of categories)
+    /** Index (skipping categories with zero cards in play) of `category` among playerState's
+     * Aether-in-play piles, in AETHER_PILE_CATEGORIES order — see aetherPileSlot. */
+    private aetherPileRow (playerState: PlayerState, category: AetherCategory): number
+    {
+        let row = 0;
+        for (const c of CardGame.AETHER_PILE_CATEGORIES)
+        {
+            if (c === category) return row;
+            if (playerState.aetherInPlay.some((card) => CARD_DEFINITIONS[card.definitionId]?.aetherCategory === c)) row++;
+        }
+        return row;
+    }
+
+    /** Fixed x (AETHER_ROW_X_START) plus the row-th vertical slot, growing from that side's own
+     * screen edge (row 0) toward screen center as row increases — see
+     * OPPONENT_AETHER_ROW_START_Y/PLAYER_AETHER_ROW_START_Y's doc comment in cardLayout.ts. Shared
+     * by renderAetherInPlay (actual layout) and computeAetherPileDestination (a just-played
+     * elemental Aether card's flight target), so the two can't drift apart. */
+    private aetherPileSlot (playerId: PlayerId, row: number): { x: number; y: number }
+    {
+        const y = playerId === 'opponent'
+            ? OPPONENT_AETHER_ROW_START_Y + row * AETHER_ROW_SPACING
+            : PLAYER_AETHER_ROW_START_Y - row * AETHER_ROW_SPACING;
+        return { x: AETHER_ROW_X_START, y };
+    }
+
+    /** The round generic-Aether marker's fixed position — beside the elemental column's row 0
+     * (same edge-aligned Y), offset AETHER_MARKER_OFFSET_X to the right. Shared by
+     * renderAetherMarker (actual layout) and computeAetherPileDestination (a just-played generic
+     * Aether card's flight target), so the two can't drift apart. */
+    private aetherMarkerSlot (playerId: PlayerId): { x: number; y: number }
+    {
+        const { y } = this.aetherPileSlot(playerId, 0);
+        return { x: AETHER_ROW_X_START + AETHER_MARKER_OFFSET_X, y };
+    }
+
+    /**
+     * A side's elemental Aether-in-play, one small pile per category present — fire, water,
+     * earth, air in play order — rather than a row of individual cards. Reuses the
+     * Deck/Graveyard/Aether Deck piles' own DECK_PILE_W/H footprint instead of CardView's full
+     * card render: a resource base reads at a glance and doesn't need to compete for the same
+     * visual weight as an actual battlefield minion (see renderBoard). Shows only the most
+     * recently played card's own art (falling back to the flat category color when its art isn't
+     * loaded yet) — no offset stack, since the count text already says how many are in the pile
+     * and a second/third card peeking out underneath added visual noise without new information.
+     * Stacks vertically (see aetherPileSlot); a category with zero cards in play is skipped
+     * entirely (not drawn empty), so the column never shows a gap for a category this side hasn't
+     * drawn into yet.
+     */
+    private renderAetherInPlay (playerState: PlayerState): void
+    {
+        const state = this.machine.state;
+
+        for (const category of CardGame.AETHER_PILE_CATEGORIES)
         {
             const cards = playerState.aetherInPlay.filter((c) => CARD_DEFINITIONS[c.definitionId]?.aetherCategory === category);
             if (cards.length === 0) continue;
 
-            const x = AETHER_ROW_X_START + column * AETHER_ROW_SPACING;
-            column++;
+            const { x, y } = this.aetherPileSlot(playerState.id, this.aetherPileRow(playerState, category));
 
             const fill = AETHER_CATEGORY_COLOR[category];
             const stroke = lightenColor(fill, 0.4);
             const container = this.add.container(x, y);
 
-            const layers = Math.min(3, cards.length);
-            // Oldest-of-the-visible-layers first, most recently played last — matches renderPile's
-            // graveyard stack so the topmost (most-offset) layer is the most recently played card.
-            const recentCards = cards.slice(-layers);
-            for (let i = 0; i < layers; i++)
+            const topCard = cards[cards.length - 1];
+            let layerCard: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
+            if (this.textures.exists(topCard.definitionId))
             {
-                const offset = i * 4;
-                const textureKey = recentCards[i]?.definitionId;
-                let layerCard: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
-                if (textureKey !== undefined && this.textures.exists(textureKey))
-                {
-                    layerCard = this.add.image(-offset, -offset, textureKey);
-                    coverFit(layerCard, DECK_PILE_W, DECK_PILE_H);
-                }
-                else
-                {
-                    layerCard = this.add.rectangle(-offset, -offset, DECK_PILE_W, DECK_PILE_H, fill).setStrokeStyle(2, stroke);
-                }
-                container.add(layerCard);
+                layerCard = this.add.image(0, 0, topCard.definitionId);
+                coverFit(layerCard, DECK_PILE_W, DECK_PILE_H);
             }
-            // Centered on the top (last-drawn, most-offset) layer — see renderPile's own comment
-            // on topOffset for why (0, 0) drifts off the visible top card as the pile grows.
-            const topOffset = (layers - 1) * 4;
-            container.add(this.add.text(-topOffset, -topOffset, `${cards.length}`, statStyle('#ffffff', true, '22px')).setOrigin(0.5));
+            else
+            {
+                layerCard = this.add.rectangle(0, 0, DECK_PILE_W, DECK_PILE_H, fill).setStrokeStyle(2, stroke);
+            }
+            container.add(layerCard);
+
+            // An elemental threshold is a pure presence check, never satisfied by tapping/
+            // consuming (see aether.ts's countCategory) — so unlike the generic pool marker, the
+            // count here is always every card in the pile, tapped or not.
+            container.add(this.add.text(0, 0, `${cards.length}`, statStyle('#ffffff', true, '22px')).setOrigin(0.5));
 
             const hitW = DECK_PILE_W + 16, hitH = DECK_PILE_H + 16;
             container.setSize(hitW, hitH);
@@ -1772,8 +1902,7 @@ export class CardGame extends Scene
             // Representative instance for the hover tooltip — the most recently played card of
             // this category — good enough since same-category Aether cards share the same
             // threshold-facing identity even when their printed names differ.
-            const representative = cards[cards.length - 1];
-            this.helpBoxController.attachKeywordHover(container, representative, true, resolveCardText(representative, state));
+            this.helpBoxController.attachKeywordHover(container, topCard, true, resolveCardText(topCard, state));
 
             // Tapped outline only when every card in the pile is tapped right now — a pile mixing
             // tapped/untapped cards (mid-spend) still reads as available, matching how
@@ -1783,6 +1912,50 @@ export class CardGame extends Scene
 
             this.renderedObjects.push(container);
         }
+    }
+
+    /**
+     * A side's generic-Aether pool — always rendered (unlike an elemental pile, it doesn't hide
+     * at 0 cards, since it's the resource every deck spends most often) as a single round marker
+     * reusing the on-card cost badge's gradient-circle-plus-stroke recipe, just bigger
+     * (AETHER_MARKER_R vs COST_BADGE_R_FULL). Fixed beside the elemental column (aetherMarkerSlot)
+     * rather than inside it, so its position never depends on how many elemental piles are
+     * currently in play. Shows the untapped ("available to spend") count on the badge itself;
+     * hover reveals both that and the total ("max") count — see HelpBoxController.attachTextHover.
+     */
+    private renderAetherMarker (playerState: PlayerState): void
+    {
+        const { x, y } = this.aetherMarkerSlot(playerState.id);
+
+        const generic = playerState.aetherInPlay.filter((c) => CARD_DEFINITIONS[c.definitionId]?.aetherCategory === 'generic');
+        const available = generic.filter((c) => !c.tapped).length;
+        const max = generic.length;
+
+        const container = this.add.container(x, y);
+        const badge = this.add.graphics();
+        badge.fillGradientStyle(COST_BADGE_LIGHT, COST_BADGE_LIGHT, COST_BADGE_DARK, COST_BADGE_DARK, 1, 1, 1, 1);
+        badge.fillCircle(0, 0, AETHER_MARKER_R);
+        badge.lineStyle(COST_BADGE_STROKE_WIDTH, COST_BADGE_STROKE_COLOR, 1);
+        badge.strokeCircle(0, 0, AETHER_MARKER_R);
+        container.add(badge);
+        container.add(this.add.text(0, 0, `${available}`, statStyle('#ffffff', true, '22px')).setOrigin(0.5));
+
+        // Container hit areas are top-left-based, not centered on the container's local origin —
+        // setSize gives this container a displayOrigin of (hitR, hitR), so the hit circle must be
+        // defined in that shifted space (center at (hitR, hitR)), not at local (0, 0) where the
+        // badge is actually drawn. Matches the elemental piles' own Geom.Rectangle(0, 0, w, h) for
+        // the same reason.
+        const hitR = AETHER_MARKER_R + 8;
+        container.setSize(hitR * 2, hitR * 2);
+        container.setInteractive({
+            hitArea: new Geom.Circle(hitR, hitR, hitR),
+            hitAreaCallback: Geom.Circle.Contains,
+            useHandCursor: true,
+        });
+
+        this.helpBoxController.attachTextHover(container, [`Available Aether: ${available}`, `Max Aether: ${max}`]);
+
+        this.renderedObjects.push(container);
     }
 
     private updateEndTurnButton (state: GameState): void

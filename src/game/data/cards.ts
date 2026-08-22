@@ -51,7 +51,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     "bramble-python": {
         id: "bramble-python",
         name: "Bramble Python",
-        cost: { generic: 1, elemental: { category: "earth", threshold: 1 } },
+        cost: { generic: 1 },
         type: "minion",
         text: "",
         attack: 1,
@@ -430,7 +430,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         text: "**Momentum(2):** Draw a card.",
         attack: 2,
         health: 2,
-        tribes: ["cosmic"],
+        tribes: ["humanoid","cosmic"],
         effects: [
             {
                 trigger: "onPlay",
@@ -1505,7 +1505,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     "druid-of-the-shattered-scar": {
         id: "druid-of-the-shattered-scar",
         name: "Druid of the Shattered Scar",
-        cost: { generic: 5 },
+        cost: { generic: 5, elemental: { category: "earth", threshold: 1 } },
         type: "minion",
         text: "At the start of turn, target friendly minion gains +1/+1.",
         attack: 3,
@@ -1526,6 +1526,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "exotic",
+        artVerticalAlign: "top",
     },
     "cinderplume-phoenix": {
         id: "cinderplume-phoenix",
@@ -1677,7 +1678,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
     "stargazer-bladd": {
         id: "stargazer-bladd",
         name: "Stargazer Bladd",
-        cost: { generic: 2 },
+        cost: { generic: 2, elemental: { category: "air", threshold: 2 } },
         type: "minion",
         text: "When one of your minions dies, draw a card. You lose 1 Health.\nAt the end of turn, summon a 0/1 Fractal Fragment.",
         attack: 2,
@@ -1762,9 +1763,27 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         rarity: "legendary",
         artVerticalAlign: "bottom",
     },
-    "protector-of-the-mana-forest": {
-        id: "protector-of-the-mana-forest",
-        name: "Protector of the Mana Forest",
+    "absheron-deepcrypt-keeper": {
+        id: "absheron-deepcrypt-keeper",
+        name: "Absheron, Deepcrypt Keeper",
+        cost: { generic: 7 },
+        type: "minion",
+        text: "All other friendly minions gain +X/+X, where X is half the number of cards in your grave.",
+        attack: 4,
+        health: 4,
+        tribes: ["holy","underworld"],
+        auras: [
+            {
+                target: "allOtherFriendlyMinions",
+                attack: { counter: "friendlyGraveyardCount", multiplier: 0.5 },
+                health: { counter: "friendlyGraveyardCount", multiplier: 0.5 },
+            },
+        ],
+        rarity: "legendary",
+    },
+    "mana-forest-protector": {
+        id: "mana-forest-protector",
+        name: "Mana Forest Protector ",
         cost: { generic: 7 },
         type: "minion",
         text: "At the end of turn, friendly minions gain +0/+1.",
@@ -1786,24 +1805,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
             },
         ],
         rarity: "legendary",
-    },
-    "absheron-deepcrypt-keeper": {
-        id: "absheron-deepcrypt-keeper",
-        name: "Absheron, Deepcrypt Keeper",
-        cost: { generic: 7 },
-        type: "minion",
-        text: "All other friendly minions gain +X/+X, where X is half the number of cards in your grave.",
-        attack: 4,
-        health: 4,
-        tribes: ["holy","underworld"],
-        auras: [
-            {
-                target: "allOtherFriendlyMinions",
-                attack: { counter: "friendlyGraveyardCount", multiplier: 0.5 },
-                health: { counter: "friendlyGraveyardCount", multiplier: 0.5 },
-            },
-        ],
-        rarity: "legendary",
+        artVerticalAlign: "top",
     },
     "fiend-warlord": {
         id: "fiend-warlord",
@@ -1962,7 +1964,7 @@ export const CARD_DEFINITIONS: Record<string, CardDefinition> = {
         name: "Aether",
         type: "aether",
         aetherCategory: "generic",
-        text: "Enters ready. Taps to pay a card's generic Aether cost.",
+        text: "Add one Aether to your maximum.",
     },
     "aether-fire": {
         id: "aether-fire",

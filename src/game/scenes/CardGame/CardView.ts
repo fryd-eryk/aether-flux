@@ -10,6 +10,7 @@ import {
     ABILITY_BADGE_DIM_ALPHA,
     ABILITY_BADGE_GAP,
     AETHER_CATEGORY_COLOR,
+    AETHER_CATEGORY_GRADIENT,
     ATKHP_BADGE_COLOR,
     ATKHP_BADGE_CENTER_X,
     ATKHP_BADGE_CENTER_Y,
@@ -206,13 +207,14 @@ export class CardView {
 
         // Elemental threshold (if any) stacks below the generic badge, using the same
         // stacking offset abilityBadgeLayout uses for a second paid-ability badge — reads as "the
-        // same kind of badge, one slot down" rather than new visual language. Category-colored
-        // (flat, no gradient) instead of the generic badge's blue, so the two costs read apart.
+        // same kind of badge, one slot down" rather than new visual language. Category-hued gradient
+        // (AETHER_CATEGORY_GRADIENT) instead of the generic badge's purple, so the two costs read apart.
         const elemental = definition.cost?.elemental;
         if (elemental) {
             const y = -CARD_H / 2 + (COST_BADGE_R_FULL * 2 + ABILITY_BADGE_GAP);
+            const { light, dark } = AETHER_CATEGORY_GRADIENT[elemental.category];
             const elementalBadge = this.scene.add.graphics();
-            elementalBadge.fillStyle(AETHER_CATEGORY_COLOR[elemental.category], 1);
+            elementalBadge.fillGradientStyle(light, light, dark, dark, 1, 1, 1, 1);
             elementalBadge.fillCircle(CARD_W / 2, y, COST_BADGE_R_FULL);
             elementalBadge.lineStyle(COST_BADGE_STROKE_WIDTH, COST_BADGE_STROKE_COLOR, 1);
             elementalBadge.strokeCircle(CARD_W / 2, y, COST_BADGE_R_FULL);

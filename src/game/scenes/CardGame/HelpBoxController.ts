@@ -6,6 +6,7 @@ import { TRIBE_METADATA } from '../../data/tribeMetadata';
 import type { CardInstance } from '../../types/Card';
 import {
     AETHER_CATEGORY_COLOR,
+    AETHER_CATEGORY_GRADIENT,
     ATKHP_BADGE_COLOR,
     COST_BADGE_DARK,
     COST_BADGE_LIGHT,
@@ -87,6 +88,45 @@ export class HelpBoxController
         // hides an already-showing tooltip for it; this stops one from reappearing mid-drag too.
         container.on('pointerover', () => { if (container !== this.getDraggedContainer()) this.showHelpBox(instance, container, showCost, resolvedText); });
         container.on('pointerout', () => this.hideHelpBox());
+    }
+
+    /**
+     * A plain-text sibling to attachKeywordHover for hover targets with no backing CardInstance
+     * (the Aether pool marker's Available/Max readout) — same helpBox/positionHelpBox plumbing,
+     * skipping all the cost-badge/keyword/tribe machinery showHelpBox needs for a real card.
+     */
+    attachTextHover (container: Phaser.GameObjects.Container, lines: string[]): void
+    {
+        container.on('pointerover', () => this.showTextHelpBox(lines, container));
+        container.on('pointerout', () => this.hideHelpBox());
+    }
+
+    /** One plain Text per line, stacked top to bottom — see attachTextHover. */
+    private showTextHelpBox (lines: string[], container: Phaser.GameObjects.Container): void
+    {
+        this.helpBoxLines.forEach((line) => line.destroy());
+        this.helpBoxLines = [];
+
+        const margin = 10;
+        let cursorY = margin;
+        let maxRight = 0;
+
+        for (const line of lines)
+        {
+            const text = this.scene.add.text(margin, cursorY, line, {
+                fontFamily: 'Arial', fontSize: '15px', color: '#ffffff',
+            }).setOrigin(0, 0);
+            this.helpBox.add(text);
+            this.helpBoxLines.push(text);
+            maxRight = Math.max(maxRight, text.x + text.width);
+            cursorY += text.height + 4;
+        }
+
+        this.redrawBg(maxRight + margin, cursorY + margin - 4);
+
+        this.helpBox.setVisible(true);
+        this.currentContainer = container;
+        this.positionHelpBox(container);
     }
 
     /**
@@ -191,8 +231,9 @@ export class HelpBoxController
             const elemental = definition.cost?.elemental;
             if (elemental) {
                 const y = COST_BADGE_R_FULL * 2 + 4;
+                const { light, dark } = AETHER_CATEGORY_GRADIENT[elemental.category];
                 const elementalBadge = this.scene.add.graphics();
-                elementalBadge.fillStyle(AETHER_CATEGORY_COLOR[elemental.category], 1);
+                elementalBadge.fillGradientStyle(light, light, dark, dark, 1, 1, 1, 1);
                 elementalBadge.fillCircle(this.boxWidth, y, COST_BADGE_R_FULL);
                 elementalBadge.lineStyle(COST_BADGE_STROKE_WIDTH, COST_BADGE_STROKE_COLOR, 1);
                 elementalBadge.strokeCircle(this.boxWidth, y, COST_BADGE_R_FULL);
